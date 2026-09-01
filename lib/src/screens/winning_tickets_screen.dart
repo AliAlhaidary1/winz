@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../data/database.dart';
 import '../providers/app_state.dart';
 import '../utils/format.dart';
+import 'barcode_scanner_screen.dart';
 
 class WinningTicketsScreen extends StatefulWidget {
   const WinningTicketsScreen({super.key});
@@ -76,11 +77,18 @@ class _WinningTicketsScreenState extends State<WinningTicketsScreen> {
             color: Colors.white,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: green.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.qr_code_scanner, color: green, size: 16)), const SizedBox(width: 8), const Text('Scan Ticket by Barcode', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))]),
+              Row(children: [Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: green.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.qr_code_scanner, color: green, size: 16)), const SizedBox(width: 8), const Text('Scan Ticket by Barcode', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)), const Spacer(), OutlinedButton.icon(icon: const Icon(Icons.qr_code_scanner, size: 16), label: const Text('Scan', style: TextStyle(fontSize: 11)), onPressed: () async {
+                final code = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()));
+                if(code!=null && code.isNotEmpty){ _codeCtrl.text = code; _validate(); }
+              })]),
               const SizedBox(height: 8),
-              TextField(controller: _codeCtrl, decoration: InputDecoration(border: const OutlineInputBorder(), labelText: 'Ticket Number / Serial / Barcode', isDense: true, suffixIcon: IconButton(icon: const Icon(Icons.search, color: green), onPressed: _validate)), onSubmitted: (_)=> _validate()),
+              TextField(controller: _codeCtrl, decoration: InputDecoration(border: const OutlineInputBorder(), labelText: 'Ticket Number / Serial / Barcode', isDense: true, suffixIcon: Row(mainAxisSize: MainAxisSize.min, children: [IconButton(icon: const Icon(Icons.qr_code_scanner, color: green), tooltip: 'Scan barcode', onPressed: () async { final code = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const BarcodeScannerScreen())); if(code!=null){ _codeCtrl.text=code; _validate(); }}), IconButton(icon: const Icon(Icons.search, color: green), onPressed: _validate)])), onSubmitted: (_)=> _validate()),
               const SizedBox(height: 8),
-              SizedBox(width: double.infinity, child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: green, foregroundColor: Colors.white), icon: _loading? const SizedBox(width:14,height:14,child:CircularProgressIndicator(strokeWidth:2, color: Colors.white)): const Icon(Icons.search, size: 16), label: Text(_loading? 'Checking...':'Check', style: const TextStyle(fontSize: 12)), onPressed: _loading? null: _validate)),
+              Row(children: [
+                Expanded(child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: green, foregroundColor: Colors.white), icon: _loading? const SizedBox(width:14,height:14,child:CircularProgressIndicator(strokeWidth:2, color: Colors.white)): const Icon(Icons.search, size: 16), label: Text(_loading? 'Checking...':'Check', style: const TextStyle(fontSize: 12)), onPressed: _loading? null: _validate)),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(icon: const Icon(Icons.qr_code_scanner), label: const Text('Scan'), onPressed: () async { final c = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const BarcodeScannerScreen())); if(c!=null){ _codeCtrl.text=c; _validate(); } }),
+              ]),
               if (_result!=null) ...[
                 const SizedBox(height: 10),
                 if (_result!.containsKey('error')) Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8)), child: Row(children: [const Icon(Icons.error, color: Colors.red, size: 18), const SizedBox(width: 8), Expanded(child: Text(_result!['error'], style: const TextStyle(fontSize: 11)))])),
@@ -99,12 +107,29 @@ class _WinningTicketsScreenState extends State<WinningTicketsScreen> {
                     const Divider(height: 12),
                     Builder(builder: (_) {
                       final t = _result!['ticket'] as Map<String,dynamic>;
+                      final lines = _result!['lines'] as List<Map<String,dynamic>>?;
+                      final lineDetails = _result!['lineDetails'] as List?;
                       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text('Ticket: ${t['id']} • ${t['serialNumber']}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-                        Text('Game: ${t['gameName']} • ${t['betType']} • ${t['numbers'].toString().replaceAll(',', ' ')}', style: const TextStyle(fontSize: 11)),
-                        Text('Amount: ${fmtMoney(t['amount'])} • Date: ${fmtDate(t['createdAt'])}', style: const TextStyle(fontSize: 11)),
+                        if(lines!=null && lines.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          for(int i=0;i<lines.length;i++) Padding(padding: const EdgeInsets.only(bottom: 2), child: Row(children: [
+                            Text('${i+1}.', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                            const SizedBox(width: 6),
+                            Text((lines[i]['numbers'] as String).replaceAll(',', ' '), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                            const SizedBox(width: 6),
+                            Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.grey.shade300)), child: Text(lines[i]['betType'], style: const TextStyle(fontSize: 9))),
+                            const Spacer(),
+                            Text(fmtMoney(lines[i]['amount']), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                            if(lineDetails!=null) ...[
+                              const SizedBox(width: 6),
+                              Icon((lineDetails[i]['isWinning']==true) ? Icons.check_circle : (lineDetails[i]['pending']==true? Icons.hourglass_empty : Icons.cancel), size: 12, color: (lineDetails[i]['isWinning']==true)? green : (lineDetails[i]['pending']==true? Colors.orange: Colors.red)),
+                            ]
+                          ])),
+                        ] else Text('Game: ${t['gameName']} • ${t['betType']} • ${t['numbers'].toString().replaceAll(',', ' ')}', style: const TextStyle(fontSize: 11)),
+                        Text('Total: ${fmtMoney(t['total'] ?? t['amount'])} • Date: ${fmtDate(t['createdAt'])}', style: const TextStyle(fontSize: 11)),
                         Text('Status: ${t['status']}', style: const TextStyle(fontSize: 11)),
-                        if (_result!['isWinning']==true) Text('Prize: ${fmtMoney(_result!['prize'])}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: green)),
+                        if (_result!['isWinning']==true) Text('Total Prize: ${fmtMoney(_result!['prize'])}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: green)),
                         if (_result!['pending']==true) const Text('Draw not yet completed — set winning number in Admin Draw first', style: TextStyle(fontSize: 10, color: Colors.orange)),
                       ]);
                     }),

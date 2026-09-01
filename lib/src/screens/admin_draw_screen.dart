@@ -12,10 +12,35 @@ class AdminDrawScreen extends StatefulWidget {
   State<AdminDrawScreen> createState() => _AdminDrawScreenState();
 }
 
-class _AdminDrawScreenState extends State<AdminDrawScreen> {
+class _AdminDrawScreenState extends State<AdminDrawScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabCtrl;
   String _gameId = 'g_numbers';
   String? _selectedDrawId;
-  List<Map<String, dynamic>> _draws = [];
+  List<Map<String, dynamic>> _draws = []; // all draws for selected game
+  List<Map<String, dynamic>> _periodsCache = [];
+  List<Map<String, dynamic>> get _pendingDraws {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    // فقط الفترة الحالية التي حان وقت سحبها (نافذة الإدخال: من salesClose حتى drawTime+2h)
+    // لا يعرض أي خيارات إضافية — خيار واحد فقط للفترة التي وقت السحب لها الآن
+    return _draws.where((d) {
+      final win = d['winningNumbers'] as String?;
+      if (win != null && win.trim().isNotEmpty) return false;
+      final dt = d['drawTime'] as int;
+      final name = d['name'] as String;
+      final isMidday = name.contains('Midday')||name.contains('Morning');
+      final type = isMidday ? 'MIDDAY' : 'EVENING';
+      final drawDt = DateTime.fromMillisecondsSinceEpoch(dt);
+      final dateStr = '${drawDt.year}-${drawDt.month.toString().padLeft(2,'0')}-${drawDt.day.toString().padLeft(2,'0')}';
+      final pid = '$dateStr-$type';
+      final p = _periodsCache.where((e)=> e['id']==pid).firstOrNull;
+      if (p == null) return false;
+      final salesClose = p['salesCloseTime'] as int;
+      final drawTime = p['drawTime'] as int;
+      const windowMs = 2*3600*1000; // ساعتان بعد السحب للسماح بالإدخال
+      // يسمح فقط إذا الآن داخل [salesClose, drawTime+2h]
+      return nowMs >= salesClose && nowMs <= drawTime + windowMs;
+    }).toList()..sort((a,b)=> (a['drawTime'] as int).compareTo(b['drawTime'] as int));
+  }
   final _winCtrl = TextEditingController();
   bool _processing = false;
   String? _error;
@@ -24,10 +49,16 @@ class _AdminDrawScreenState extends State<AdminDrawScreen> {
   List<Map<String, dynamic>> _winningTickets = [];
   bool _autoPay = false;
 
+  // --- History tab filters ---
+  String _historyGame = 'all'; // all / g_numbers / g_winz
+  String _historyStatus = 'all'; // all / pending / done
+  DateTime? _historyDate; // null = all dates
+  String _historySearch = '';
+
   @override
   void initState() {
     super.initState();
-    // widget.drawId may be empty or specific game id passed via route /admin/draw
+    _tabCtrl = TabController(length: 2, vsync: this);
     if (widget.drawId.isNotEmpty && widget.drawId.startsWith('g_')) {
       _gameId = widget.drawId;
     }
@@ -37,26 +68,39 @@ class _AdminDrawScreenState extends State<AdminDrawScreen> {
   @override
   void dispose() {
     _winCtrl.dispose();
+    _tabCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _loadDraws() async {
     final db = context.read<AppDatabase>();
+    await db.seedDrawPeriods();
+    await db.refreshPeriodStatuses();
+    _periodsCache = await db.getAllPeriods();
     List<Map<String, dynamic>> draws;
     if (_gameId == 'all') {
       draws = await db.getAllDraws();
     } else {
       draws = await db.getDrawsByGame(_gameId);
     }
+    // Ensure sorted by drawTime ascending for pending tab (soonest first)
+    draws.sort((a, b) => (a['drawTime'] as int).compareTo(b['drawTime'] as int));
     if (!mounted) return;
     setState(() {
       _draws = draws;
-      if (_selectedDrawId == null && draws.isNotEmpty) {
-        // Prefer open draws first, otherwise first
-        final open = draws.where((d) => d['status'] == 'open').toList();
-        _selectedDrawId = (open.isNotEmpty ? open.first : draws.first)['id'] as String;
-        _fillWinCtrlFromDraw();
-      } else if (_selectedDrawId != null) {
+      // Auto-select first pending if current selection is null or now not pending
+      final pending = _pendingDraws;
+      final currentStillPending = _selectedDrawId != null && pending.any((d) => d['id'] == _selectedDrawId);
+      if (_selectedDrawId == null || !currentStillPending) {
+        if (pending.isNotEmpty) {
+          _selectedDrawId = pending.first['id'] as String;
+          _fillWinCtrlFromDraw();
+        } else {
+          // No pending: keep selection null to force empty state (prompt to go to history)
+          _selectedDrawId = null;
+          _winCtrl.clear();
+        }
+      } else {
         _fillWinCtrlFromDraw();
       }
     });
@@ -64,19 +108,24 @@ class _AdminDrawScreenState extends State<AdminDrawScreen> {
   }
 
   void _fillWinCtrlFromDraw() {
-    if (_selectedDrawId == null) return;
+    if (_selectedDrawId == null) {
+      _winCtrl.clear();
+      return;
+    }
     final d = _draws.where((e) => e['id'] == _selectedDrawId).firstOrNull;
-    if (d != null && d['winningNumbers'] != null) {
+    if (d != null && d['winningNumbers'] != null && (d['winningNumbers'] as String).trim().isNotEmpty) {
       final s = (d['winningNumbers'] as String).replaceAll(',', '');
       _winCtrl.text = s;
     } else {
-      // keep empty if no winning yet, don't overwrite user's typing if already set
-      if (_success == null) _winCtrl.text = '';
+      if (_success == null) _winCtrl.clear();
     }
   }
 
   Future<void> _loadWinningPreview() async {
-    if (_selectedDrawId == null) return;
+    if (_selectedDrawId == null) {
+      if (mounted) setState(() => _winningTickets = []);
+      return;
+    }
     final db = context.read<AppDatabase>();
     final tickets = await db.getTickets();
     final draw = _draws.where((e) => e['id'] == _selectedDrawId).firstOrNull;
@@ -85,41 +134,47 @@ class _AdminDrawScreenState extends State<AdminDrawScreen> {
       if (mounted) setState(() => _winningTickets = []);
       return;
     }
-    // Show already winning tickets for this draw
+    // Show already winning tickets for this draw (including multi-line via ticket_lines)
     final winning = tickets.where((t) => t['drawId'] == _selectedDrawId && (t['status'] == 'winning' || t['status'] == 'paid')).toList();
+    // Also include multi-line tickets where draw appears only in lines
+    if (winning.isEmpty) {
+      final allLines = await db.getAllTicketLines();
+      final ids = allLines.where((l) => l['drawId'] == _selectedDrawId).map((l) => l['ticketId'] as String).toSet();
+      final extra = tickets.where((t) => ids.contains(t['id']) && (t['status'] == 'winning' || t['status'] == 'paid')).toList();
+      winning.addAll(extra);
+    }
     if (mounted) setState(() => _winningTickets = winning);
   }
 
   Future<void> _submit() async {
     setState(() { _error = null; _success = null; _lastResult = null; });
     if (_selectedDrawId == null) {
-      setState(() => _error = 'Please select a draw first');
+      setState(() => _error = 'لا يوجد سحب معلق — انتقل إلى سجل السحوبات لعرض الكل');
       return;
     }
     final raw = _winCtrl.text.trim().replaceAll(',', '').replaceAll(' ', '');
     if (raw.isEmpty) {
-      setState(() => _error = 'Enter winning number (e.g. 123 or 1234)');
+      setState(() => _error = 'أدخل الرقم الفائز (مثال 123 أو 1234)');
       return;
     }
     if (!RegExp(r'^[0-9]+$').hasMatch(raw)) {
-      setState(() => _error = 'Winning number must be digits 0-9 only');
+      setState(() => _error = 'الرقم الفائز يجب أن يكون أرقام 0-9 فقط');
       return;
     }
-    // validation per game — NY official
     if (_gameId == 'g_numbers' && raw.length != 3 && raw.length != 4) {
-      setState(() => _error = 'Numbers requires 3 or 4 digits (e.g. 123 or 0123) — 0 allowed');
+      setState(() => _error = 'Numbers يحتاج 3 أو 4 أرقام (مثال 123 أو 0123)');
       return;
     }
     if (_gameId == 'g_winz' && raw.length != 4) {
-      setState(() => _error = 'Win 4 requires exactly 4 digits (e.g. 0123) — 0 allowed');
+      setState(() => _error = 'Win 4 يحتاج 4 أرقام بالضبط');
       return;
     }
     final draw = _draws.where((e) => e['id'] == _selectedDrawId).firstOrNull;
-    if (draw != null && draw['winningNumbers'] != null && (draw['winningNumbers'] as String).isNotEmpty) {
+    if (draw != null && draw['winningNumbers'] != null && (draw['winningNumbers'] as String).trim().isNotEmpty) {
       final confirm = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
-        title: const Text('Confirm Replace Result'),
-        content: Text('Draw $_selectedDrawId already has result: ${draw['winningNumbers']}. Replace with $raw and recalculate winners?'),
-        actions: [TextButton(onPressed: () => Navigator.pop(c,false), child: const Text('Cancel')), ElevatedButton(onPressed: () => Navigator.pop(c,true), child: const Text('Replace'))],
+        title: const Text('تأكيد استبدال النتيجة'),
+        content: Text('السحب $_selectedDrawId لديه نتيجة سابقة: ${draw['winningNumbers']}. هل تريد الاستبدال بـ $raw وإعادة حساب الفائزين؟'),
+        actions: [TextButton(onPressed: () => Navigator.pop(c,false), child: const Text('إلغاء')), ElevatedButton(onPressed: () => Navigator.pop(c,true), child: const Text('استبدال'))],
       ));
       if (confirm != true) return;
     }
@@ -133,7 +188,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen> {
       await _loadWinningPreview();
       if (!mounted) return;
       setState(() {
-        _success = 'Winning number $raw saved — Winners: ${res['winningCount']} • Losers: ${res['losingCount']} • Total prizes: ${fmtMoney(res['totalPrize'])}';
+        _success = 'تم حفظ $raw — الفائزون: ${res['winningCount']} • الخاسرون: ${res['losingCount']} • الجوائز: ${fmtMoney(res['totalPrize'])}';
         _lastResult = res;
       });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_success!)));
@@ -144,185 +199,316 @@ class _AdminDrawScreenState extends State<AdminDrawScreen> {
     }
   }
 
+  Future<void> _editWinnerForDraw(Map<String, dynamic> draw) async {
+    final ctrl = TextEditingController(text: (draw['winningNumbers'] as String?)?.replaceAll(',', '') ?? '');
+    final gid = draw['gameId'] as String;
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: Text('تعديل الفائز — ${draw['name']}'),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('ID: ${draw['id']}', style: const TextStyle(fontSize: 10, color: Colors.black54)),
+        const SizedBox(height: 8),
+        TextField(controller: ctrl, keyboardType: TextInputType.number, maxLength: gid=='g_numbers'?4:4, decoration: InputDecoration(labelText: 'الرقم الفائز', hintText: gid=='g_winz'?'0123':'123', border: const OutlineInputBorder(), counterText: '')),
+        const SizedBox(height: 6),
+        Text(gid=='g_numbers' ? '3 أو 4 أرقام' : '4 أرقام بالضبط', style: const TextStyle(fontSize: 10, color: Colors.black54)),
+        const SizedBox(height: 8),
+        StatefulBuilder(builder: (ctx, setS){
+          return CheckboxListTile(value: _autoPay, dense: true, contentPadding: EdgeInsets.zero, title: const Text('دفع تلقائي', style: TextStyle(fontSize: 11)), onChanged: (v){ setState(()=> _autoPay=v??false); setS((){}); });
+        }),
+      ]),
+      actions: [TextButton(onPressed: ()=> Navigator.pop(c,false), child: const Text('إلغاء')), ElevatedButton(onPressed: ()=> Navigator.pop(c,true), child: const Text('حفظ'))],
+    ));
+    if(ok!=true) return;
+    final raw = ctrl.text.trim().replaceAll(',', '').replaceAll(' ', '');
+    if(raw.isEmpty || !RegExp(r'^[0-9]+$').hasMatch(raw)){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('رقم غير صالح'))); return; }
+    if(gid=='g_winz' && raw.length!=4){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Win 4 يحتاج 4 أرقام'))); return; }
+    if(gid=='g_numbers' && raw.length!=3 && raw.length!=4){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Numbers 3 أو 4 أرقام'))); return; }
+    setState(()=> _processing=true);
+    try{
+      final res = await context.read<AppState>().processDrawResult(drawId: draw['id'], winningNumbers: raw.split(''), autoPay: _autoPay);
+      await _loadDraws();
+      await _loadWinningPreview();
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم التحديث $raw — ${res['winningCount']} فائز')));
+    }catch(e){ if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
+    finally{ if(mounted) setState(()=> _processing=false); }
+  }
+
+  List<Map<String,dynamic>> get _filteredHistory {
+    List<Map<String,dynamic>> list = List.from(_draws);
+    // Need to fetch all draws for history when _gameId filter is 'all' already loaded. For history game filter, apply separate.
+    if(_historyGame != 'all'){
+      list = list.where((d)=> d['gameId']==_historyGame).toList();
+    }
+    if(_historyStatus == 'pending'){
+      list = list.where((d){
+        final win = d['winningNumbers'] as String?;
+        return win==null || win.trim().isEmpty;
+      }).toList();
+    } else if(_historyStatus == 'done'){
+      list = list.where((d){
+        final win = d['winningNumbers'] as String?;
+        return win!=null && win.trim().isNotEmpty;
+      }).toList();
+    }
+    if(_historyDate != null){
+      final y=_historyDate!.year, m=_historyDate!.month, d=_historyDate!.day;
+      list = list.where((e){
+        final dt = DateTime.fromMillisecondsSinceEpoch(e['drawTime'] as int);
+        return dt.year==y && dt.month==m && dt.day==d;
+      }).toList();
+    }
+    if(_historySearch.trim().isNotEmpty){
+      final q=_historySearch.trim().toLowerCase();
+      list = list.where((e)=> (e['name'] as String).toLowerCase().contains(q) || (e['id'] as String).toLowerCase().contains(q) || ((e['winningNumbers'] as String?)??'').contains(q)).toList();
+    }
+    list.sort((a,b)=> (b['drawTime'] as int).compareTo(a['drawTime'] as int));
+    return list;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final draw = _selectedDrawId == null ? null : _draws.where((e) => e['id'] == _selectedDrawId).firstOrNull;
+    final pending = _pendingDraws;
     return Scaffold(
-      appBar: AppBar(title: const Text('Draw Result — NY Lottery'), backgroundColor: const Color(0xFF0B8A3E), foregroundColor: Colors.white),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // Game picker
-          Row(children: [
-            Expanded(child: DropdownButtonFormField<String>(
-              value: _gameId,
-              decoration: const InputDecoration(labelText: 'Game', border: OutlineInputBorder(), isDense: true),
-              items: const [
-                DropdownMenuItem(value: 'g_numbers', child: Text('Numbers (Pick 3/4)')),
-                DropdownMenuItem(value: 'g_winz', child: Text('Win 4 (Pick 4)')),
-                DropdownMenuItem(value: 'all', child: Text('All')),
-              ],
-              onChanged: (v) async {
-                setState(() { _gameId = v!; _selectedDrawId = null; _winCtrl.clear(); });
-                await _loadDraws();
-              },
-            )),
-            const SizedBox(width: 12),
-            IconButton(icon: const Icon(Icons.refresh), onPressed: _loadDraws),
-          ]),
-          const SizedBox(height: 12),
-          // Draw picker
-          DropdownButtonFormField<String>(
-            value: _selectedDrawId,
-            decoration: const InputDecoration(labelText: 'Draw', border: OutlineInputBorder(), isDense: true),
-            isExpanded: true,
-            items: _draws.map((d) {
-              final win = d['winningNumbers'] as String?;
-              final status = d['status'] as String;
-              final label = win != null && win.isNotEmpty ? '${d['name']} • $status • Winner: ${win.replaceAll(',', '')}' : '${d['name']} • $status';
-              return DropdownMenuItem<String>(value: d['id'] as String, child: Text(label, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis));
-            }).toList(),
-            onChanged: (v) {
-              setState(() { _selectedDrawId = v; _error=null; _success=null; _lastResult=null; });
-              _fillWinCtrlFromDraw();
-              _loadWinningPreview();
-            },
-          ),
-          if (draw != null) ...[
-            const SizedBox(height: 8),
-            Card(color: draw['status']=='closed'? Colors.green.shade50: Colors.blue.shade50, child: Padding(padding: const EdgeInsets.all(10), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Draw status: ${draw['status']}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-              if (draw['winningNumbers'] != null) Text('Current winning number: ${(draw['winningNumbers'] as String).replaceAll(',', ' ')}', style: const TextStyle(fontSize: 12)),
-              Text('ID: ${draw['id']}', style: const TextStyle(fontSize: 10, color: Colors.black54)),
-            ]))),
-          ],
-          const SizedBox(height: 16),
-          const Text('Enter Winning Number', style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          Text(_gameId == 'g_numbers' ? 'Enter 3 or 4 digits (0-9) — e.g. 527 or 1948 or 012' : 'Enter 4 digits (0-9) — e.g. 0123 or 8472 (Win 4)',
-              style: const TextStyle(fontSize: 11, color: Colors.black54)),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _winCtrl,
-            keyboardType: TextInputType.number,
-            maxLength: 4,
-            decoration: InputDecoration(
-              labelText: 'Winning Number',
-              hintText: _gameId == 'g_numbers' ? 'e.g. 123' : 'e.g. 0123',
-              border: const OutlineInputBorder(),
-              counterText: '',
-              suffixIcon: _winCtrl.text.isNotEmpty ? IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(() => _winCtrl.clear())) : null,
-            ),
-            onChanged: (_) => setState(() { _error=null; }),
-          ),
-          const SizedBox(height: 8),
-          // AutoPay checkbox
-          CheckboxListTile(
-            value: _autoPay,
-            onChanged: (v) => setState(() => _autoPay = v ?? false),
-            title: const Text('Auto-pay winners (deduct from cash immediately)', style: TextStyle(fontSize: 12)),
-            subtitle: const Text('If unchecked: tickets are marked as winning and prize saved without cash deduction — pay via Winning Tickets screen', style: TextStyle(fontSize: 10, color: Colors.black54)),
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-          ),
-          if (_error != null) Card(color: Colors.red.shade50, child: Padding(padding: const EdgeInsets.all(10), child: Row(children: [const Icon(Icons.error, color: Colors.red, size: 18), const SizedBox(width: 8), Expanded(child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12)))]))),
-          if (_success != null) Card(color: Colors.green.shade50, child: Padding(padding: const EdgeInsets.all(10), child: Row(children: [const Icon(Icons.check_circle, color: Colors.green, size: 18), const SizedBox(width: 8), Expanded(child: Text(_success!, style: const TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.w600)))]))),
-          if (_processing) const LinearProgressIndicator(),
-          const SizedBox(height: 12),
-          SizedBox(width: double.infinity, height: 46, child: ElevatedButton.icon(
-            icon: _processing ? const SizedBox(width: 16, height:16, child: CircularProgressIndicator(strokeWidth:2, color: Colors.white)) : const Icon(Icons.save),
-            label: Text(_processing ? 'Processing...' : 'Save Result & Evaluate Winners'),
-            onPressed: _processing ? null : _submit,
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple),
-          )),
-          const SizedBox(height: 16),
-          // NY Official — Full Payout Table
-          Card(
-            elevation: 1,
-            child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('NY Lottery — Official Payout Table (Exact Clone)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.deepPurple)),
-              const SizedBox(height: 4),
-              const Text('Pick 3 = Numbers (3 digits 0-9) — Two draws daily', style: TextStyle(fontSize: 11, color: Colors.black54)),
-              const Divider(),
-              const Text('— Numbers Straight (exact order only — no permutation)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-              _profitRow('Straight 3 digits', '500x (\$500/\$1)', 'Pick 123, winner 123 → win. Winner 321 → lose'),
-              const SizedBox(height: 6),
-              const Text('— Numbers Box (any order — permutation, payout by duplication)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-              _profitRow('Box 3-Way (pair 112)', '160x (\$160/\$1)', 'Pick 112 → win with 112,121,211 (3 combos)'),
-              _profitRow('Box 6-Way (distinct 123)', '80x (\$80/\$1)', 'Pick 123 → win with 6 combos: 123,132,213,231,312,321'),
-              _profitRow('Box 111 (triple)', '0x', 'No Box — Straight only'),
-              const SizedBox(height: 6),
-              const Text('— Numbers Combo (like Box but pays Straight for all combos)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-              _profitRow('Combo 3-Way', '(amount/3)x500', 'Pick 112 cost \$3 (\$1x3) → any order wins \$500'),
-              _profitRow('Combo 6-Way', '(amount/6)x500', 'Pick 123 cost \$6 (\$1x6) → any order wins \$500'),
-              const SizedBox(height: 6),
-              const Text('— Numbers Straight/Box (half Straight + half Box for \$1)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-              _profitRow('Str/Box 3-Way exact', '330x (\$330/\$1)', 'Exact: \$250 Straight(0.5x500)+\$80 Box(0.5x160) = \$330'),
-              _profitRow('Str/Box 3-Way permutation', '80x', 'Perm only: \$80 Box half wager'),
-              _profitRow('Str/Box 6-Way exact', '290x (\$290/\$1)', 'Exact: \$250+\$40 = \$290'),
-              _profitRow('Str/Box 6-Way permutation', '40x', 'Perm: \$40'),
-              const SizedBox(height: 6),
-              const Text('— Win 4 (4 digits 0-9)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-              _profitRow('Straight 4', '5000x (\$5000/\$1)', 'Exact match 1234==1234 only'),
-              _profitRow('Box 4-Way (1112)', '1200x', '3 identical — 4 combos'),
-              _profitRow('Box 6-Way (1122)', '800x', 'Two pairs — 6 combos'),
-              _profitRow('Box 12-Way (1123)', '400x', 'One pair — 12 combos'),
-              _profitRow('Box 24-Way (1234)', '200x', 'All distinct — 24 combos — any permutation wins'),
-              _profitRow('Box 1111', '0x', '4 identical — no Box'),
-              const SizedBox(height: 6),
-              const Text('— Combo Win4: same as Box but (amount/combos)x5000', style: TextStyle(fontSize: 10, color: Colors.black54)),
-              const SizedBox(height: 8),
-              Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(8)), child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Golden Rules Summary:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                SizedBox(height: 4),
-                Text('• Straight = never allows permutation — must be exact order', style: TextStyle(fontSize: 10)),
-                Text('• Box / Combo = allows permutation — any order wins, payout varies by duplication (3-Way > 6-Way)', style: TextStyle(fontSize: 10)),
-                Text('• If digit repeats (112): Box wins 3 combos, 123 wins 6 combos', style: TextStyle(fontSize: 10)),
-                Text('• Combo costs more (3/6/12/24 x wager) but always pays full Straight', style: TextStyle(fontSize: 10)),
-              ])),
-              const SizedBox(height: 8),
-              const Text('Accounting: Every sale → Cash +, Balance +. Every payout → Cash -, Balance -. Net (point profit) = total sales - total prizes paid. Shown in Balance screen and Draw report.', style: TextStyle(fontSize: 10, color: Colors.black54)),
-            ])),
-          ),
-          const SizedBox(height: 16),
-          if (_lastResult != null) Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Last Processing Result + Accounting', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-            const SizedBox(height: 6),
-            Text('Total tickets in draw: ${_lastResult!['totalTickets']}', style: const TextStyle(fontSize: 12)),
-            Text('Winners: ${_lastResult!['winningCount']} • Losers: ${_lastResult!['losingCount']}', style: const TextStyle(fontSize: 12)),
-            Text('Total sales (this draw): ${fmtMoney(_lastResult!['totalSales'] ?? 0)}', style: const TextStyle(fontSize: 12)),
-            Text('Total prizes reserved: ${fmtMoney(_lastResult!['totalPrize'])}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.green)),
-            Builder(builder: (_) {
-              final sales = (_lastResult!['totalSales'] as num?)?.toDouble() ?? 0;
-              final prize = (_lastResult!['totalPrize'] as num).toDouble();
-              final diff = sales - prize;
-              final isProfit = diff >= 0;
-              return Text('Net (Sales - Prizes) = ${fmtMoney(diff)} ${isProfit ? '✓ Profit' : '✗ Loss'}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isProfit ? Colors.green.shade700 : Colors.red.shade700));
-            }),
-            const SizedBox(height: 4),
-            Text(_autoPay ? 'Auto-paid — cash and balance deducted' : 'Not auto-paid — prizes reserved as winning, pay via Winning Tickets to deduct cash', style: const TextStyle(fontSize: 11, color: Colors.black54)),
-          ]))),
-          const SizedBox(height: 12),
-          if (_winningTickets.isNotEmpty) ...[
-            const Text('Winning Tickets in This Draw', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-            const SizedBox(height: 6),
-            ..._winningTickets.map((t) => Card(child: ListTile(
-              dense: true,
-              title: Text('${t['id']} • ${t['numbers'].toString().replaceAll(',', ' ')} • ${t['betType']}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-              subtitle: Text('${t['gameName']} • ${fmtMoney(t['amount'])} → Prize ${fmtMoney(t['prizeAmount'] ?? 0)} • ${t['status']}', style: const TextStyle(fontSize: 11)),
-              trailing: t['status']=='paid' ? const Icon(Icons.check_circle, color: Colors.green) : const Icon(Icons.emoji_events, color: Colors.orange),
-              onTap: () => Navigator.pushNamed(context, '/ticket_detail', arguments: t),
-            ))),
-          ] else if (draw != null && draw['winningNumbers'] != null) ...[
-            const Card(child: Padding(padding: EdgeInsets.all(16), child: Center(child: Text('No winners for this draw', style: TextStyle(color: Colors.black54))))),
-          ],
+      appBar: AppBar(
+        title: const Text('نتيجة السحب — NY Lottery'),
+        backgroundColor: const Color(0xFF0B8A3E),
+        foregroundColor: Colors.white,
+        bottom: TabBar(controller: _tabCtrl, labelColor: Colors.white, unselectedLabelColor: Colors.white70, indicatorColor: Colors.white, tabs: const [
+          Tab(icon: Icon(Icons.edit), text: 'إدخال الفائز'),
+          Tab(icon: Icon(Icons.history), text: 'سجل السحوبات'),
         ]),
+      ),
+      body: TabBarView(controller: _tabCtrl, children: [
+        // TAB 1: إدخال الفائز — فقط المعلق
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(child: DropdownButtonFormField<String>(
+                    value: _gameId,
+                    decoration: const InputDecoration(labelText: 'اللعبة', border: OutlineInputBorder(), isDense: true),
+                    items: const [
+                      DropdownMenuItem(value: 'g_numbers', child: Text('Numbers (Pick 3/4)')),
+                      DropdownMenuItem(value: 'g_winz', child: Text('Win 4 (Pick 4)')),
+                      DropdownMenuItem(value: 'all', child: Text('الكل')),
+                    ],
+                    onChanged: (v) async { setState(() { _gameId = v!; _selectedDrawId = null; _winCtrl.clear(); }); await _loadDraws(); },
+                  )),
+                  const SizedBox(width: 12),
+                  IconButton(icon: const Icon(Icons.refresh), onPressed: _loadDraws),
+                ]),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(color: const Color(0xFFE8F5E9), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF0B8A3E).withValues(alpha: 0.2))),
+                  child: Row(children: [
+                    const Icon(Icons.info_outline, size: 16, color: Color(0xFF0B8A3E)),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text('يُعرض فقط السحوبات التي لم يُكتب لها فائز بعد (${pending.length} معلق) — للتعديل انتقل إلى تبويب سجل السحوبات', style: const TextStyle(fontSize: 11, color: Color(0xFF0B8A3E)))),
+                    TextButton(onPressed: ()=> _tabCtrl.animateTo(1), child: const Text('عرض الكل', style: TextStyle(fontSize: 11))),
+                  ]),
+                ),
+                const SizedBox(height: 12),
+                if(pending.isEmpty)
+                  Card(color: Colors.orange.shade50, child: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
+                    const Icon(Icons.check_circle, color: Colors.orange, size: 28),
+                    const SizedBox(height: 8),
+                    const Text('لا يوجد سحوبات معلقة', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text('كل السحوبات الحالية لها فائز — راجع سجل السحوبات للتعديل أو الاستعراض', style: TextStyle(fontSize: 11, color: Colors.black54), textAlign: TextAlign.center),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(icon: const Icon(Icons.history), label: const Text('فتح سجل السحوبات'), onPressed: ()=> _tabCtrl.animateTo(1)),
+                  ])))
+                else ...[
+                  DropdownButtonFormField<String>(
+                    value: _selectedDrawId,
+                    decoration: const InputDecoration(labelText: 'السحب (معلق فقط)', border: OutlineInputBorder(), isDense: true),
+                    isExpanded: true,
+                    items: pending.map((d) {
+                      final label = '${d['name']} • ${d['status']}';
+                      return DropdownMenuItem<String>(value: d['id'] as String, child: Text(label, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis));
+                    }).toList(),
+                    onChanged: (v) {
+                      setState(() { _selectedDrawId = v; _error=null; _success=null; _lastResult=null; });
+                      _fillWinCtrlFromDraw();
+                      _loadWinningPreview();
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Builder(builder: (_){
+                    final draw = _selectedDrawId == null ? null : _draws.where((e)=> e['id']==_selectedDrawId).firstOrNull;
+                    if(draw==null) return const SizedBox();
+                    return Card(color: Colors.blue.shade50, child: Padding(padding: const EdgeInsets.all(10), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('السحب: ${draw['name']}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      Text('ID: ${draw['id']}', style: const TextStyle(fontSize: 10, color: Colors.black54)),
+                      Text('الوقت: ${fmtDate(draw['drawTime'])} • الحالة: ${draw['status']}', style: const TextStyle(fontSize: 11)),
+                    ])));
+                  }),
+                  const SizedBox(height: 16),
+                  const Text('الرقم الفائز', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Text(_gameId == 'g_numbers' ? 'أدخل 3 أو 4 أرقام (0-9)' : 'أدخل 4 أرقام (0-9)', style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _winCtrl,
+                    keyboardType: TextInputType.number,
+                    maxLength: 4,
+                    decoration: InputDecoration(
+                      labelText: 'الرقم الفائز',
+                      hintText: _gameId == 'g_numbers' ? 'مثال 123' : 'مثال 0123',
+                      border: const OutlineInputBorder(),
+                      counterText: '',
+                      suffixIcon: _winCtrl.text.isNotEmpty ? IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(() => _winCtrl.clear())) : null,
+                    ),
+                    onChanged: (_) => setState(() { _error=null; }),
+                  ),
+                  const SizedBox(height: 8),
+                  CheckboxListTile(
+                    value: _autoPay,
+                    onChanged: (v) => setState(() => _autoPay = v ?? false),
+                    title: const Text('دفع تلقائي للفائزين', style: TextStyle(fontSize: 12)),
+                    subtitle: const Text('إذا لم يُحدد: تُعلّم التذاكر كفائزة فقط بدون خصم من الصندوق', style: TextStyle(fontSize: 10, color: Colors.black54)),
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  if (_error != null) Card(color: Colors.red.shade50, child: Padding(padding: const EdgeInsets.all(10), child: Row(children: [const Icon(Icons.error, color: Colors.red, size: 18), const SizedBox(width: 8), Expanded(child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12)))]))),
+                  if (_success != null) Card(color: Colors.green.shade50, child: Padding(padding: const EdgeInsets.all(10), child: Row(children: [const Icon(Icons.check_circle, color: Colors.green, size: 18), const SizedBox(width: 8), Expanded(child: Text(_success!, style: const TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.w600)))]))),
+                  if (_processing) const LinearProgressIndicator(),
+                  const SizedBox(height: 12),
+                  SizedBox(width: double.infinity, height: 46, child: ElevatedButton.icon(
+                    icon: _processing ? const SizedBox(width: 16, height:16, child: CircularProgressIndicator(strokeWidth:2, color: Colors.white)) : const Icon(Icons.save),
+                    label: Text(_processing ? 'جاري الحفظ...' : 'حفظ النتيجة وتقييم الفائزين'),
+                    onPressed: _processing ? null : _submit,
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple),
+                  )),
+                ],
+                const SizedBox(height: 16),
+                if (_lastResult != null) Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('نتيجة المعالجة + المحاسبة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                  const SizedBox(height: 6),
+                  Text('إجمالي التذاكر: ${_lastResult!['totalTickets']}', style: const TextStyle(fontSize: 12)),
+                  Text('الفائزون: ${_lastResult!['winningCount']} • الخاسرون: ${_lastResult!['losingCount']}', style: const TextStyle(fontSize: 12)),
+                  Text('المبيعات: ${fmtMoney(_lastResult!['totalSales'] ?? 0)}', style: const TextStyle(fontSize: 12)),
+                  Text('الجوائز: ${fmtMoney(_lastResult!['totalPrize'])}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.green)),
+                ]))),
+                if (_winningTickets.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text('التذاكر الفائزة في هذا السحب', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const SizedBox(height: 6),
+                  ..._winningTickets.map((t) => Card(child: ListTile(
+                    dense: true,
+                    title: Text('${t['id']} • ${t['numbers'].toString().replaceAll(',', ' ')} • ${t['betType']}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    subtitle: Text('${t['gameName']} • ${fmtMoney(t['amount'])} → ${fmtMoney(t['prizeAmount'] ?? 0)} • ${t['status']}', style: const TextStyle(fontSize: 11)),
+                    trailing: t['status']=='paid' ? const Icon(Icons.check_circle, color: Colors.green) : const Icon(Icons.emoji_events, color: Colors.orange),
+                    onTap: () => Navigator.pushNamed(context, '/ticket_detail', arguments: t),
+                  ))),
+                ],
+              ]),
+            ),
           ),
         ),
-      ),
+        // TAB 2: سجل السحوبات — عرض الكل مع فلترة حسب التاريخ
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: Column(children: [
+              Container(
+                color: Colors.white,
+                padding: const EdgeInsets.fromLTRB(12,12,12,8),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    const Text('فلترة السجل', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    const Spacer(),
+                    Text('${_filteredHistory.length}/${_draws.length} سحب', style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                  ]),
+                  const SizedBox(height: 8),
+                  SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+                    ChoiceChip(label: const Text('الكل'), selected: _historyGame=='all', onSelected: (_)=> setState(()=> _historyGame='all')),
+                    const SizedBox(width: 6),
+                    ChoiceChip(label: const Text('Numbers'), selected: _historyGame=='g_numbers', onSelected: (_)=> setState(()=> _historyGame='g_numbers')),
+                    const SizedBox(width: 6),
+                    ChoiceChip(label: const Text('Win 4'), selected: _historyGame=='g_winz', onSelected: (_)=> setState(()=> _historyGame='g_winz')),
+                    const SizedBox(width: 12),
+                    Container(width: 1, height: 24, color: Colors.grey.shade300),
+                    const SizedBox(width: 12),
+                    ChoiceChip(label: const Text('الكل'), selected: _historyStatus=='all', onSelected: (_)=> setState(()=> _historyStatus='all')),
+                    const SizedBox(width: 6),
+                    ChoiceChip(label: const Text('معلق'), selected: _historyStatus=='pending', onSelected: (_)=> setState(()=> _historyStatus='pending')),
+                    const SizedBox(width: 6),
+                    ChoiceChip(label: const Text('مُعلن'), selected: _historyStatus=='done', onSelected: (_)=> setState(()=> _historyStatus='done')),
+                  ])),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    Expanded(child: TextField(
+                      decoration: const InputDecoration(isDense: true, prefixIcon: Icon(Icons.search, size: 16), hintText: 'بحث بالاسم أو ID أو الرقم الفائز', border: OutlineInputBorder(), hintStyle: TextStyle(fontSize: 11)),
+                      style: const TextStyle(fontSize: 12),
+                      onChanged: (v)=> setState(()=> _historySearch=v),
+                    )),
+                  ]),
+                  const SizedBox(height: 8),
+                  SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+                    OutlinedButton.icon(icon: const Icon(Icons.calendar_today, size: 14), label: Text(_historyDate==null ? 'كل التواريخ' : '${_historyDate!.year}/${_historyDate!.month.toString().padLeft(2,'0')}/${_historyDate!.day.toString().padLeft(2,'0')}', style: const TextStyle(fontSize: 11)), onPressed: () async {
+                      final picked = await showDatePicker(context: context, initialDate: _historyDate ?? DateTime.now(), firstDate: DateTime(2024), lastDate: DateTime(2030));
+                      if(picked!=null) setState(()=> _historyDate=picked);
+                    }),
+                    if(_historyDate!=null) ...[
+                      const SizedBox(width: 6),
+                      IconButton(icon: const Icon(Icons.clear, size: 16), onPressed: ()=> setState(()=> _historyDate=null)),
+                    ],
+                    const SizedBox(width: 6),
+                    OutlinedButton.icon(icon: const Icon(Icons.today, size: 14), label: const Text('اليوم', style: TextStyle(fontSize: 11)), onPressed: ()=> setState(()=> _historyDate=DateTime.now())),
+                    const SizedBox(width: 6),
+                    OutlinedButton.icon(icon: const Icon(Icons.history, size: 14), label: const Text('أمس', style: TextStyle(fontSize: 11)), onPressed: ()=> setState(()=> _historyDate=DateTime.now().subtract(const Duration(days:1)))),
+                  ])),
+                ]),
+              ),
+              const Divider(height: 1),
+              Expanded(child: _filteredHistory.isEmpty ? const Center(child: Text('لا يوجد سحوبات مطابقة للفلتر', style: TextStyle(color: Colors.black54))) : ListView.separated(
+                padding: const EdgeInsets.all(12),
+                itemCount: _filteredHistory.length,
+                separatorBuilder: (_,__)=> const SizedBox(height: 8),
+                itemBuilder: (c,i){
+                  final d=_filteredHistory[i];
+                  final win = d['winningNumbers'] as String?;
+                  final hasWinner = win!=null && win.trim().isNotEmpty;
+                  final dt = DateTime.fromMillisecondsSinceEpoch(d['drawTime'] as int);
+                  final statusColor = hasWinner ? Colors.green : Colors.orange;
+                  return Container(
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: statusColor.withValues(alpha:0.2))),
+                    child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: statusColor.withValues(alpha:0.1), borderRadius: BorderRadius.circular(20)), child: Text(hasWinner ? 'مُعلن' : 'معلق', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: statusColor))),
+                        const SizedBox(width: 6),
+                        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(20)), child: Text(d['gameId']=='g_winz'?'Win 4':'Numbers', style: const TextStyle(fontSize: 10))),
+                        const Spacer(),
+                        Text('${dt.year}/${dt.month.toString().padLeft(2,'0')}/${dt.day.toString().padLeft(2,'0')} • ${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}', style: const TextStyle(fontSize: 10, color: Colors.black54)),
+                      ]),
+                      const SizedBox(height: 6),
+                      Text(d['name'], style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                      const SizedBox(height: 4),
+                      Text('ID: ${d['id']}', style: const TextStyle(fontSize: 10, color: Colors.black45)),
+                      const SizedBox(height: 6),
+                      Row(children: [
+                        Expanded(child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: hasWinner? Colors.green.shade50: Colors.grey.shade50, borderRadius: BorderRadius.circular(8)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          const Text('الرقم الفائز', style: TextStyle(fontSize: 10, color: Colors.black54)),
+                          Text(hasWinner ? win.replaceAll(',', ' ') : '— لم يُعلن بعد —', style: TextStyle(fontSize: hasWinner?16:12, fontWeight: hasWinner? FontWeight.w900: FontWeight.w500, letterSpacing: hasWinner?2:0, color: hasWinner? Colors.green.shade700: Colors.black45)),
+                        ]))),
+                        const SizedBox(width: 8),
+                        Column(children: [
+                          ElevatedButton.icon(icon: Icon(hasWinner? Icons.edit: Icons.add, size: 14), label: Text(hasWinner? 'تعديل':'إدخال', style: const TextStyle(fontSize: 11)), style: ElevatedButton.styleFrom(backgroundColor: hasWinner? Colors.orange: const Color(0xFF0B8A3E), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)), onPressed: ()=> _editWinnerForDraw(d)),
+                          const SizedBox(height: 4),
+                          if(hasWinner) Text('Tap لتعديل', style: TextStyle(fontSize: 9, color: Colors.black45)),
+                        ]),
+                      ]),
+                    ])),
+                  );
+                },
+              )),
+            ]),
+          ),
+        ),
+      ]),
     );
   }
 

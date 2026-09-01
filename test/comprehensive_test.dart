@@ -130,12 +130,15 @@ void main() {
     });
 
     test('Combo cost validation - amount must be divisible', () async {
-      // Should throw if amount not divisible
+      // الجديد: المبلغ هو الإجمالي المطلوب دفعه ويتوزع على التركيبات — $1.00 مسموح حتى لـ 6-way (perCombo = 1/6)
+      final t1 = await app.createTicket(gameId: 'g_numbers', gameName: 'Numbers', drawId: 'draw_midday', drawName: 'Midday', numbers: ['1','2','3'], betType: 'Combo', amount: 1.0, isQuickPick: false);
+      expect(t1['amount'], 1.0);
+      // لكن المبلغ يجب أن يكون بخطوات $0.50 — $1.25 مرفوض
       try {
-        await app.createTicket(gameId: 'g_numbers', gameName: 'Numbers', drawId: 'draw_midday', drawName: 'Midday', numbers: ['1','2','3'], betType: 'Combo', amount: 1.0, isQuickPick: false);
-        fail('Should have thrown combo validation');
+        await app.createTicket(gameId: 'g_numbers', gameName: 'Numbers', drawId: 'draw_midday', drawName: 'Midday', numbers: ['1','2','3'], betType: 'Combo', amount: 1.25, isQuickPick: false);
+        fail('Should have thrown for \$0.50 steps');
       } catch (e) {
-        expect(e.toString(), contains('Combo'));
+        expect(e.toString(), contains('0.50'));
       }
       // Valid combo 6-way with $6 should succeed
       final t = await app.createTicket(gameId: 'g_numbers', gameName: 'Numbers', drawId: 'draw_midday', drawName: 'Midday', numbers: ['1','2','3'], betType: 'Combo', amount: 6.0, isQuickPick: false);

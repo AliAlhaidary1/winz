@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../data/database.dart';
 import '../utils/format.dart';
 import '../theme/app_theme.dart';
+import 'barcode_scanner_screen.dart';
 
 class TicketsScreen extends StatefulWidget {
   const TicketsScreen({super.key});
@@ -34,7 +35,17 @@ class _TicketsScreenState extends State<TicketsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.bg,
-      appBar: AppBar(title: const Text('Tickets'), actions: [IconButton(icon: const Icon(Icons.refresh, color: Colors.white), onPressed: _load)]),
+      appBar: AppBar(title: const Text('Tickets'), actions: [
+        IconButton(icon: const Icon(Icons.qr_code_scanner, color: Colors.white), tooltip: 'Scan barcode', onPressed: () async {
+          final code = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()));
+          if(code!=null && code.isNotEmpty){
+            final db = context.read<AppDatabase>();
+            final t = await db.getTicketByBarcode(code);
+            if(t!=null && context.mounted) Navigator.pushNamed(context,'/ticket_detail', arguments: t);
+            else if(context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ticket not found for $code'), backgroundColor: Colors.red));
+          }
+        }),
+        IconButton(icon: const Icon(Icons.refresh, color: Colors.white), onPressed: _load)]),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 760),
@@ -89,9 +100,11 @@ class _TicketsScreenState extends State<TicketsScreen> {
                               Text('${t['gameName']} • ${t['betType']}', style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                               const SizedBox(height: 6),
                               Row(children: [
-                                Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: AppTheme.bg, borderRadius: BorderRadius.circular(8)), child: Text((t['numbers'] as String).replaceAll(',', '  '), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: 1))),
+                                Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: AppTheme.bg, borderRadius: BorderRadius.circular(8)), child: Text((t['numbers'] as String).replaceAll(',', '  '), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1))),
+                                const SizedBox(width: 6),
+                                if((t['numbers'] as String).contains(';')) Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: AppTheme.greenLight, borderRadius: BorderRadius.circular(6)), child: Text('${(t['numbers'] as String).split(';').length} plays', style: const TextStyle(fontSize: 9, color: AppTheme.green, fontWeight: FontWeight.bold))),
                                 const Spacer(),
-                                Text(fmtMoney(t['amount']), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                                Text(fmtMoney(t['total'] ?? t['amount']), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
                               ]),
                               const SizedBox(height: 4),
                               Text('ID ${t['id']} • ${fmtDate(t['createdAt'])} • ${t['operatorName']}', style: const TextStyle(fontSize: 10, color: AppTheme.textMuted), overflow: TextOverflow.ellipsis),

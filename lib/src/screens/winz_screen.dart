@@ -19,10 +19,17 @@ class _WinzScreenState extends State<WinzScreen> {
   final _amountCtrl = TextEditingController(text: '0.50');
   String _digits = '';
   bool _loadingDraws = true;
-  List<Map<String, dynamic>> _myPlays = [];
-  final types = ['Straight', 'Box', 'Combo'];
+  final types = ['Straight', 'Box', 'Combo', 'All'];
 
-  void _cycleBet(){ final i=types.indexOf(_winzType); setState(()=> _winzType=types[(i+1)%types.length]); }
+  bool get _isAllBet {
+    final l = _winzType.toLowerCase();
+    return l == 'all' || (l.contains('straight') && l.contains('box'));
+  }
+  void _cycleBet(){
+    final i=types.indexOf(_winzType);
+    final next = types[(i+1)%types.length];
+    setState(()=> _winzType=next);
+  }
 
   Widget _appBarDrawField(){
     if(_loadingDraws) return const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white));
@@ -48,15 +55,29 @@ class _WinzScreenState extends State<WinzScreen> {
   void initState(){ super.initState(); _load(); }
   Future<void> _load() async {
     final db=context.read<AppDatabase>();
+    await db.seedDrawPeriods();
+    await db.refreshPeriodStatuses();
     final all=await db.getDrawsByGame('g_winz');
-    final draws=all.where((d)=> d['status']=='open').take(4).toList();
-    final tickets=await db.getTickets();
+    final nowMs=DateTime.now().millisecondsSinceEpoch;
+    final openPeriods=await db.getOpenPeriods();
+    final openIds=openPeriods.map((p)=> p['id'] as String).toSet();
+    final List<Map<String,dynamic>> draws=all.where((d){
+      if(d['status']!='open') return false;
+      final dt=d['drawTime'] as int;
+      if(dt <= nowMs - 5*60*1000) return false;
+      final name=d['name'] as String;
+      final isMidday=name.contains('Midday')||name.contains('Morning');
+      final type=isMidday?'MIDDAY':'EVENING';
+      final drawDt=DateTime.fromMillisecondsSinceEpoch(dt);
+      final pid='${drawDt.year}-${drawDt.month.toString().padLeft(2,'0')}-${drawDt.day.toString().padLeft(2,'0')}-$type';
+      return openIds.contains(pid);
+    }).toList()..sort((a,b)=> (a['drawTime'] as int).compareTo(b['drawTime'] as int));
+    final List<Map<String,dynamic>> fallback=all.where((d)=> (d['drawTime'] as int) > nowMs).take(4).toList();
+    final List<Map<String,dynamic>> finalDraws=draws.isNotEmpty? draws: fallback;
     if(!mounted) return;
-    setState(()=> _draws=draws.isNotEmpty? draws: all.take(4).toList());
+    setState(()=> _draws=finalDraws.isNotEmpty? finalDraws: all.take(4).toList());
     setState(()=> _drawId=_draws.isNotEmpty? _draws.first['id'] as String : null);
     setState(()=> _loadingDraws=false);
-    setState(()=> _myPlays=tickets.where((t)=> t['gameName']=='Win 4').take(30).toList());
-    if(_myPlays.isEmpty) setState(()=> _myPlays=tickets.take(15).toList());
   }
   void _press(String d){ if(_digits.length>=4) return; setState(()=> _digits+=d); }
   void _clear()=> setState(()=> _digits='');
@@ -73,22 +94,71 @@ class _WinzScreenState extends State<WinzScreen> {
     setState(()=> _amountCtrl.text = nxt.toStringAsFixed(2));
   }
   int _combo(List<String> d){ final f=<String,int>{}; for(final x in d) { f[x]=(f[x]??0)+1; } int fact(int x)=> x<=1?1:x*fact(x-1); var denom=1; for(final c in f.values) { denom*=fact(c); } return fact(d.length)~/denom; }
-  Future<void> _play() async {
+  String _betInfoText(){
+    final amt = double.tryParse(_amountCtrl.text);
+    if(amt==null || _digits.length!=4) return '';
+    final low = _winzType.toLowerCase();
+    final isAll = low=='all' || (low.contains('straight') && low.contains('box'));
+    if(low.contains('combo')){
+      final c=_combo(_digits.split(''));
+      if(c<=1) return 'Combo غير صالح';
+      final total = amt * c;
+      return 'المبلغ المطلوب: \$${total.toStringAsFixed(2)}';
+    }
+    if(isAll){
+      return 'المبلغ المطلوب: \$${(amt*2).toStringAsFixed(2)}';
+    }
+    return 'المبلغ المطلوب: \$${amt.toStringAsFixed(2)}';
+  }
+
+  Future<void> _addToCart() async {
     if(_digits.length!=4){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Win 4 needs exactly 4 digits (0-9)'))); return; }
     final amt=double.tryParse(_amountCtrl.text);
-    if(amt==null||amt<0.5||amt>10){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Amount \$0.50 - \$10.00'))); return; }
-    if(_winzType.toLowerCase().contains('combo')){ final c=_combo(_digits.split('')); if(c<=1){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Combo not valid for $_digits'))); return;} if(((amt/c)*100).round()%50!=0){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Combo amount must be divisible by $c'))); return; } }
+    if(amt==null){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid amount'))); return; }
+    final low = _winzType.toLowerCase();
+    final isCombo = low.contains('combo');
+    final isAll = low=='all' || (low.contains('straight') && low.contains('box'));
+    if(!isCombo && !isAll){
+      if(amt<0.5||amt>10){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Amount \$0.50 - \$10.00'))); return; }
+      if(((amt)*100).round()%50!=0){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Amount must be \$0.50 steps'))); return; }
+    }
+    if(isCombo){ final c=_combo(_digits.split('')); if(c<=1){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Combo not valid for $_digits'))); return;} if(amt < 0.5 - 1e-9){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Combo min \$0.50 per combo'))); return; } if(amt > 10 + 1e-9){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Combo max \$10 per combo'))); return; } if(((amt)*100).round()%50!=0){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Amount must be \$0.50 steps per combo'))); return; } }
+    if(isAll){ if(amt<0.5-1e-9){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('All min \$0.50'))); return;} if(amt>10+1e-9){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('All max \$10.00'))); return; } if(((amt)*100).round()%50!=0){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Amount must be \$0.50 steps'))); return; } }
     final draw=_draws.firstWhere((d)=> d['id']==_drawId, orElse: ()=>{});
     try{
-      final t=await context.read<AppState>().createTicket(gameId:'g_winz', gameName:'Win 4', drawId:_drawId, drawName:draw['name'] as String?, numbers:_digits.split(''), betType:_winzType, amount:amt, isQuickPick:false);
-      setState(()=> _myPlays.insert(0,t));
+      double cartAmount = amt;
+      if(isCombo){
+        final c=_combo(_digits.split(''));
+        cartAmount = amt * c;
+      } else if(isAll){
+        cartAmount = amt * 2;
+      }
+      await context.read<AppState>().addToCart(gameId:'g_winz', gameName:'Win 4', drawId:_drawId, drawName:draw['name'] as String?, numbers:_digits.split(''), betType:_winzType, amount:cartAmount);
       setState(()=> _digits='');
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Win 4 Ticket ${t['id']} • \$${amt.toStringAsFixed(2)}'), backgroundColor: AppTheme.green));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Added to cart — press SALE to print'), backgroundColor: AppTheme.orange));
     }catch(e){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red)); }
   }
 
-  // Single-row control bar: Bet Type (tap to cycle) | Amount - Draw moved to AppBar, 4 Digits fixed
+  Future<void> _doSale() async {
+    final app = context.read<AppState>();
+    if(app.isCartEmpty){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cart empty'))); return; }
+    try{
+      final ticket = await app.commitSale();
+      if(!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('SALE Ticket ${ticket['id']} • ${fmtMoney(ticket['total'])}'), backgroundColor: AppTheme.orange));
+      await _load();
+      Navigator.pushNamed(context, '/print', arguments: ticket);
+    }catch(e){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red)); }
+  }
+
   Widget _buildControlBar(){
+    IconData _typeIcon(){
+      if(_winzType=='Straight') return Icons.straighten;
+      if(_winzType=='Box') return Icons.inventory_2_outlined;
+      if(_winzType.toLowerCase().contains('combo')) return Icons.shuffle;
+      if(_winzType=='All') return Icons.layers_outlined;
+      return Icons.shuffle;
+    }
     final typeField = InkWell(
       onTap: _cycleBet,
       borderRadius: BorderRadius.circular(8),
@@ -99,7 +169,7 @@ class _WinzScreenState extends State<WinzScreen> {
         decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(8), color: Colors.white),
         alignment: Alignment.center,
         child: Row(children: [
-          Icon(_winzType=='Straight' ? Icons.straighten : _winzType=='Box' ? Icons.inventory_2_outlined : Icons.shuffle, size: 14, color: AppTheme.orange),
+          Icon(_typeIcon(), size: 14, color: AppTheme.orange),
           const SizedBox(width: 6),
           Expanded(child: Text(_winzType, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800), overflow: TextOverflow.ellipsis)),
           const Icon(Icons.swap_horiz, size: 14, color: AppTheme.textMuted),
@@ -114,7 +184,7 @@ class _WinzScreenState extends State<WinzScreen> {
       child: Row(children: [
         InkWell(onTap: _decAmount, borderRadius: const BorderRadius.only(topLeft: Radius.circular(8), bottomLeft: Radius.circular(8)), child: Container(width: 32, alignment: Alignment.center, child: const Icon(Icons.remove, size: 16))),
         Container(width: 1, color: Colors.grey.shade300),
-        Expanded(child: TextField(controller: _amountCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13), decoration: const InputDecoration(border: InputBorder.none, isDense: true, prefixText: '\$', contentPadding: EdgeInsets.symmetric(vertical: 8)))),
+        Expanded(child: TextField(controller: _amountCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13), onChanged: (_)=> setState((){}), decoration: const InputDecoration(border: InputBorder.none, isDense: true, prefixText: '\$', contentPadding: EdgeInsets.symmetric(vertical: 8)))),
         Container(width: 1, color: Colors.grey.shade300),
         InkWell(onTap: _incAmount, borderRadius: const BorderRadius.only(topRight: Radius.circular(8), bottomRight: Radius.circular(8)), child: Container(width: 32, alignment: Alignment.center, child: const Icon(Icons.add, size: 16))),
       ]),
@@ -134,41 +204,63 @@ class _WinzScreenState extends State<WinzScreen> {
     );
   }
 
+  Widget _cartSection(){
+    return Consumer<AppState>(builder: (_, app, __){
+      if(app.isCartEmpty) return const SizedBox.shrink();
+      return Container(color: const Color(0xFFFFF3E0), padding: const EdgeInsets.fromLTRB(12,8,12,8), child: SizedBox(width: double.infinity, height: 44, child: ElevatedButton.icon(onPressed: _doSale, icon: const Icon(Icons.receipt_long), label: Text('SALE • Print ${fmtMoney(app.cartTotal)} (${app.cartCount} plays)', style: const TextStyle(fontWeight: FontWeight.w900)), style: ElevatedButton.styleFrom(backgroundColor: AppTheme.orange, foregroundColor: Colors.white))));
+    });
+  }
+
   @override
   Widget build(BuildContext context){
     final w=MediaQuery.of(context).size.width; final isTablet=w>=600;
     return Scaffold(
       backgroundColor: AppTheme.bg,
       resizeToAvoidBottomInset: false,
-      appBar: AppBar(title: _appBarDrawField(), centerTitle: true, actions: [IconButton(icon: const Icon(Icons.help_outline, size: 18), onPressed: ()=> Navigator.pushNamed(context,'/help')), IconButton(icon: const Icon(Icons.logout, size: 18), onPressed: ()=> _logout())]),
+      appBar: AppBar(title: _appBarDrawField(), centerTitle: true, actions: [
+        Consumer<AppState>(builder: (_, app, __)=> app.isCartEmpty? const SizedBox() : Padding(padding: const EdgeInsets.only(right:6), child: Center(child: Container(padding: const EdgeInsets.symmetric(horizontal:8, vertical:4), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)), child: Text('${app.cartCount} • ${fmtMoney(app.cartTotal)}', style: const TextStyle(color: AppTheme.orange, fontWeight: FontWeight.w800, fontSize: 11)))))),
+        IconButton(icon: const Icon(Icons.help_outline, size: 18), onPressed: ()=> Navigator.pushNamed(context,'/help')), IconButton(icon: const Icon(Icons.logout, size: 18), onPressed: ()=> _logout())]),
       drawer: _drawer(),
       body: Center(child: ConstrainedBox(constraints: BoxConstraints(maxWidth: isTablet?760:double.infinity), child: Column(children: [
-        Expanded(child: _myPlays.isEmpty ? _empty() : ListView.separated(padding: const EdgeInsets.fromLTRB(12,12,12,8), itemCount: _myPlays.length, separatorBuilder: (_,__)=> const SizedBox(height: 8), itemBuilder: (c,i){
-          final t=_myPlays[i]; final isPaid=t['status']=='paid'; final isWin=t['status']=='winning'; final col=isPaid? AppTheme.green : isWin? Colors.orange : AppTheme.orange;
-          return Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: col.withValues(alpha: 0.12))), child: InkWell(borderRadius: BorderRadius.circular(14), onTap: ()=> Navigator.pushNamed(context,'/ticket_detail', arguments: t), child: Padding(padding: const EdgeInsets.all(12), child: Row(children: [
-            Container(width: 4, height: 48, decoration: BoxDecoration(color: col, borderRadius: BorderRadius.circular(4))),
-            const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: col.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)), child: Text(t['betType'], style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: col))), const SizedBox(width: 6), Text(fmtMoney(t['amount']), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)), const Spacer(), Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: isPaid? AppTheme.greenLight: isWin? Colors.orange.shade50: Colors.grey.shade100, borderRadius: BorderRadius.circular(20)), child: Text(t['status'], style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isPaid?AppTheme.green: isWin? Colors.orange.shade700: Colors.black54)))]),
-              const SizedBox(height: 6),
-              Text((t['numbers'] as String).replaceAll(',', '   '), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 2)),
-              const SizedBox(height: 4),
-              Text('${t['drawName']??'-'} • ${fmtDate(t['createdAt'])}', style: const TextStyle(fontSize: 10, color: AppTheme.textMuted), overflow: TextOverflow.ellipsis),
-            ])),
-            const Icon(Icons.chevron_right, size: 16, color: Colors.black26),
-          ]))));
+        Expanded(child: Consumer<AppState>(builder: (ctx, app, __){
+          final cart = app.cart;
+          if(cart.isEmpty) return _empty();
+          return ListView.separated(padding: const EdgeInsets.fromLTRB(12,12,12,8), itemCount: cart.length, separatorBuilder: (_,__)=> const SizedBox(height: 8), itemBuilder: (c,i){
+            final item = cart[i];
+            String sub = fmtMoney(item.amount);
+            final low=item.betType.toLowerCase();
+            if(low.contains('combo')){ final cc=_combo(item.numbers); final per= cc>0? item.amount/cc: item.amount; sub='${cc}×\$${per.toStringAsFixed(2)}=${fmtMoney(item.amount)}';}
+            else if(low=='all' || (low.contains('straight')&&low.contains('box'))){ final ps=item.amount/2; sub='\$${ps.toStringAsFixed(2)}+${ps.toStringAsFixed(2)}=${fmtMoney(item.amount)}';}
+            return Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppTheme.orange.withValues(alpha:0.14))), child: Padding(padding: const EdgeInsets.all(12), child: Row(children: [
+              Container(width: 4, height: 48, decoration: BoxDecoration(color: AppTheme.orange, borderRadius: BorderRadius.circular(4))),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: AppTheme.orange.withValues(alpha:0.1), borderRadius: BorderRadius.circular(8)), child: Text(item.betType, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.orange))), const SizedBox(width: 6), Flexible(child: Text(sub, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800), overflow: TextOverflow.ellipsis)), const Spacer(), Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: AppTheme.bg, borderRadius: BorderRadius.circular(20)), child: Text('${i+1}/${cart.length}', style: const TextStyle(fontSize: 10, color: AppTheme.textMuted, fontWeight: FontWeight.bold)))]),
+                const SizedBox(height: 6),
+                Text(item.numbers.join('   '), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                const SizedBox(height: 4),
+                Text('${item.drawName ?? '-'} • ${item.gameName} • ${fmtMoney(item.amount)}', style: const TextStyle(fontSize: 10, color: AppTheme.textMuted), overflow: TextOverflow.ellipsis),
+              ])),
+              InkWell(onTap: ()=> app.removeFromCart(item.id), borderRadius: BorderRadius.circular(8), child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.red.shade200)), child: const Icon(Icons.delete_outline, size: 16, color: Colors.red))),
+            ])));
+          });
         })),
-        // لوحة تحكم موحدة + عرض الأرقام
-        Container(decoration: BoxDecoration(color: Colors.white, borderRadius: const BorderRadius.vertical(top: Radius.circular(20)), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 16, offset: const Offset(0,-4))]), padding: const EdgeInsets.fromLTRB(12,10,12,10), child: Column(children: [
+        _cartSection(),
+        Builder(builder: (ctx){
+          final info = _betInfoText();
+          return Container(decoration: BoxDecoration(color: Colors.white, borderRadius: const BorderRadius.vertical(top: Radius.circular(20)), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 16, offset: const Offset(0,-4))]), padding: const EdgeInsets.fromLTRB(12,10,12,10), child: Column(children: [
           Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(4, (idx){
             final has=idx<_digits.length; final ch=has? _digits[idx]:''; return Container(width: 48, height: 48, margin: const EdgeInsets.symmetric(horizontal: 3), decoration: BoxDecoration(color: has? AppTheme.orange: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: has? AppTheme.orange: AppTheme.cardBorder, width: has?2:1)), alignment: Alignment.center, child: has? Text(ch, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.white)) : const Text('—', style: TextStyle(fontSize: 16, color: Colors.black26)));
           })),
           const SizedBox(height: 4),
-          const Text('4 digits (0-9) • Quick Pick above ENTER', style: TextStyle(fontSize: 10, color: AppTheme.textMuted)),
+          const Text('4 digits (0-9)', style: TextStyle(fontSize: 10, color: AppTheme.textMuted)),
           const SizedBox(height: 10),
           if(_loadingDraws) const LinearProgressIndicator(color: AppTheme.orange) else _buildControlBar(),
-        ])),
-        // Keypad with Quick Pick above ENTER - no duplicate Play/QP elsewhere
+          if(info.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: _winzType.toLowerCase().contains('combo') ? const Color(0xFFF3E0) : const Color(0xFFE8F5E9), borderRadius: BorderRadius.circular(8), border: Border.all(color: AppTheme.orange.withValues(alpha:0.3))), child: Text(info, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.orange), textAlign: TextAlign.center, softWrap: true, maxLines: 2, overflow: TextOverflow.visible)),
+          ],
+        ]));}),
         Container(color: Colors.white, padding: const EdgeInsets.fromLTRB(8,8,8,8), child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -190,9 +282,9 @@ class _WinzScreenState extends State<WinzScreen> {
                   const SizedBox(height: 8),
                   Expanded(
                     child: InkWell(
-                      onTap: _play,
+                      onTap: _addToCart,
                       borderRadius: BorderRadius.circular(14),
-                      child: Container(decoration: BoxDecoration(color: AppTheme.orange, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppTheme.cardBorder)), alignment: Alignment.center, child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.play_arrow_rounded, color: Colors.white, size: 32), SizedBox(height: 4), Text('PLAY', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16)), SizedBox(height: 2), Text('ENTER', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600, fontSize: 10, letterSpacing: 1))])),
+                      child: Container(decoration: BoxDecoration(color: AppTheme.blue, borderRadius: BorderRadius.circular(14)), alignment: Alignment.center, child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_shopping_cart, color: Colors.white, size: 28), SizedBox(height: 4), Text('ADD', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16)), Text('to cart', style: TextStyle(color: Colors.white70, fontSize: 10))])),
                     ),
                   ),
                 ]),
@@ -209,7 +301,7 @@ class _WinzScreenState extends State<WinzScreen> {
     final dt=DateTime.fromMillisecondsSinceEpoch(d['drawTime'] as int); final t='${dt.hour>12?dt.hour-12:dt.hour}:${dt.minute.toString().padLeft(2,'0')} ${dt.hour>=12?'PM':'AM'}'; return '$p • $t';
   }
 
-  Widget _empty()=> Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: AppTheme.orange.withValues(alpha:0.1), shape: BoxShape.circle), child: const Icon(Icons.emoji_events_outlined, color: AppTheme.orange, size: 28)), const SizedBox(height: 12), const Text('No Win 4 plays yet', style: TextStyle(fontWeight: FontWeight.w800)), const Text('Enter 4 digits and tap Play', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))])));
+  Widget _empty()=> Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: AppTheme.orange.withValues(alpha:0.1), shape: BoxShape.circle), child: const Icon(Icons.emoji_events_outlined, color: AppTheme.orange, size: 28)), const SizedBox(height: 12), const Text('No Win 4 plays yet', style: TextStyle(fontWeight: FontWeight.w800)), const Text('Enter 4 digits → ADD → SALE', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))])));
 
 
   Widget _drawer(){

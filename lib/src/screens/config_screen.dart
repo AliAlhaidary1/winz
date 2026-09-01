@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../data/database.dart';
+import '../services/draw_period_service.dart';
+import '../providers/app_state.dart';
 
 class ConfigScreen extends StatefulWidget {
   const ConfigScreen({super.key});
@@ -13,6 +15,8 @@ class _ConfigScreenState extends State<ConfigScreen> {
   bool _loading = true;
   String _filter = 'all';
   String _search = '';
+  List<Map<String, dynamic>> _drawConfigs = [];
+  String _tz = 'America/New_York';
 
   @override
   void initState() {
@@ -23,8 +27,57 @@ class _ConfigScreenState extends State<ConfigScreen> {
   Future<void> _load() async {
     final db = context.read<AppDatabase>();
     final c = await db.getAppConfig();
+    final svc = DrawPeriodService(db);
+    final dcfgs = await svc.getAllDrawConfigs();
+    final tz = await svc.getTimezone();
     if (!mounted) return;
-    setState(() { _configs = c; _loading = false; });
+    setState(() { _configs = c; _drawConfigs = dcfgs; _tz = tz; _loading = false; });
+  }
+
+  Future<void> _editDrawConfig(Map<String, dynamic> cfg) async {
+    final drawType = cfg['drawType'] as String;
+    final salesCloseCtrl = TextEditingController(text: cfg['salesClose']);
+    final drawTimeCtrl = TextEditingController(text: cfg['drawTime']);
+    bool enabled = cfg['enabled'] as bool;
+    String resultMode = cfg['resultMode'] as String;
+    final ok = await showDialog<bool>(context: context, builder: (c) => StatefulBuilder(builder: (ctx, setS) => AlertDialog(
+      title: Text('Configure $drawType', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        TextField(controller: salesCloseCtrl, decoration: const InputDecoration(labelText: 'Sales Close (HH:MM)', hintText: '14:15', border: OutlineInputBorder(), isDense: true)),
+        const SizedBox(height: 8),
+        TextField(controller: drawTimeCtrl, decoration: const InputDecoration(labelText: 'Draw Time (HH:MM)', hintText: '14:30', border: OutlineInputBorder(), isDense: true)),
+        const SizedBox(height: 8),
+        SwitchListTile(value: enabled, title: const Text('Enabled', style: TextStyle(fontSize: 12)), dense: true, onChanged: (v) => setS(() => enabled = v)),
+        const SizedBox(height: 4),
+        DropdownButtonFormField<String>(value: resultMode, decoration: const InputDecoration(labelText: 'Result Mode', border: OutlineInputBorder(), isDense: true), items: const [DropdownMenuItem(value: 'manual', child: Text('Manual')), DropdownMenuItem(value: 'auto', child: Text('Automatic'))], onChanged: (v) => setS(() => resultMode = v ?? 'manual')),
+      ])),
+      actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0B8A3E)), onPressed: () => Navigator.pop(c, true), child: const Text('Save'))],
+    )));
+    if (ok != true) return;
+    final svc = DrawPeriodService(context.read<AppDatabase>());
+    final user = context.read<AppState>().currentUser?['username'] as String?;
+    try {
+      await svc.updateDrawConfig(drawType: drawType, salesClose: salesCloseCtrl.text.trim(), drawTime: drawTimeCtrl.text.trim(), enabled: enabled, resultMode: resultMode, user: user);
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$drawType updated — ${salesCloseCtrl.text} / ${drawTimeCtrl.text}'), backgroundColor: const Color(0xFF0B8A3E)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: Colors.red));
+    }
+  }
+
+  Future<void> _editTimezone() async {
+    final ctrl = TextEditingController(text: _tz);
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: const Text('Timezone', style: TextStyle(fontSize: 13)),
+      content: TextField(controller: ctrl, decoration: const InputDecoration(labelText: 'Timezone', hintText: 'America/New_York', border: OutlineInputBorder(), isDense: true)),
+      actions: [TextButton(onPressed: () => Navigator.pop(c,false), child: const Text('Cancel')), ElevatedButton(onPressed: () => Navigator.pop(c,true), child: const Text('Save'))],
+    ));
+    if (ok != true) return;
+    final svc = DrawPeriodService(context.read<AppDatabase>());
+    await svc.setTimezone(ctrl.text.trim());
+    await _load();
   }
 
   Future<void> _edit(String key, String current, String scope, String desc) async {
@@ -51,6 +104,15 @@ class _ConfigScreenState extends State<ConfigScreen> {
 
   String _desc(String k) {
     switch (k) {
+      case 'midday_sales_close': return 'Midday sales close — default 14:15 (02:15 PM)';
+      case 'midday_draw_time': return 'Midday draw time — default 14:30 (02:30 PM)';
+      case 'midday_enabled': return 'Midday enabled (1/0)';
+      case 'evening_sales_close': return 'Evening sales close — default 22:20 (10:20 PM)';
+      case 'evening_draw_time': return 'Evening draw time — default 22:30 (10:30 PM)';
+      case 'evening_enabled': return 'Evening enabled (1/0)';
+      case 'draw_timezone': return 'Draw timezone — default America/New_York';
+      case 'midday_result_mode': return 'Midday result mode — manual / auto';
+      case 'evening_result_mode': return 'Evening result mode — manual / auto';
       case 'numbers_straight': return 'NY Pick3 Straight — 500x per \$1 (exact match)';
       case 'numbers_box_3way': return 'Pick3 Box 3-Way 112 — 160x (any order, 3 combos)';
       case 'numbers_box_6way': return 'Pick3 Box 6-Way 123 — 80x (6 combos)';
@@ -84,6 +146,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
   }
 
   Color _catColor(String k) {
+    if (k.contains('midday') || k.contains('evening') || k.contains('draw_')) return Colors.deepPurple;
     if (k.contains('numbers') || k.contains('win4') || k.contains('straight') || k.contains('box')) return const Color(0xFF0B8A3E);
     if (k.contains('printer')) return Colors.orange;
     if (k.contains('currency') || k.contains('company')) return Colors.blue;
@@ -97,9 +160,10 @@ class _ConfigScreenState extends State<ConfigScreen> {
     final filtered = _configs.where((e) {
       final k = e['key'] as String;
       final catOk = _filter == 'all' ||
+          (_filter == 'draws' && (k.contains('midday') || k.contains('evening') || k.contains('draw_') || k.contains('auto_open') || k.contains('result_mode'))) ||
           (_filter == 'prizes' && (k.contains('numbers') || k.contains('win4') || k.contains('straight') || k.contains('box'))) ||
           (_filter == 'printer' && k.contains('printer')) ||
-          (_filter == 'general' && !k.contains('numbers') && !k.contains('win4') && !k.contains('straight') && !k.contains('box') && !k.contains('printer'));
+          (_filter == 'general' && !k.contains('numbers') && !k.contains('win4') && !k.contains('straight') && !k.contains('box') && !k.contains('printer') && !k.contains('midday') && !k.contains('evening') && !k.contains('draw_'));
       final searchOk = _search.isEmpty || k.toLowerCase().contains(_search.toLowerCase()) || (e['value'] as String).toLowerCase().contains(_search.toLowerCase());
       return catOk && searchOk;
     }).toList();
@@ -133,11 +197,12 @@ class _ConfigScreenState extends State<ConfigScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  SingleChildScrollView(
+                    SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(children: [
                       for (final f in [
                         ('all', 'All'),
+                        ('draws', 'Draw Schedule'),
                         ('prizes', 'Prizes NY'),
                         ('printer', 'Printer'),
                         ('general', 'General'),
@@ -154,6 +219,44 @@ class _ConfigScreenState extends State<ConfigScreen> {
                         ),
                     ]),
                   ),
+                ]),
+              ),
+              // Draw Schedule Section (Spec #2)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    const Icon(Icons.schedule, size: 16, color: Colors.deepPurple),
+                    const SizedBox(width: 6),
+                    const Text('Draw Schedule (Spec §1-2)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.deepPurple)),
+                    const Spacer(),
+                    Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.deepPurple.withOpacity(0.1), borderRadius: BorderRadius.circular(20)), child: Text(_tz, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.deepPurple))),
+                    IconButton(icon: const Icon(Icons.edit, size: 14, color: Colors.deepPurple), onPressed: _editTimezone),
+                  ]),
+                  const SizedBox(height: 8),
+                  ..._drawConfigs.map((cfg) {
+                    final type = cfg['drawType'] as String;
+                    final enabled = cfg['enabled'] as bool;
+                    return Card(
+                      color: enabled ? Colors.white : Colors.grey.shade100,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: enabled ? Colors.deepPurple.withOpacity(0.15) : Colors.grey.shade300)),
+                      child: ListTile(
+                        leading: CircleAvatar(backgroundColor: enabled ? Colors.deepPurple.withOpacity(0.1) : Colors.grey.shade200, child: Icon(type == 'MIDDAY' ? Icons.wb_sunny : Icons.nights_stay, color: enabled ? Colors.deepPurple : Colors.grey, size: 16)),
+                        title: Text(type == 'MIDDAY' ? 'Midday' : 'Evening', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: enabled ? Colors.black87 : Colors.black54)),
+                        subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text('Sales Close: ${cfg['salesClose']}  •  Draw: ${cfg['drawTime']}  •  ${cfg['resultMode']}', style: const TextStyle(fontSize: 10, color: Colors.black54)),
+                          Row(children: [
+                            Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: enabled ? Colors.green.shade50 : Colors.red.shade50, borderRadius: BorderRadius.circular(6)), child: Text(enabled ? 'ON' : 'OFF', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: enabled ? Colors.green : Colors.red))),
+                            const SizedBox(width: 6),
+                            Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: const Color(0xFFEDE7F6), borderRadius: BorderRadius.circular(6)), child: Text(cfg['timezone'], style: const TextStyle(fontSize: 9))),
+                          ]),
+                        ]),
+                        trailing: IconButton(icon: const Icon(Icons.edit, size: 16, color: Colors.deepPurple), onPressed: () => _editDrawConfig(cfg)),
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 4),
+                  Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: const Color(0xFFF3E8FF), borderRadius: BorderRadius.circular(8)), child: const Row(children: [Icon(Icons.info_outline, size: 12, color: Colors.deepPurple), SizedBox(width: 6), Expanded(child: Text('Defaults: Midday 14:15/14:30, Evening 22:20/22:30, TZ America/New_York. Not hard-coded — admin can change anytime. All changes are audit-logged.', style: TextStyle(fontSize: 10, color: Colors.deepPurple)))])),
                 ]),
               ),
               // Info card

@@ -15,32 +15,86 @@ class NumbersScreen extends StatefulWidget {
 class _NumbersScreenState extends State<NumbersScreen> {
   List<Map<String, dynamic>> _draws = [];
   String? _drawId;
+  String _drawMode = 'Midday'; // Midday / Evening / Both
   String _betType = 'Straight';
   final _amountCtrl = TextEditingController(text: '0.50');
   String _digits = '';
   bool _isQuickPick = false;
   bool _loadingDraws = true;
-  List<Map<String, dynamic>> _myPlays = [];
   String _digitMode = '3D'; // 3D / 4D
-
-  final betTypes = ['Straight', 'Box', 'Combo'];
+  final betTypes = ['Straight', 'Box', 'Combo', 'All'];
+  List<Map<String,dynamic>> _periods = [];
 
   @override
   void initState() { super.initState(); _load(); }
 
   Future<void> _load() async {
     final db = context.read<AppDatabase>();
+    await db.seedDrawPeriods();
+    await db.refreshPeriodStatuses();
     final allDraws = await db.getDrawsByGame('g_numbers');
-    final draws = allDraws.where((d)=> d['status']=='open').take(4).toList();
-    final tickets = await db.getTickets();
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    // فلترة legacy draws: فقط المستقبلية + المفتوحة حسب draw_periods
+    final openPeriods = await db.getOpenPeriods();
+    final openIds = openPeriods.map((p)=> p['id'] as String).toSet();
+    // draws التي تتوافق مع فترة OPEN و drawTime في المستقبل (5 دقائق سماح)
+    final List<Map<String,dynamic>> draws = allDraws.where((d){
+      if(d['status']!='open') return false;
+      final dt = d['drawTime'] as int;
+      if(dt <= nowMs - 5*60*1000) return false; // منتهية
+      // تحقق من الفترة المقابلة
+      final name = d['name'] as String;
+      final isMidday = name.contains('Midday')||name.contains('Morning');
+      final type = isMidday ? 'MIDDAY' : 'EVENING';
+      final drawDt = DateTime.fromMillisecondsSinceEpoch(dt);
+      final pid = '${drawDt.year}-${drawDt.month.toString().padLeft(2,'0')}-${drawDt.day.toString().padLeft(2,'0')}-$type';
+      return openIds.contains(pid);
+    }).toList()..sort((a,b)=> (a['drawTime'] as int).compareTo(b['drawTime'] as int));
+    final List<Map<String,dynamic>> fallback = allDraws.where((d)=> (d['drawTime'] as int) > nowMs).take(4).toList();
+    final List<Map<String,dynamic>> finalDraws = draws.isNotEmpty ? draws : (openPeriods.isNotEmpty ? <Map<String,dynamic>>[] : fallback);
+    final periods = await db.getAllPeriods();
     if (!mounted) return;
     setState(() {
-      _draws = draws.isNotEmpty ? draws : allDraws.take(4).toList();
-      _drawId = _draws.isNotEmpty ? _draws.first['id'] as String : null;
+      _draws = finalDraws.isNotEmpty ? finalDraws : fallback;
+      // اختر أقرب فترة مفتوحة لليوم الحالي (2026-09-01 وليس 2026-08-31 المنتهية)
+      if(_draws.isNotEmpty){
+        _drawId = _draws.first['id'] as String;
+      } else if(openPeriods.isNotEmpty){
+        // لا يوجد draws متوافقة — سنستخدم الفترة مباشرة (يُنشأ drawId لاحقاً في addToCart)
+        _drawId = null;
+      } else {
+        _drawId = null;
+      }
+      _periods = periods;
       _loadingDraws = false;
-      _myPlays = tickets.where((t)=> t['gameName']=='Numbers').take(30).toList();
-      if(_myPlays.isEmpty) _myPlays = tickets.take(20).toList();
     });
+    _syncDrawModeToPeriods();
+  }
+
+  void _syncDrawModeToPeriods(){
+    if(_drawMode=='Both') return;
+    // Pick drawId matching _drawMode
+    for(final d in _draws){
+      final n = d['name'] as String;
+      if(_drawMode=='Midday' && (n.contains('Midday')|| n.contains('Morning'))){ _drawId = d['id']; break; }
+      if(_drawMode=='Evening' && n.contains('Evening')){ _drawId = d['id']; break; }
+    }
+  }
+
+  String _countdownText(String label){
+    try{
+      final now = DateTime.now();
+      final dateStr = '${now.year}-${now.month.toString().padLeft(2,'0')}-${now.day.toString().padLeft(2,'0')}';
+      final pid = '$dateStr-${label.toUpperCase()}';
+      final p = _periods.where((e)=> e['id']==pid).firstOrNull;
+      if(p==null) return '';
+      if(p['status']!='OPEN') return 'SALES CLOSED';
+      final close = p['salesCloseTime'] as int;
+      final rem = close - DateTime.now().millisecondsSinceEpoch;
+      if(rem<=0) return 'SALES CLOSED';
+      final d = Duration(milliseconds: rem);
+      return '${d.inHours.toString().padLeft(2,'0')}:${(d.inMinutes%60).toString().padLeft(2,'0')}:${(d.inSeconds%60).toString().padLeft(2,'0')}';
+    }catch(_){ return ''; }
   }
 
   void _pressDigit(String d){ if(_digits.length>=4) return; setState(()=> _digits+=d); }
@@ -53,21 +107,51 @@ class _NumbersScreenState extends State<NumbersScreen> {
     setState(()=> _digits=s);
     _isQuickPick=true;
   }
+  bool get _isAllBet {
+    final l = _betType.toLowerCase();
+    return l == 'all' || (l.contains('straight') && l.contains('box'));
+  }
   void _incAmount(){
     final cur = double.tryParse(_amountCtrl.text) ?? 0.5;
-    final nxt = (cur + 0.5).clamp(0.5, 10.0);
+    final step = 0.5;
+    final min = 0.5;
+    final nxt = (cur + step).clamp(min, 10.0);
     setState(()=> _amountCtrl.text = nxt.toStringAsFixed(2));
   }
   void _decAmount(){
     final cur = double.tryParse(_amountCtrl.text) ?? 0.5;
-    final nxt = (cur - 0.5).clamp(0.5, 10.0);
+    final step = 0.5;
+    final min = 0.5;
+    final nxt = (cur - step).clamp(min, 10.0);
     setState(()=> _amountCtrl.text = nxt.toStringAsFixed(2));
   }
   int _comboCount(List<String> d){ final n=d.length; final f=<String,int>{}; for(final x in d) { f[x]=(f[x]??0)+1; } int fact(int x)=> x<=1?1:x*fact(x-1); var denom=1; for(final c in f.values) { denom*=fact(c); } return fact(n)~/denom; }
+  String _betInfoText(){
+    final amt = double.tryParse(_amountCtrl.text);
+    if(amt==null) return '';
+    final low = _betType.toLowerCase();
+    final isBoth = _drawMode=='Both';
+    final isAll = low=='all' || (low.contains('straight') && low.contains('box'));
+    if(low.contains('combo') && _digits.length>=3){
+      final combos = _comboCount(_digits.split(''));
+      if(combos<=1) return 'Combo غير صالح — أرقام مكررة 100% (مثل 111)';
+      final total = amt * combos;
+      if(isBoth) return 'المبلغ المطلوب: \$${(total*2).toStringAsFixed(2)}';
+      return 'المبلغ المطلوب: \$${total.toStringAsFixed(2)}';
+    }
+    if(isAll){
+      final total = amt * 2;
+      if(isBoth) return 'المبلغ المطلوب: \$${(total*2).toStringAsFixed(2)}';
+      return 'المبلغ المطلوب: \$${total.toStringAsFixed(2)}';
+    }
+    if(isBoth) return 'المبلغ المطلوب: \$${(amt*2).toStringAsFixed(2)}';
+    return 'المبلغ المطلوب: \$${amt.toStringAsFixed(2)}';
+  }
 
   void _cycleBetType(){
     final idx = betTypes.indexOf(_betType);
-    setState(()=> _betType = betTypes[(idx+1)%betTypes.length]);
+    final next = betTypes[(idx+1)%betTypes.length];
+    setState(()=> _betType = next);
   }
 
   void _cycleDigitMode(){
@@ -79,89 +163,217 @@ class _NumbersScreenState extends State<NumbersScreen> {
 
   Widget _appBarDrawField(){
     if(_loadingDraws) return const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white));
-    if(_draws.isEmpty) return const Text('No draws', style: TextStyle(color: Colors.white, fontSize: 13));
+    // تحديد الفترات المفتوحة لتمكين/تعطيل الأزرار
+    bool isMorningOpen(){
+      final now=DateTime.now();
+      final today='${now.year}-${now.month.toString().padLeft(2,'0')}-${now.day.toString().padLeft(2,'0')}';
+      final p=_periods.where((e)=> e['id']=='$today-MIDDAY').firstOrNull;
+      if(p==null) return false;
+      final nowMs=DateTime.now().millisecondsSinceEpoch;
+      return p['status']=='OPEN' && nowMs >= (p['salesOpenTime'] as int) && nowMs < (p['salesCloseTime'] as int);
+    }
+    bool isEveningOpen(){
+      final now=DateTime.now();
+      final today='${now.year}-${now.month.toString().padLeft(2,'0')}-${now.day.toString().padLeft(2,'0')}';
+      final p=_periods.where((e)=> e['id']=='$today-EVENING').firstOrNull;
+      if(p==null){
+        // قد تكون الفترة التالية هي المفتوحة (بعد إغلاق الصباحي)
+        final open=_periods.where((e)=> e['status']=='OPEN').toList();
+        return open.any((e)=> (e['drawType'] as String)=='EVENING');
+      }
+      final nowMs=DateTime.now().millisecondsSinceEpoch;
+      if(p['status']=='OPEN' && nowMs < (p['salesCloseTime'] as int)) return true;
+      // إذا أغلق صباح اليوم، Evening اليوم قد يكون مغلق أيضاً ونحتاج Evening الغد
+      return _periods.any((e)=> e['drawType']=='EVENING' && e['status']=='OPEN');
+    }
+    bool isBothEnabled(){
+      final open=_periods.where((e)=> e['status']=='OPEN').length;
+      return open >= 2 || (isMorningOpen() && isEveningOpen());
+    }
+    final morningOpen=isMorningOpen();
+    final eveningOpen=isEveningOpen();
+    final bothOpen=isBothEnabled();
     return Container(
       height: 36,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: _drawId,
-          isDense: true,
-          icon: const Icon(Icons.arrow_drop_down, size: 18, color: AppTheme.green),
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppTheme.green),
-          items: _draws.map((d)=> DropdownMenuItem(value: d['id'] as String, child: Text(_drawLabel(d), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.green)))).toList(),
-          onChanged: (v)=> setState(()=> _drawId=v),
-        ),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          for(final entry in [
+            {'label':'Morning','value':'Midday','enabled':morningOpen},
+            {'label':'Evening','value':'Evening','enabled':eveningOpen},
+            {'label':'Both','value':'Both','enabled':bothOpen},
+          ])
+            Padding(padding: const EdgeInsets.only(right: 3), child: ChoiceChip(
+              label: Text(entry['label'] as String, style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: _drawMode==entry['value'] ? Colors.white : (entry['enabled'] as bool ? AppTheme.green : Colors.grey))),
+              selected: _drawMode==entry['value'],
+              selectedColor: AppTheme.green,
+              backgroundColor: Colors.white,
+              side: BorderSide(color: (entry['enabled'] as bool) ? AppTheme.green.withOpacity(0.3) : Colors.grey.withOpacity(0.3)),
+              onSelected: (entry['enabled'] as bool) ? (_)=> setState(()=> {_drawMode=entry['value'] as String, _syncDrawModeToPeriods()}): null,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+              labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+            )),
+        ]),
       ),
     );
   }
 
-  Future<void> _play() async {
+  // ADD to cart (before SALE, removable) — supports Both (Spec §13-14)
+  Future<void> _addToCart() async {
     if(_digits.isEmpty){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter numbers first'))); return; }
     final need = _digitMode=='3D' ? 3 : 4;
     if(_digits.length != need){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Please enter exactly $need digits for $_digitMode mode'))); return; }
     final amt=double.tryParse(_amountCtrl.text);
-    if(amt==null|| amt<0.5 || amt>10){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Amount \$0.50 - \$10.00'))); return; }
-    if(_betType.toLowerCase().contains('combo')){
-      final combos=_comboCount(_digits.split(''));
-      if(combos<=1){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Combo not valid for $_digits'))); return; }
-      if(((amt/combos)*100).round()%50!=0){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Combo needs amount divisible by $combos'))); return; }
+    if(amt==null){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid amount'))); return; }
+    final low = _betType.toLowerCase();
+    final isCombo = low.contains('combo');
+    final isAll = low=='all' || (low.contains('straight') && low.contains('box'));
+    if(!isCombo && !isAll){
+      if(amt<0.5 || amt>10){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Amount \$0.50 - \$10.00'))); return; }
     }
-    final draw=_draws.firstWhere((d)=> d['id']==_drawId, orElse: ()=>{});
+    if(isCombo){
+      final combos=_comboCount(_digits.split(''));
+      if(combos<=1){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Combo not valid for $_digits — requires distinct permutations'))); return; }
+      // المبلغ المدخل هو للتركيبة الواحدة — الإجمالي = amt × combos
+      if(amt < 0.5 - 1e-9){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Combo min \$0.50 per combo'))); return; }
+      if(amt > 10 + 1e-9){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Combo max \$10 per combo'))); return; }
+      if(((amt)*100).round()%50!=0){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Amount must be \$0.50 steps per combo'))); return; }
+    }
+    if(isAll){
+      if(amt < 0.5 - 1e-9){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('All min \$0.50'))); return; }
+      if(amt > 10 + 1e-9){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('All max \$10.00'))); return; }
+      if(((amt)*100).round()%50!=0){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Amount must be \$0.50 steps'))); return; }
+    }
     try{
-      final ticket=await context.read<AppState>().createTicket(gameId:'g_numbers', gameName:'Numbers', drawId:_drawId, drawName:draw['name'] as String?, numbers:_digits.split(''), betType:_betType, amount:amt, isQuickPick:_isQuickPick);
-      setState(()=> _myPlays.insert(0,ticket));
-      setState(()=> _digits='');
-      _isQuickPick=false;
-      if(!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ticket ${ticket['id']} • ${ticket['numbers'].toString().replaceAll(',', ' ')} • \$${amt.toStringAsFixed(2)}'), backgroundColor: AppTheme.green));
+      double cartAmount = amt;
+      int? comboCount;
+      if(isCombo){
+        comboCount=_comboCount(_digits.split(''));
+        cartAmount = amt * comboCount; // الإجمالي المطلوب دفعه
+      } else if(isAll){
+        cartAmount = amt * 2; // All = $1 Straight + $1 Box = $2 لكل سحب
+      }
+      if(_drawMode=='Both'){
+        // Both: amountPerDraw هو الإجمالي للسحب الواحد، الإجمالي للاثنين = amountPerDraw*2
+        await context.read<AppState>().addBothToCart(gameId:'g_numbers', gameName:'Numbers', numbers:_digits.split(''), betType:_betType, amountPerDraw:cartAmount, isQuickPick:_isQuickPick);
+        final savedAmt = amt;
+        final savedCombos = comboCount;
+        final savedTotal = cartAmount;
+        setState(()=> _digits='');
+        _isQuickPick=false;
+        if(!mounted) return;
+        if(isCombo && savedCombos!=null){
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Added BOTH COMBO: \$${savedAmt.toStringAsFixed(2)}×$savedCombos = \$${savedTotal.toStringAsFixed(2)} per draw • الإجمالي \$${(savedTotal*2).toStringAsFixed(2)}'), backgroundColor: AppTheme.green));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Added BOTH: ${cartAmount.toStringAsFixed(2)} Midday + ${cartAmount.toStringAsFixed(2)} Evening = \$${(cartAmount*2).toStringAsFixed(2)}'), backgroundColor: AppTheme.green));
+        }
+      } else {
+        final draw=_draws.firstWhere((d)=> d['id']==_drawId, orElse: ()=>{});
+        await context.read<AppState>().addToCart(gameId:'g_numbers', gameName:'Numbers', drawId:_drawId, drawName:draw['name'] as String?, numbers:_digits.split(''), betType:_betType, amount:cartAmount, isQuickPick:_isQuickPick);
+        setState(()=> _digits='');
+        _isQuickPick=false;
+        if(!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Added to cart — now press SALE to print ticket'), backgroundColor: AppTheme.green));
+      }
     }catch(e){
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: Colors.red));
     }
   }
 
-  Widget _buildList(){
-    return _myPlays.isEmpty ? _empty() : ListView.separated(
-      padding: const EdgeInsets.fromLTRB(12,12,12,8),
-      itemCount: _myPlays.length,
-      separatorBuilder: (_,__)=> const SizedBox(height: 8),
-      itemBuilder: (c,i){
-        final t=_myPlays[i];
-        final isPaid=t['status']=='paid';
-        final isWin=t['status']=='winning';
-        final color=isPaid? AppTheme.green : isWin? Colors.orange : AppTheme.blue;
-        return Container(
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: color.withValues(alpha: 0.12))),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: ()=> Navigator.pushNamed(context,'/ticket_detail', arguments: t),
+  Future<void> _doSale() async {
+    final app = context.read<AppState>();
+    if(app.isCartEmpty){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cart empty — add numbers first'))); return; }
+    try{
+      final ticket = await app.commitSale();
+      if(!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('SALE success — Ticket ${ticket['id']} • ${ticket['linesCount']} plays • ${fmtMoney(ticket['total'])}'), backgroundColor: AppTheme.green));
+      await _load();
+      // Auto print
+      Navigator.pushNamed(context, '/print', arguments: ticket);
+    }catch(e){
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: Colors.red));
+    }
+  }
+
+  Widget _buildCartSection(){
+    return Consumer<AppState>(builder: (ctx, app, _) {
+      final cart = app.cart;
+      if(cart.isEmpty){
+        return const SizedBox.shrink();
+      }
+      return Container(
+        color: const Color(0xFFF0F7F0),
+        padding: const EdgeInsets.fromLTRB(12,8,12,8),
+        child: SizedBox(
+          width: double.infinity,
+          height: 44,
+          child: ElevatedButton.icon(
+            onPressed: _doSale,
+            icon: const Icon(Icons.receipt_long, size: 18),
+            label: Text('SALE • Print Ticket  ${fmtMoney(app.cartTotal)}  (${cart.length} plays)', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.green, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+          ),
+        ),
+      );
+    });
+  }
+
+  Widget _buildCurrentPlays(){
+    return Consumer<AppState>(builder: (ctx, app, _) {
+      final cart = app.cart;
+      if(cart.isEmpty) return _empty();
+      return ListView.separated(
+        padding: const EdgeInsets.fromLTRB(12,12,12,8),
+        itemCount: cart.length,
+        separatorBuilder: (_,__)=> const SizedBox(height: 8),
+        itemBuilder: (c,i){
+          final item = cart[i];
+          final numText = item.numbers.join('   ');
+          String subText = fmtMoney(item.amount);
+          final low = item.betType.toLowerCase();
+          if(low.contains('combo')){
+            final combos = _comboCount(item.numbers);
+            final per = combos>0 ? item.amount/combos : item.amount;
+            subText = '${combos}×\$${per.toStringAsFixed(2)} = ${fmtMoney(item.amount)}';
+          } else if(low=='all' || (low.contains('straight')&& low.contains('box'))){
+            final perSide = item.amount/2;
+            subText = '\$${perSide.toStringAsFixed(2)}+${perSide.toStringAsFixed(2)}=${fmtMoney(item.amount)}';
+          }
+          return Container(
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppTheme.green.withValues(alpha: 0.14))),
             child: Padding(padding: const EdgeInsets.all(12), child: Row(children: [
-              Container(width: 4, height: 48, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4))),
+              Container(width: 4, height: 48, decoration: BoxDecoration(color: AppTheme.green, borderRadius: BorderRadius.circular(4))),
               const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
-                  Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)), child: Text(t['betType'], style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color))),
+                  Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: AppTheme.greenLight, borderRadius: BorderRadius.circular(8)), child: Text(item.betType, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.green))),
                   const SizedBox(width: 6),
-                  Text(fmtMoney(t['amount']), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                  Flexible(child: Text(subText, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800), overflow: TextOverflow.ellipsis)),
                   const Spacer(),
-                  Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: isPaid? AppTheme.greenLight : isWin? Colors.orange.shade50 : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)), child: Text(t['status'], style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isPaid? AppTheme.green : isWin? Colors.orange.shade700 : Colors.black54))),
+                  Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: AppTheme.bg, borderRadius: BorderRadius.circular(20)), child: Text('${i+1}/${cart.length}', style: const TextStyle(fontSize: 10, color: AppTheme.textMuted, fontWeight: FontWeight.bold))),
                 ]),
                 const SizedBox(height: 6),
-                Text((t['numbers'] as String).replaceAll(',', '   '), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                Text(numText, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 2)),
                 const SizedBox(height: 4),
-                Row(children: [Icon(Icons.event, size: 12, color: Colors.grey.shade500), const SizedBox(width: 4), Expanded(child: Text('${t['drawName'] ?? '-'} • ${fmtDate(t['createdAt'])}', style: const TextStyle(fontSize: 10, color: AppTheme.textMuted), overflow: TextOverflow.ellipsis))]),
+                Row(children: [Icon(Icons.event, size: 12, color: Colors.grey.shade500), const SizedBox(width: 4), Expanded(child: Text('${item.drawName ?? '-'} • ${item.gameName} • ${fmtMoney(item.amount)}', style: const TextStyle(fontSize: 10, color: AppTheme.textMuted), overflow: TextOverflow.ellipsis))]),
               ])),
               const SizedBox(width: 8),
-              const Icon(Icons.chevron_right, size: 16, color: Colors.black26),
+              InkWell(
+                onTap: ()=> app.removeFromCart(item.id),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.red.shade200)), child: const Icon(Icons.delete_outline, size: 16, color: Colors.red)),
+              ),
             ])),
-          ),
-        );
-      },
-    );
+          );
+        },
+      );
+    });
   }
 
-  // Single-row control bar: Tap to cycle for 3/4 and Bet Type + Amount stepper (Draw is now in AppBar)
   Widget _buildControlBar() {
     final digitsField = InkWell(
       onTap: _cycleDigitMode,
@@ -181,6 +393,13 @@ class _NumbersScreenState extends State<NumbersScreen> {
       ),
     );
 
+    IconData _typeIcon(){
+      if(_betType=='Straight') return Icons.straighten;
+      if(_betType=='Box') return Icons.inventory_2_outlined;
+      if(_betType.toLowerCase().contains('combo')) return Icons.shuffle;
+      if(_betType=='All' || _betType=='Straight/Box') return Icons.layers_outlined;
+      return Icons.shuffle;
+    }
     final typeField = InkWell(
       onTap: _cycleBetType,
       borderRadius: BorderRadius.circular(8),
@@ -191,7 +410,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
         decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(8), color: Colors.white),
         alignment: Alignment.center,
         child: Row(children: [
-          Icon(_betType=='Straight' ? Icons.straighten : _betType=='Box' ? Icons.inventory_2_outlined : Icons.shuffle, size: 14, color: AppTheme.green),
+          Icon(_typeIcon(), size: 14, color: AppTheme.green),
           const SizedBox(width: 6),
           Expanded(child: Text(_betType, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800), overflow: TextOverflow.ellipsis)),
           const Icon(Icons.swap_horiz, size: 14, color: AppTheme.textMuted),
@@ -212,6 +431,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             textAlign: TextAlign.center,
             style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            onChanged: (_)=> setState((){}),
             decoration: const InputDecoration(border: InputBorder.none, isDense: true, prefixText: '\$', contentPadding: EdgeInsets.symmetric(vertical: 8)),
           ),
         ),
@@ -233,6 +453,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
   }
 
   Widget _buildInputPanel(){
+    final info = _betInfoText();
     return Container(
       decoration: BoxDecoration(color: Colors.white, borderRadius: const BorderRadius.vertical(top: Radius.circular(20)), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 16, offset: const Offset(0,-4))]),
       padding: const EdgeInsets.fromLTRB(12,10,12,10),
@@ -246,12 +467,20 @@ class _NumbersScreenState extends State<NumbersScreen> {
         Text(_digits.isEmpty ? '${_digitMode=='3D'?'3':'4'} digits (0-9)' : '${_digits.length}/${_digitMode=='3D'?'3':'4'}', style: const TextStyle(fontSize: 10, color: AppTheme.textMuted)),
         const SizedBox(height: 10),
         if(_loadingDraws) const LinearProgressIndicator(color: AppTheme.green) else _buildControlBar(),
+        if(info.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(color: _betType.toLowerCase().contains('combo') ? const Color(0xFFE8F5E9) : const Color(0xFFE3F2FD), borderRadius: BorderRadius.circular(8), border: Border.all(color: _betType.toLowerCase().contains('combo') ? AppTheme.green.withValues(alpha: 0.3) : AppTheme.blue.withValues(alpha: 0.3))),
+            child: Text(info, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _betType.toLowerCase().contains('combo') ? AppTheme.green : AppTheme.blue), textAlign: TextAlign.center, softWrap: true, maxLines: 2, overflow: TextOverflow.visible),
+          ),
+        ],
       ]),
     );
   }
 
   Widget _buildKeypad(){
-    // Keypad with Quick Pick above ENTER (Play) on the right - no duplicate Play/QP elsewhere
     final gridHeight = 4 * 56 + 3 * 8 + 8.0;
     return Container(
       color: Colors.white,
@@ -282,7 +511,6 @@ class _NumbersScreenState extends State<NumbersScreen> {
             child: SizedBox(
               height: gridHeight,
               child: Column(children: [
-                // Quick Pick above ENTER
                 SizedBox(
                   height: 56,
                   width: double.infinity,
@@ -296,17 +524,17 @@ class _NumbersScreenState extends State<NumbersScreen> {
                 const SizedBox(height: 8),
                 Expanded(
                   child: InkWell(
-                    onTap: _play,
+                    onTap: _addToCart,
                     borderRadius: BorderRadius.circular(14),
                     child: Container(
-                      decoration: BoxDecoration(color: AppTheme.green, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppTheme.cardBorder)),
+                      decoration: BoxDecoration(color: AppTheme.blue, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppTheme.cardBorder)),
                       alignment: Alignment.center,
                       child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Icon(Icons.play_arrow_rounded, color: Colors.white, size: 32),
+                        Icon(Icons.add_shopping_cart, color: Colors.white, size: 28),
                         SizedBox(height: 4),
-                        Text('PLAY', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16)),
+                        Text('ADD', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16)),
                         SizedBox(height: 2),
-                        Text('ENTER', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600, fontSize: 10, letterSpacing: 1)),
+                        Text('to cart', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600, fontSize: 10, letterSpacing: 1)),
                       ]),
                     ),
                   ),
@@ -322,29 +550,25 @@ class _NumbersScreenState extends State<NumbersScreen> {
   @override
   Widget build(BuildContext context) {
     final w=MediaQuery.of(context).size.width;
-    final h=MediaQuery.of(context).size.height;
     final isTablet=w>=600;
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape && h < 500;
     return Scaffold(
       backgroundColor: AppTheme.bg,
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: _appBarDrawField(),
         centerTitle: true,
-        actions: [IconButton(icon: const Icon(Icons.help_outline, size: 18), onPressed: ()=> Navigator.pushNamed(context,'/help')), IconButton(icon: const Icon(Icons.logout, size: 18), onPressed: ()=> _logout())],
+        actions: [
+          Consumer<AppState>(builder: (_, app, __) => app.isCartEmpty ? const SizedBox() : Padding(padding: const EdgeInsets.only(right: 8), child: Center(child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)), child: Text('${app.cartCount} • ${fmtMoney(app.cartTotal)}', style: const TextStyle(color: AppTheme.green, fontWeight: FontWeight.w800, fontSize: 11)))))),
+          IconButton(icon: const Icon(Icons.help_outline, size: 18), onPressed: ()=> Navigator.pushNamed(context,'/help')),
+          IconButton(icon: const Icon(Icons.logout, size: 18), onPressed: ()=> _logout())],
       ),
       drawer: _drawer(),
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: isTablet? 760: double.infinity),
-          child: isLandscape
-              ? Row(children: [
-                  Expanded(flex: 3, child: _buildList()),
-                  const VerticalDivider(width: 1),
-                  Expanded(flex: 2, child: SingleChildScrollView(child: Column(children: [_buildInputPanel(), _buildKeypad()]))),
-                ])
-              : Column(children: [
-            Expanded(child: _buildList()),
+          child: Column(children: [
+            Expanded(child: _buildCurrentPlays()),
+            _buildCartSection(),
             _buildInputPanel(),
             _buildKeypad(),
           ]),
@@ -367,11 +591,13 @@ class _NumbersScreenState extends State<NumbersScreen> {
 
   Widget _empty(){
     return Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
-      Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: AppTheme.greenLight, shape: BoxShape.circle), child: const Icon(Icons.confirmation_number_outlined, color: AppTheme.green, size: 28)),
+      Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: AppTheme.greenLight, shape: BoxShape.circle), child: const Icon(Icons.shopping_cart_outlined, color: AppTheme.green, size: 28)),
       const SizedBox(height: 12),
-      const Text('No plays yet', style: TextStyle(fontWeight: FontWeight.w800)),
+      const Text('No tickets yet', style: TextStyle(fontWeight: FontWeight.w800)),
       const SizedBox(height: 4),
-      const Text('Enter 3 or 4 digits (0-9) above and tap Play\nTry Quick Pick for random numbers', style: TextStyle(fontSize: 11, color: AppTheme.textMuted), textAlign: TextAlign.center),
+      const Text('Enter digits → ADD to cart → SALE to print one ticket', style: TextStyle(fontSize: 11, color: AppTheme.textMuted), textAlign: TextAlign.center),
+      const SizedBox(height: 8),
+      Consumer<AppState>(builder: (_, app, __) => app.isCartEmpty ? const SizedBox() : Text('Cart: ${app.cartCount} plays • ${fmtMoney(app.cartTotal)}', style: TextStyle(fontSize: 11, color: AppTheme.green, fontWeight: FontWeight.bold))),
     ])));
   }
 

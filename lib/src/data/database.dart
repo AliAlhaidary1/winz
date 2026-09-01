@@ -12,7 +12,7 @@ class AppDatabase extends GeneratedDatabase {
   AppDatabase.forTesting(QueryExecutor e) : super(e);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 8;
 
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => const [];
@@ -84,6 +84,89 @@ class AppDatabase extends GeneratedDatabase {
             await customStatement("UPDATE app_config SET value='1200', updatedAt=$now WHERE key='win4_box_4way'");
             await customStatement("UPDATE app_config SET value='1200', updatedAt=$now WHERE key='box_4d_multiplier'");
           }
+          if (from < 7) {
+            await customStatement('''
+              CREATE TABLE IF NOT EXISTS ticket_lines (
+                id TEXT PRIMARY KEY,
+                ticketId TEXT NOT NULL,
+                gameId TEXT NOT NULL,
+                gameName TEXT NOT NULL,
+                drawId TEXT,
+                drawName TEXT,
+                numbers TEXT NOT NULL,
+                betType TEXT NOT NULL,
+                amount REAL NOT NULL,
+                isQuickPick INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (ticketId) REFERENCES tickets(id)
+              )
+            ''');
+            await customStatement('CREATE INDEX IF NOT EXISTS idx_ticket_lines_ticketId ON ticket_lines(ticketId)');
+            // Migrate existing tickets to ticket_lines (one line per old ticket)
+            // Use customSelect to iterate
+            try {
+              final rows = await customSelect('SELECT id, gameId, gameName, drawId, drawName, numbers, betType, amount, isQuickPick FROM tickets').get();
+              for (final r in rows) {
+                final tid = r.data['id'] as String;
+                final existing = await customSelect('SELECT COUNT(*) as c FROM ticket_lines WHERE ticketId = ?', variables: [Variable.withString(tid)]).getSingle();
+                if ((existing.data['c'] as int) == 0) {
+                  final lineId = 'L${tid}';
+                  await customStatement('INSERT OR IGNORE INTO ticket_lines (id, ticketId, gameId, gameName, drawId, drawName, numbers, betType, amount, isQuickPick) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                      [lineId, tid, r.data['gameId'], r.data['gameName'], r.data['drawId'], r.data['drawName'], r.data['numbers'], r.data['betType'], r.data['amount'], r.data['isQuickPick'] ?? 0]);
+                }
+              }
+            } catch (_) {}
+          }
+          if (from < 8) {
+            await customStatement('''
+              CREATE TABLE IF NOT EXISTS draw_periods (
+                id TEXT PRIMARY KEY,
+                drawType TEXT NOT NULL,
+                drawDate TEXT NOT NULL,
+                salesOpenTime INTEGER NOT NULL,
+                salesCloseTime INTEGER NOT NULL,
+                drawTime INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                result TEXT,
+                resultPublishedAt INTEGER,
+                publishedBy TEXT,
+                resultSource TEXT,
+                timezone TEXT
+              )
+            ''');
+            await customStatement('CREATE INDEX IF NOT EXISTS idx_draw_periods_date ON draw_periods(drawDate)');
+            await customStatement('CREATE INDEX IF NOT EXISTS idx_draw_periods_type ON draw_periods(drawType)');
+            await customStatement('CREATE INDEX IF NOT EXISTS idx_draw_periods_status ON draw_periods(status)');
+            await customStatement('''
+              CREATE TABLE IF NOT EXISTS audit_logs (
+                id TEXT PRIMARY KEY,
+                user TEXT NOT NULL,
+                action TEXT NOT NULL,
+                periodId TEXT,
+                oldValue TEXT,
+                newValue TEXT,
+                timestamp INTEGER NOT NULL,
+                reason TEXT
+              )
+            ''');
+            await customStatement('CREATE INDEX IF NOT EXISTS idx_audit_period ON audit_logs(periodId)');
+            // Add periodId column to ticket_lines for spec compliance
+            try { await customStatement('ALTER TABLE ticket_lines ADD COLUMN periodId TEXT'); } catch (_) {}
+            try { await customStatement('ALTER TABLE ticket_lines ADD COLUMN periodStatus TEXT'); } catch (_) {}
+            try { await customStatement('ALTER TABLE ticket_lines ADD COLUMN winningStatus TEXT'); } catch (_) {}
+            try { await customStatement('ALTER TABLE ticket_lines ADD COLUMN prizeAmount REAL'); } catch (_) {}
+            // Seed default draw config for new logic
+            final now = DateTime.now().millisecondsSinceEpoch;
+            await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('midday_sales_close', '14:15', 'local', $now)");
+            await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('midday_draw_time', '14:30', 'local', $now)");
+            await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('midday_enabled', '1', 'local', $now)");
+            await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('evening_sales_close', '22:20', 'local', $now)");
+            await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('evening_draw_time', '22:30', 'local', $now)");
+            await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('evening_enabled', '1', 'local', $now)");
+            await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('draw_timezone', 'America/New_York', 'local', $now)");
+            await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('midday_result_mode', 'manual', 'local', $now)");
+            await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('evening_result_mode', 'manual', 'local', $now)");
+            await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('auto_open_next', '1', 'local', $now)");
+          }
         },
         beforeOpen: (details) async {
           await _createAll(customStatement);
@@ -112,6 +195,58 @@ class AppDatabase extends GeneratedDatabase {
       );
 
   Future<void> _createAll(Future<void> Function(String) exec) async {
+    await exec('''
+      CREATE TABLE IF NOT EXISTS draw_periods (
+        id TEXT PRIMARY KEY,
+        drawType TEXT NOT NULL,
+        drawDate TEXT NOT NULL,
+        salesOpenTime INTEGER NOT NULL,
+        salesCloseTime INTEGER NOT NULL,
+        drawTime INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        result TEXT,
+        resultPublishedAt INTEGER,
+        publishedBy TEXT,
+        resultSource TEXT,
+        timezone TEXT
+      )
+    ''');
+    await exec('CREATE INDEX IF NOT EXISTS idx_draw_periods_date ON draw_periods(drawDate)');
+    await exec('CREATE INDEX IF NOT EXISTS idx_draw_periods_type ON draw_periods(drawType)');
+    await exec('CREATE INDEX IF NOT EXISTS idx_draw_periods_status ON draw_periods(status)');
+    await exec('''
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id TEXT PRIMARY KEY,
+        user TEXT NOT NULL,
+        action TEXT NOT NULL,
+        periodId TEXT,
+        oldValue TEXT,
+        newValue TEXT,
+        timestamp INTEGER NOT NULL,
+        reason TEXT
+      )
+    ''');
+    await exec('CREATE INDEX IF NOT EXISTS idx_audit_period ON audit_logs(periodId)');
+    await exec('''
+      CREATE TABLE IF NOT EXISTS ticket_lines (
+        id TEXT PRIMARY KEY,
+        ticketId TEXT NOT NULL,
+        gameId TEXT NOT NULL,
+        gameName TEXT NOT NULL,
+        drawId TEXT,
+        drawName TEXT,
+        numbers TEXT NOT NULL,
+        betType TEXT NOT NULL,
+        amount REAL NOT NULL,
+        isQuickPick INTEGER NOT NULL DEFAULT 0,
+        periodId TEXT,
+        periodStatus TEXT,
+        winningStatus TEXT,
+        prizeAmount REAL,
+        FOREIGN KEY (ticketId) REFERENCES tickets(id)
+      )
+    ''');
+    await exec('CREATE INDEX IF NOT EXISTS idx_ticket_lines_ticketId ON ticket_lines(ticketId)');
     await exec('''
       CREATE TABLE IF NOT EXISTS accounts (
         id TEXT PRIMARY KEY,
@@ -241,11 +376,11 @@ class AppDatabase extends GeneratedDatabase {
     // Ensure games always correct even if existed
     await customStatement("UPDATE games SET name='Win 4', type='winz', maxSelections=4, minAmount=0.5, maxAmount=10, numberRangeMin=0, numberRangeMax=9, description='NY Lottery Win 4 (0-9) — 4 digits Straight/Box/Combo' WHERE id='g_winz'");
     await customStatement("UPDATE games SET name='Numbers', maxSelections=5, minAmount=0.5, maxAmount=10, numberRangeMin=0, numberRangeMax=9 WHERE id='g_numbers'");
-    // Morning / Evening only — as requested (2 draws per day, 14 days)
+    // Midday / Evening — spec defaults 14:15/14:30 and 22:20/22:30 (2 draws per day, 14 days)
     final draws = await customSelect('SELECT COUNT(*) as c FROM draws').getSingle();
-    DateTime morning(DateTime base) => DateTime(base.year, base.month, base.day, 10, 0);
-    DateTime evening(DateTime base) => DateTime(base.year, base.month, base.day, 20, 0);
-    final periods = [(morning, 'Morning'), (evening, 'Evening')];
+    DateTime midday(DateTime base) => DateTime(base.year, base.month, base.day, 14, 30);
+    DateTime evening(DateTime base) => DateTime(base.year, base.month, base.day, 22, 30);
+    final periods = [(midday, 'Midday'), (evening, 'Evening')];
     if ((draws.data['c'] as int) == 0) {
       final now = DateTime.now();
       for (var i = 0; i < 14; i++) {
@@ -271,7 +406,7 @@ class AppDatabase extends GeneratedDatabase {
         }
       }
     } else {
-      // For existing DBs: ensure next 14 days draws exist
+      // For existing DBs: ensure next 14 days draws exist with correct spec times
       final now = DateTime.now();
       for (var i = 0; i < 14; i++) {
         final base = now.add(Duration(days: i));
@@ -286,10 +421,27 @@ class AppDatabase extends GeneratedDatabase {
           await customStatement("INSERT OR IGNORE INTO draws (id, gameId, name, drawTime, status) VALUES ('$idW', 'g_winz', '$nameW', ${dt.millisecondsSinceEpoch}, 'open')");
         }
       }
+      // Migrate old Morning 10:00 to Midday 14:30
+      await customStatement("UPDATE draws SET drawTime = drawTime + (4*3600+30*60)*1000 WHERE name LIKE '%Morning%'");
+      await customStatement("UPDATE draws SET name = REPLACE(name, 'Morning', 'Midday') WHERE name LIKE '%Morning%'");
     }
-    // Cleanup old Night/Midday draws to keep only Morning/Evening
+    // Cleanup old Night draws
     await customStatement("DELETE FROM draws WHERE name LIKE '%Night%'");
-    await customStatement("UPDATE draws SET name = REPLACE(name, 'Midday', 'Morning') WHERE name LIKE '%Midday%'");
+    // Ensure draw_periods seeded from config
+    await _seedDrawPeriods();
+    // Ensure draw config defaults exist (even if configs already seeded)
+    final nowCfg = DateTime.now().millisecondsSinceEpoch;
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('midday_sales_close', '14:15', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('midday_draw_time', '14:30', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('midday_enabled', '1', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('evening_sales_close', '22:20', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('evening_draw_time', '22:30', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('evening_enabled', '1', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('draw_timezone', 'America/New_York', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('midday_result_mode', 'manual', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('evening_result_mode', 'manual', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('auto_open_next', '1', 'local', $nowCfg)");
+
     final configs = await customSelect('SELECT COUNT(*) as c FROM app_config').getSingle();
     if ((configs.data['c'] as int) == 0) {
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -342,6 +494,117 @@ class AppDatabase extends GeneratedDatabase {
       await customStatement(
           "INSERT INTO app_config (key, value, scope, updatedAt) VALUES ('winz_instant_multiplier', '5', 'local', $now)");
     }
+  }
+
+  Future<void> seedDrawPeriods() async => _seedDrawPeriods();
+  Future<void> refreshPeriodStatuses() async {
+    try {
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      await customStatement("UPDATE draw_periods SET status='OPEN' WHERE status='SCHEDULED' AND salesOpenTime <= $nowMs AND salesCloseTime > $nowMs");
+      await customStatement("UPDATE draw_periods SET status='SALES_CLOSED' WHERE status='OPEN' AND salesCloseTime <= $nowMs AND drawTime > $nowMs");
+      await customStatement("UPDATE draw_periods SET status='RESULT_PENDING' WHERE status IN ('SALES_CLOSED','DRAWING') AND drawTime <= $nowMs AND (result IS NULL OR result='')");
+    } catch (_) {}
+  }
+  Future<void> ensurePeriodExists(String periodId) async {
+    try {
+      final existing = await getPeriodById(periodId);
+      if (existing != null) return;
+      // Parse periodId like 2026-08-31-MIDDAY
+      final parts = periodId.split('-');
+      if (parts.length < 4) return;
+      final drawType = parts.last;
+      final dateStr = parts.sublist(0, 3).join('-');
+      final cfgRows = await customSelect('SELECT key, value FROM app_config WHERE key IN (\'midday_sales_close\',\'midday_draw_time\',\'evening_sales_close\',\'evening_draw_time\',\'draw_timezone\')').get();
+      final cfg = {for (var r in cfgRows) r.data['key'] as String: r.data['value'] as String};
+      final tz = cfg['draw_timezone'] ?? 'America/New_York';
+      String closeStr, drawStr;
+      if (drawType == 'MIDDAY') {
+        closeStr = cfg['midday_sales_close'] ?? '14:15';
+        drawStr = cfg['midday_draw_time'] ?? '14:30';
+      } else {
+        closeStr = cfg['evening_sales_close'] ?? '22:20';
+        drawStr = cfg['evening_draw_time'] ?? '22:30';
+      }
+      List<int> parseSimple(String s) { final p=s.split(':'); return [int.parse(p[0]), int.parse(p[1])]; }
+      final dp = dateStr.split('-');
+      final y=int.parse(dp[0]), m=int.parse(dp[1]), d=int.parse(dp[2]);
+      final hmClose=parseSimple(closeStr), hmDraw=parseSimple(drawStr);
+      final salesOpen=DateTime(y,m,d,0,0).millisecondsSinceEpoch;
+      final salesClose=DateTime(y,m,d,hmClose[0],hmClose[1]).millisecondsSinceEpoch;
+      final drawTime=DateTime(y,m,d,hmDraw[0],hmDraw[1]).millisecondsSinceEpoch;
+      await customStatement('INSERT OR IGNORE INTO draw_periods (id, drawType, drawDate, salesOpenTime, salesCloseTime, drawTime, status, timezone) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [periodId, drawType, dateStr, salesOpen, salesClose, drawTime, 'SCHEDULED', tz]);
+      await refreshPeriodStatuses();
+    } catch (_) {}
+  }
+
+  Future<void> _seedDrawPeriods() async {
+    try {
+      final cfgRows = await customSelect('SELECT key, value FROM app_config WHERE key IN (\'midday_sales_close\',\'midday_draw_time\',\'midday_enabled\',\'evening_sales_close\',\'evening_draw_time\',\'evening_enabled\',\'draw_timezone\')').get();
+      final cfg = {for (var r in cfgRows) r.data['key'] as String: r.data['value'] as String};
+      final middayClose = cfg['midday_sales_close'] ?? '14:15';
+      final middayDraw = cfg['midday_draw_time'] ?? '14:30';
+      final eveningClose = cfg['evening_sales_close'] ?? '22:20';
+      final eveningDraw = cfg['evening_draw_time'] ?? '22:30';
+      final middayEnabled = (cfg['midday_enabled'] ?? '1') == '1';
+      final eveningEnabled = (cfg['evening_enabled'] ?? '1') == '1';
+      final tz = cfg['draw_timezone'] ?? 'America/New_York';
+      List<int> parseHM(String s) {
+        s = s.trim().toUpperCase().replaceAll(RegExp(r'\s*[AP]M'), '').trim();
+        final isPM = s.contains('PM');
+        final isAM = s.contains('AM');
+        // Already stripped, need original flag
+        final raw = s;
+        final parts = raw.split(':');
+        int h = int.parse(parts[0]);
+        int m = int.parse(parts[1].replaceAll(RegExp(r'[^0-9]'), ''));
+        if (isPM && h < 12) h += 12;
+        if (isAM && h == 12) h = 0;
+        // Actually need to check original string for PM/AM before stripping
+        return [h, m];
+      }
+      // Simpler parse using stored values which are HH:MM without AM/PM
+      List<int> parseSimple(String s) {
+        final p = s.split(':');
+        return [int.parse(p[0]), int.parse(p[1])];
+      }
+      final now = DateTime.now();
+      for (int i = 0; i < 14; i++) {
+        final date = DateTime(now.year, now.month, now.day).add(Duration(days: i));
+        final dateStr = '${date.year}-${date.month.toString().padLeft(2,'0')}-${date.day.toString().padLeft(2,'0')}';
+        if (middayEnabled) {
+          final hmClose = parseSimple(middayClose);
+          final hmDraw = parseSimple(middayDraw);
+          final salesClose = DateTime(date.year, date.month, date.day, hmClose[0], hmClose[1]).millisecondsSinceEpoch;
+          final drawTime = DateTime(date.year, date.month, date.day, hmDraw[0], hmDraw[1]).millisecondsSinceEpoch;
+          final salesOpen = DateTime(date.year, date.month, date.day, 0, 0).millisecondsSinceEpoch;
+          final id = '${dateStr}-MIDDAY';
+          final exists = await customSelect('SELECT COUNT(*) as c FROM draw_periods WHERE id = ?', variables: [Variable.withString(id)]).getSingle();
+          if ((exists.data['c'] as int) == 0) {
+            await customStatement('INSERT OR IGNORE INTO draw_periods (id, drawType, drawDate, salesOpenTime, salesCloseTime, drawTime, status, timezone) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                [id, 'MIDDAY', dateStr, salesOpen, salesClose, drawTime, 'SCHEDULED', tz]);
+          }
+        }
+        if (eveningEnabled) {
+          final hmClose = parseSimple(eveningClose);
+          final hmDraw = parseSimple(eveningDraw);
+          final salesClose = DateTime(date.year, date.month, date.day, hmClose[0], hmClose[1]).millisecondsSinceEpoch;
+          final drawTime = DateTime(date.year, date.month, date.day, hmDraw[0], hmDraw[1]).millisecondsSinceEpoch;
+          final salesOpen = DateTime(date.year, date.month, date.day, 0, 0).millisecondsSinceEpoch;
+          final id = '${dateStr}-EVENING';
+          final exists = await customSelect('SELECT COUNT(*) as c FROM draw_periods WHERE id = ?', variables: [Variable.withString(id)]).getSingle();
+          if ((exists.data['c'] as int) == 0) {
+            await customStatement('INSERT OR IGNORE INTO draw_periods (id, drawType, drawDate, salesOpenTime, salesCloseTime, drawTime, status, timezone) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                [id, 'EVENING', dateStr, salesOpen, salesClose, drawTime, 'SCHEDULED', tz]);
+          }
+        }
+      }
+      // Auto-open logic: ensure statuses reflect time
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      await customStatement("UPDATE draw_periods SET status='OPEN' WHERE status='SCHEDULED' AND salesOpenTime <= $nowMs AND salesCloseTime > $nowMs");
+      await customStatement("UPDATE draw_periods SET status='SALES_CLOSED' WHERE status='OPEN' AND salesCloseTime <= $nowMs AND drawTime > $nowMs");
+      await customStatement("UPDATE draw_periods SET status='RESULT_PENDING' WHERE status IN ('SALES_CLOSED','DRAWING') AND drawTime <= $nowMs AND (result IS NULL OR result='')");
+    } catch (_) {}
   }
 
   // Helpers
@@ -399,6 +662,40 @@ class AppDatabase extends GeneratedDatabase {
       t['id'], t['serialNumber'], t['gameId'], t['gameName'], t['drawId'], t['drawName'], t['numbers'], t['betType'], t['amount'], t['total'],
       t['operatorId'], t['operatorName'], t['createdAt'], t['status'], t['barcode'], t['prizeAmount'], t['paidAt'], t['paidBy'], t['isQuickPick'] ?? 0
     ]);
+  }
+
+  // Ticket lines (multi-play per ticket)
+  Future<void> insertTicketLine(Map<String, dynamic> l) async {
+    await customStatement('''
+      INSERT OR REPLACE INTO ticket_lines
+      (id, ticketId, gameId, gameName, drawId, drawName, numbers, betType, amount, isQuickPick, periodId, periodStatus, winningStatus, prizeAmount)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', [l['id'], l['ticketId'], l['gameId'], l['gameName'], l['drawId'], l['drawName'], l['numbers'], l['betType'], l['amount'], l['isQuickPick'] ?? 0, l['periodId'], l['periodStatus'], l['winningStatus'], l['prizeAmount']]);
+  }
+
+  Future<List<Map<String, dynamic>>> getTicketLines(String ticketId) async {
+    final rows = await customSelect('SELECT * FROM ticket_lines WHERE ticketId = ? ORDER BY rowid',
+        variables: [Variable.withString(ticketId)]).get();
+    return rows.map((r) => r.data).toList();
+  }
+
+  Future<int> getTicketLinesCount(String ticketId) async {
+    final row = await customSelect('SELECT COUNT(*) as c FROM ticket_lines WHERE ticketId = ?',
+        variables: [Variable.withString(ticketId)]).getSingle();
+    return (row.data['c'] as int);
+  }
+
+  Future<List<Map<String, dynamic>>> getAllTicketLines() async {
+    final rows = await customSelect('SELECT * FROM ticket_lines ORDER BY ticketId').get();
+    return rows.map((r) => r.data).toList();
+  }
+
+  // Insert ticket with its lines in a single helper
+  Future<void> insertTicketWithLines(Map<String, dynamic> ticket, List<Map<String, dynamic>> lines) async {
+    await insertTicket(ticket);
+    for (final l in lines) {
+      await insertTicketLine(l);
+    }
   }
 
   Future<List<Map<String, dynamic>>> getTickets({String? status}) async {
@@ -517,6 +814,74 @@ class AppDatabase extends GeneratedDatabase {
     final rows = await customSelect('SELECT * FROM balance_movements WHERE operatorId = ? ORDER BY createdAt DESC',
             variables: [Variable.withString(operatorId)])
         .get();
+    return rows.map((r) => r.data).toList();
+  }
+
+  // ============ DRAW PERIODS ============
+  Future<void> insertPeriod(Map<String, dynamic> p) async {
+    await customStatement(
+        'INSERT OR REPLACE INTO draw_periods (id, drawType, drawDate, salesOpenTime, salesCloseTime, drawTime, status, result, resultPublishedAt, publishedBy, resultSource, timezone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [p['id'], p['drawType'], p['drawDate'], p['salesOpenTime'], p['salesCloseTime'], p['drawTime'], p['status'], p['result'], p['resultPublishedAt'], p['publishedBy'], p['resultSource'], p['timezone']]);
+  }
+
+  Future<Map<String, dynamic>?> getPeriodById(String id) async {
+    final rows = await customSelect('SELECT * FROM draw_periods WHERE id = ? LIMIT 1', variables: [Variable.withString(id)]).get();
+    if (rows.isEmpty) return null;
+    return rows.first.data;
+  }
+
+  Future<List<Map<String, dynamic>>> getAllPeriods() async {
+    final rows = await customSelect('SELECT * FROM draw_periods ORDER BY drawTime DESC').get();
+    return rows.map((r) => r.data).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> getPeriodsByDate(String date) async {
+    final rows = await customSelect('SELECT * FROM draw_periods WHERE drawDate = ? ORDER BY drawType', variables: [Variable.withString(date)]).get();
+    return rows.map((r) => r.data).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> getOpenPeriods() async {
+    final rows = await customSelect("SELECT * FROM draw_periods WHERE status = 'OPEN' ORDER BY drawTime").get();
+    return rows.map((r) => r.data).toList();
+  }
+
+  Future<void> updatePeriodStatus(String id, String status) async {
+    await customStatement('UPDATE draw_periods SET status = ? WHERE id = ?', [status, id]);
+  }
+
+  Future<void> updatePeriodTimes(String id, int salesOpen, int salesClose, int drawTime) async {
+    await customStatement('UPDATE draw_periods SET salesOpenTime = ?, salesCloseTime = ?, drawTime = ? WHERE id = ?', [salesOpen, salesClose, drawTime, id]);
+  }
+
+  Future<void> publishPeriodResult(String id, String result, int publishedAt, String publishedBy, String source) async {
+    await customStatement('UPDATE draw_periods SET result = ?, resultPublishedAt = ?, publishedBy = ?, resultSource = ?, status = ? WHERE id = ?',
+        [result, publishedAt, publishedBy, source, 'RESULT_PUBLISHED', id]);
+    // Also set to COMPLETED after? Keep RESULT_PUBLISHED for immediate, service will transition to COMPLETED
+  }
+
+  Future<void> resetPeriodTickets(String periodId) async {
+    // Reset tickets that have lines for this period
+    final lines = await customSelect('SELECT ticketId FROM ticket_lines WHERE periodId = ?', variables: [Variable.withString(periodId)]).get();
+    for (final r in lines) {
+      await customStatement("UPDATE tickets SET status='active', prizeAmount=NULL WHERE id = ? AND status IN ('winning','losing')", [r.data['ticketId']]);
+    }
+    // Also legacy tickets with drawId matching periodId? Not needed
+    await customStatement("UPDATE ticket_lines SET winningStatus=NULL, prizeAmount=NULL WHERE periodId = ?", [periodId]);
+  }
+
+  // ============ AUDIT LOGS ============
+  Future<void> insertAuditLog(Map<String, dynamic> a) async {
+    await customStatement(
+        'INSERT OR REPLACE INTO audit_logs (id, user, action, periodId, oldValue, newValue, timestamp, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [a['id'], a['user'], a['action'], a['periodId'], a['oldValue'], a['newValue'], a['timestamp'], a['reason']]);
+  }
+
+  Future<List<Map<String, dynamic>>> getAuditLogs({String? periodId}) async {
+    if (periodId != null) {
+      final rows = await customSelect('SELECT * FROM audit_logs WHERE periodId = ? ORDER BY timestamp DESC', variables: [Variable.withString(periodId)]).get();
+      return rows.map((r) => r.data).toList();
+    }
+    final rows = await customSelect('SELECT * FROM audit_logs ORDER BY timestamp DESC').get();
     return rows.map((r) => r.data).toList();
   }
 }
