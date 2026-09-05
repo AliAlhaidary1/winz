@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/responsive.dart';
 
 class HelpScreen extends StatelessWidget {
   const HelpScreen({super.key});
@@ -6,7 +7,7 @@ class HelpScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Help'), backgroundColor: Theme.of(context).colorScheme.inversePrimary),
-      body: ListView(padding: const EdgeInsets.all(12), children: [
+      body: ListView(padding: EdgeInsets.all(Responsive.horizontalPadding(context)), children: [
         _card('How to Play — Numbers (Pick 3 / 4)', [
           'Select Midday/Evening draw, choose Straight/Box/Combo/StraightBox/Front or Back Pair.',
           'Enter exactly 3 or 4 digits using 0-9 keypad (NY Lottery — 0 allowed).',

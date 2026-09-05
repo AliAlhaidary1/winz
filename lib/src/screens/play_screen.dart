@@ -4,7 +4,10 @@ import 'package:provider/provider.dart';
 import '../data/database.dart';
 import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
+import '../utils/responsive.dart';
+import '../widgets/app_drawer.dart';
 import '../utils/format.dart';
+import 'barcode_scanner_screen.dart';
 
 class PlayScreen extends StatefulWidget {
   const PlayScreen({super.key});
@@ -62,7 +65,10 @@ class _PlayScreenState extends State<PlayScreen> {
   Future<void> _addToCart() async {
     if (_digits.length != 3 && _digits.length != 4) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter 3 or 4 digits'))); return; }
     final amt = double.tryParse(_amountCtrl.text);
-    if (amt == null || amt < 0.5 || amt > 10) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Amount \$0.50 - \$10.00'))); return; }
+    final is3D = _digits.length == 3;
+    final isBoxBet = _betType.toLowerCase() == 'box';
+    double maxAmt = isBoxBet ? 50 : (is3D ? 100 : 10);
+    if (amt == null || amt < 0.5 || amt > maxAmt) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Amount \$0.50 - \$${maxAmt.toStringAsFixed(2)}'))); return; }
     final draw = _draws.firstWhere((d) => d['id'] == _drawId, orElse: () => {});
     try{
       await context.read<AppState>().addToCart(gameId: 'g_numbers', gameName: 'Numbers', drawId: _drawId, drawName: draw['name'] as String?, numbers: _digits.split(''), betType: _betType, amount: amt);
@@ -82,19 +88,7 @@ class _PlayScreenState extends State<PlayScreen> {
     }catch(e){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red)); }
   }
 
-  Widget _drawer(BuildContext context) {
-    final user = context.watch<AppState>().currentUser;
-    return Drawer(child: ListView(padding: EdgeInsets.zero, children: [
-      DrawerHeader(decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Icon(Icons.storefront, color: Colors.white, size: 36), const SizedBox(height: 8), const Text('NY Lottery POS', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)), Text('${user?['username'] ?? ''} • ${user?['role'] ?? ''}', style: const TextStyle(color: Colors.white70, fontSize: 12))])),
-      ListTile(leading: const Icon(Icons.casino), title: const Text('Play'), selected: true, onTap: () => Navigator.pop(context)),
-      ListTile(leading: const Icon(Icons.emoji_events), title: const Text('Winz'), onTap: () { Navigator.pop(context); Navigator.pushNamed(context, '/winz'); }),
-      const Divider(),
-      ListTile(leading: const Icon(Icons.confirmation_number), title: const Text('Tickets'), onTap: () => Navigator.pushNamed(context, '/tickets')),
-      ListTile(leading: const Icon(Icons.verified), title: const Text('Winning Tickets'), onTap: () => Navigator.pushNamed(context, '/winning')),
-      const Divider(),
-      ListTile(leading: const Icon(Icons.logout, color: Colors.red), title: const Text('Logout', style: TextStyle(color: Colors.red)), onTap: () { context.read<AppState>().logout(); Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false); }),
-    ]));
-  }
+  Widget _drawer() => const AppDrawer(currentRoute: '/play');
 
   Widget _keyBtn(String l, {VoidCallback? onTap, Color? color, IconData? icon}) {
     return InkWell(onTap: onTap, borderRadius: BorderRadius.circular(10), child: Container(height: 56, decoration: BoxDecoration(color: color ?? Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade300)), alignment: Alignment.center, child: icon != null ? Icon(icon, size: 20) : Text(l, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700))));
@@ -134,7 +128,7 @@ class _PlayScreenState extends State<PlayScreen> {
       appBar: AppBar(title: _appBarDrawField(), centerTitle: true, backgroundColor: green, foregroundColor: Colors.white, actions: [
         Consumer<AppState>(builder: (_, app, __)=> app.isCartEmpty ? const SizedBox() : Padding(padding: const EdgeInsets.only(right:8), child: Center(child: Container(padding: const EdgeInsets.symmetric(horizontal:8, vertical:4), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)), child: Text('${app.cartCount} • ${fmtMoney(app.cartTotal)}', style: const TextStyle(color: green, fontWeight: FontWeight.w800, fontSize: 11)))))),
         IconButton(icon: const Icon(Icons.logout, color: Colors.white), onPressed: () => _showLogout(context))]),
-      drawer: _drawer(context),
+      drawer: const AppDrawer(currentRoute: '/play'),
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: isTablet ? 760 : double.infinity),
@@ -143,7 +137,7 @@ class _PlayScreenState extends State<PlayScreen> {
             Container(color: Colors.grey.shade50, padding: const EdgeInsets.fromLTRB(10, 8, 10, 8), child: _loadingDraws ? const LinearProgressIndicator() : _controlBar()),
             Expanded(child: Consumer<AppState>(builder: (ctx, app, __){
               final cart = app.cart;
-              if(cart.isEmpty) return Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: const Color(0xFFE6F4EA), shape: BoxShape.circle), child: const Icon(Icons.shopping_cart_outlined, color: Color(0xFF0B8A3E), size: 28)), const SizedBox(height: 12), const Text('السلة فارغة — أضف أرقام ثم SALE', style: TextStyle(fontWeight: FontWeight.w800)), const Text('فقط الألعاب الحالية تظهر هنا', style: TextStyle(fontSize: 11, color: Colors.black54))])) );
+              if(cart.isEmpty) return Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: const Color(0xFFE6F4EA), shape: BoxShape.circle), child: const Icon(Icons.shopping_cart_outlined, color: Color(0xFF0B8A3E), size: 28)), const SizedBox(height: 12), const Text('Cart empty — add numbers then SALE', style: TextStyle(fontWeight: FontWeight.w800)), const Text('Only current plays shown', style: TextStyle(fontSize: 11, color: Colors.black54))])) );
               return ListView.separated(padding: const EdgeInsets.all(8), itemCount: cart.length, separatorBuilder: (_,__)=> const Divider(height: 1), itemBuilder: (c,i){
                 final it=cart[i]; return ListTile(dense: true, leading: CircleAvatar(backgroundColor: Colors.green.shade50, child: Text('${i+1}', style: const TextStyle(fontSize: 11, color: Color(0xFF0B8A3E)))), title: Text('${it.numbers.join(' ')} • ${it.betType} • ${fmtMoney(it.amount)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)), subtitle: Text('${it.drawName??''} • ${it.gameName}', style: const TextStyle(fontSize: 10)), trailing: InkWell(onTap: ()=> app.removeFromCart(it.id), child: Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.delete_outline, size: 16, color: Colors.red))), onTap: (){});
               });

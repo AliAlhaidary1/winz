@@ -28,7 +28,7 @@ class _WinningTicketsScreenState extends State<WinningTicketsScreen> {
     setState(() => _loadingList = true);
     final db = context.read<AppDatabase>();
     final all = await db.getTickets();
-    // NY: الفائزون هم winning + paid (after draw)
+    // NY: Winner  winning + paid (after draw)
     final winning = all.where((t) => t['status'] == 'winning' || t['status'] == 'paid').toList()
       ..sort((a,b) => (b['createdAt'] as int).compareTo(a['createdAt'] as int));
     if (mounted) setState(() { _winningList = winning; _loadingList = false; });
@@ -45,6 +45,39 @@ class _WinningTicketsScreenState extends State<WinningTicketsScreen> {
     } else {
       setState(()=> _result=res);
       _loadWinningList();
+    }
+  }
+
+  Future<void> _copyWithChoice() async {
+    if(_result==null || _result!['found']!=true) return;
+    final ticket = _result!['ticket'] as Map<String,dynamic>;
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (c)=> AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('اختر فترة اللعب للنسخ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const Text('هل تريد تكرار التذكرة للصباحي أم المسائي أم الاثنين؟', style: TextStyle(fontSize: 11)),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(icon: const Icon(Icons.wb_sunny, size: 15, color: Color(0xFF0B8A3E)), label: const Text('صباحي — Midday 14:30', style: TextStyle(fontSize: 11, color: Color(0xFF0B8A3E))), onPressed: ()=> Navigator.pop(c,'MIDDAY')),
+          const SizedBox(height: 6),
+          OutlinedButton.icon(icon: const Icon(Icons.nights_stay, size: 15, color: Color(0xFF1565C0)), label: const Text('مسائي — Evening 22:30', style: TextStyle(fontSize: 11, color: Color(0xFF1565C0))), onPressed: ()=> Navigator.pop(c,'EVENING')),
+          const SizedBox(height: 6),
+          ElevatedButton.icon(icon: const Icon(Icons.copy_all, size: 14), label: const Text('الاثنين معا (Both)', style: TextStyle(fontSize: 11)), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0B8A3E), foregroundColor: Colors.white), onPressed: ()=> Navigator.pop(c,'BOTH')),
+        ]),
+        actions: [TextButton(onPressed: ()=> Navigator.pop(c), child: const Text('إلغاء'))],
+      ),
+    );
+    if(choice==null) return;
+    try{
+      final app = context.read<AppState>();
+      final count = await app.replayTicketToCartWithChoice(ticket['id'] as String, choice);
+      if(!mounted) return;
+      final label = choice=='BOTH' ? 'الاثنين (×2)' : choice=='MIDDAY' ? 'صباحي' : 'مسائي';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم النسخ $count لعبة → $label — اذهب لـ Numbers للبيع'), backgroundColor: const Color(0xFF0B8A3E)));
+      Navigator.pushNamed(context,'/numbers');
+    }catch(e){
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red));
     }
   }
 
@@ -138,6 +171,12 @@ class _WinningTicketsScreenState extends State<WinningTicketsScreen> {
                       SizedBox(width: double.infinity, child: ElevatedButton.icon(icon: const Icon(Icons.payments, size: 16), label: Text('Pay Prize ${fmtMoney(_result!['prize'])}', style: const TextStyle(fontSize: 12)), style: ElevatedButton.styleFrom(backgroundColor: green, foregroundColor: Colors.white), onPressed: _pay)),
                     if (_result!['isWinning'] == true && _result!['alreadyPaid'] == true)
                       const Text('Duplicate payout blocked', style: TextStyle(fontSize: 10, color: Colors.red)),
+                    if(_result!['found']==true) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(width: double.infinity, child: OutlinedButton.icon(icon: const Icon(Icons.copy, size: 14), label: const Text('نسخ التذكرة للعب مرة أخرى — اختر الفترة', style: TextStyle(fontSize: 11)), onPressed: _copyWithChoice)),
+                      const SizedBox(height: 4),
+                      const Text('يمكن النسخ برقم التذكرة (ID) أو السيريال أو الباركود — ستختار: صباحي / مسائي / الاثنين', style: TextStyle(fontSize: 9, color: Colors.black45), textAlign: TextAlign.center),
+                    ],
                   ]),
                 ),
               ],

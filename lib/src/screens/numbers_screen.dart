@@ -4,7 +4,10 @@ import 'package:provider/provider.dart';
 import '../data/database.dart';
 import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
+import '../utils/responsive.dart';
 import '../utils/format.dart';
+import '../widgets/app_drawer.dart';
+import 'barcode_scanner_screen.dart';
 
 class NumbersScreen extends StatefulWidget {
   const NumbersScreen({super.key});
@@ -22,7 +25,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
   bool _isQuickPick = false;
   bool _loadingDraws = true;
   String _digitMode = '3D'; // 3D / 4D
-  final betTypes = ['Straight', 'Box', 'Combo', 'All'];
+  final betTypes = ['Straight', 'Box', 'ST/BOX', 'Combo'];
   List<Map<String,dynamic>> _periods = [];
 
   @override
@@ -107,9 +110,14 @@ class _NumbersScreenState extends State<NumbersScreen> {
     setState(()=> _digits=s);
     _isQuickPick=true;
   }
+  String _dispBet(String raw){
+    final n = raw.trim().toLowerCase().replaceAll('-', '/').replaceAll('_', '/').replaceAll(' ', '');
+    if(n=='all' || n=='all/box' || n=='all/straight' || n=='straightbox' || n=='str/box' || n=='strbox' || n=='st/box' || n=='stbox' || (n.contains('straight') && n.contains('box'))) return 'ST/BOX';
+    return raw;
+  }
   bool get _isAllBet {
     final l = _betType.toLowerCase();
-    return l == 'all' || (l.contains('straight') && l.contains('box'));
+    return l == 'all' || l == 'st/box' || l == 'stbox' || (l.contains('straight') && l.contains('box'));
   }
   void _incAmount(){
     final cur = double.tryParse(_amountCtrl.text) ?? 0.5;
@@ -131,21 +139,21 @@ class _NumbersScreenState extends State<NumbersScreen> {
     if(amt==null) return '';
     final low = _betType.toLowerCase();
     final isBoth = _drawMode=='Both';
-    final isAll = low=='all' || (low.contains('straight') && low.contains('box'));
+    final isAll = low=='all' || low=='st/box' || low=='stbox' || (low.contains('straight') && low.contains('box'));
     if(low.contains('combo') && _digits.length>=3){
       final combos = _comboCount(_digits.split(''));
-      if(combos<=1) return 'Combo غير صالح — أرقام مكررة 100% (مثل 111)';
+      if(combos<=1) return 'Invalid Combo — 100% repeating digits (e.g. 111)';
       final total = amt * combos;
-      if(isBoth) return 'المبلغ المطلوب: \$${(total*2).toStringAsFixed(2)}';
-      return 'المبلغ المطلوب: \$${total.toStringAsFixed(2)}';
+      if(isBoth) return 'Amount Due: \$${(total*2).toStringAsFixed(2)}';
+      return 'Amount Due: \$${total.toStringAsFixed(2)}';
     }
     if(isAll){
       final total = amt * 2;
-      if(isBoth) return 'المبلغ المطلوب: \$${(total*2).toStringAsFixed(2)}';
-      return 'المبلغ المطلوب: \$${total.toStringAsFixed(2)}';
+      if(isBoth) return 'Amount Due: \$${(total*2).toStringAsFixed(2)}';
+      return 'Amount Due: \$${total.toStringAsFixed(2)}';
     }
-    if(isBoth) return 'المبلغ المطلوب: \$${(amt*2).toStringAsFixed(2)}';
-    return 'المبلغ المطلوب: \$${amt.toStringAsFixed(2)}';
+    if(isBoth) return 'Amount Due: \$${(amt*2).toStringAsFixed(2)}';
+    return 'Amount Due: \$${amt.toStringAsFixed(2)}';
   }
 
   void _cycleBetType(){
@@ -193,31 +201,54 @@ class _NumbersScreenState extends State<NumbersScreen> {
     final morningOpen=isMorningOpen();
     final eveningOpen=isEveningOpen();
     final bothOpen=isBothEnabled();
-    return Container(
-      height: 36,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          for(final entry in [
-            {'label':'Morning','value':'Midday','enabled':morningOpen},
-            {'label':'Evening','value':'Evening','enabled':eveningOpen},
-            {'label':'Both','value':'Both','enabled':bothOpen},
-          ])
-            Padding(padding: const EdgeInsets.only(right: 3), child: ChoiceChip(
-              label: Text(entry['label'] as String, style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: _drawMode==entry['value'] ? Colors.white : (entry['enabled'] as bool ? AppTheme.green : Colors.grey))),
-              selected: _drawMode==entry['value'],
-              selectedColor: AppTheme.green,
-              backgroundColor: Colors.white,
-              side: BorderSide(color: (entry['enabled'] as bool) ? AppTheme.green.withOpacity(0.3) : Colors.grey.withOpacity(0.3)),
-              onSelected: (entry['enabled'] as bool) ? (_)=> setState(()=> {_drawMode=entry['value'] as String, _syncDrawModeToPeriods()}): null,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
-              labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-            )),
-        ]),
+    // قائمة منسدلة أطول وأكبر — انجليزية
+    return SizedBox(
+      height: 42,
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _drawMode,
+          isDense: true,
+          isExpanded: false,
+          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: Colors.white),
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.white),
+          dropdownColor: Colors.white,
+          underline: const SizedBox(),
+          onChanged: (v){
+            if(v==null) return;
+            if(v=='Midday' && !morningOpen) return;
+            if(v=='Evening' && !eveningOpen) return;
+            if(v=='Both' && !bothOpen) return;
+            setState(()=> {_drawMode=v, _syncDrawModeToPeriods()});
+          },
+          selectedItemBuilder: (ctx)=> [
+            for(final e in [
+              {'v':'Midday','l':'Morning'},
+              {'v':'Evening','l':'Evening'},
+              {'v':'Both','l':'Both'},
+            ]) Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(e['v']=='Midday'? Icons.wb_sunny: e['v']=='Evening'? Icons.nights_stay: Icons.copy_all, size: 16, color: Colors.white),
+              const SizedBox(width: 6),
+              Text(e['l']!, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.white)),
+            ]),
+          ],
+          items: [
+            DropdownMenuItem(value: 'Midday', enabled: morningOpen, child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.wb_sunny, size: 16, color: morningOpen? AppTheme.green: Colors.grey),
+              const SizedBox(width: 8),
+              Flexible(child: Text('Morning', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: morningOpen? Colors.black87: Colors.grey), overflow: TextOverflow.ellipsis)),
+            ])),
+            DropdownMenuItem(value: 'Evening', enabled: eveningOpen, child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.nights_stay, size: 16, color: eveningOpen? AppTheme.green: Colors.grey),
+              const SizedBox(width: 8),
+              Flexible(child: Text('Evening', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: eveningOpen? Colors.black87: Colors.grey), overflow: TextOverflow.ellipsis)),
+            ])),
+            DropdownMenuItem(value: 'Both', enabled: bothOpen, child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.copy_all, size: 16, color: bothOpen? AppTheme.green: Colors.grey),
+              const SizedBox(width: 8),
+              Flexible(child: Text('Both', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: bothOpen? Colors.black87: Colors.grey), overflow: TextOverflow.ellipsis)),
+            ])),
+          ],
+        ),
       ),
     );
   }
@@ -231,9 +262,20 @@ class _NumbersScreenState extends State<NumbersScreen> {
     if(amt==null){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid amount'))); return; }
     final low = _betType.toLowerCase();
     final isCombo = low.contains('combo');
-    final isAll = low=='all' || (low.contains('straight') && low.contains('box'));
-    if(!isCombo && !isAll){
-      if(amt<0.5 || amt>10){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Amount \$0.50 - \$10.00'))); return; }
+    final isAll = low=='all' || low=='st/box' || low=='stbox' || (low.contains('straight') && low.contains('box'));
+    final isBox = low=='box';
+    final allSame = _digits.split('').toSet().length==1;
+    if(allSame && (isBox || isAll || isCombo)){
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('الأرقام المتطابقة مثل $_digits مسموحة فقط في Straight — اختر Straight أو غيّر الرقم'), backgroundColor: Colors.red));
+      return;
+    }
+    if(!isCombo && !isAll && !isBox){
+      final is3D = _digitMode=='3D';
+      final maxStraight = is3D ? 100.0 : 10.0;
+      if(amt<0.5 || amt>maxStraight){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Amount \$0.50 - \$${maxStraight.toStringAsFixed(2)} for Straight ${is3D?3:4}D'))); return; }
+    } else if(isBox){
+      if(amt<0.5 || amt>50){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Amount \$0.50 - \$50.00 for Box (limit per number per period \$50)'))); return; }
+      if(((amt)*100).round()%50!=0){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Amount must be \$0.50 steps'))); return; }
     }
     if(isCombo){
       final combos=_comboCount(_digits.split(''));
@@ -244,8 +286,10 @@ class _NumbersScreenState extends State<NumbersScreen> {
       if(((amt)*100).round()%50!=0){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Amount must be \$0.50 steps per combo'))); return; }
     }
     if(isAll){
+      final is3D = _digitMode=='3D';
+      final maxAllInput = is3D ? 50.0 : 25.0; // total = amt*2 => 50 limit
       if(amt < 0.5 - 1e-9){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('All min \$0.50'))); return; }
-      if(amt > 10 + 1e-9){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('All max \$10.00'))); return; }
+      if(amt > maxAllInput + 1e-9){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('All max \$${maxAllInput.toStringAsFixed(2)} (total \$${(maxAllInput*2).toStringAsFixed(2)})'))); return; }
       if(((amt)*100).round()%50!=0){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Amount must be \$0.50 steps'))); return; }
     }
     try{
@@ -547,26 +591,168 @@ class _NumbersScreenState extends State<NumbersScreen> {
     );
   }
 
+  Future<String?> _askDrawChoiceForReplay() async {
+    return showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('متى تريد اللعب؟', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const Text('اختر فترة السحب للتذكرة المكررة:', style: TextStyle(fontSize: 11)),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(icon: const Icon(Icons.wb_sunny, size: 16, color: Color(0xFF0B8A3E)), label: const Text('صباحي  (Midday) — 14:30', style: TextStyle(fontSize: 12, color: Color(0xFF0B8A3E))), onPressed: () => Navigator.pop(c, 'MIDDAY')),
+          const SizedBox(height: 6),
+          OutlinedButton.icon(icon: const Icon(Icons.nights_stay, size: 16, color: Color(0xFF1565C0)), label: const Text('مسائي  (Evening) — 22:30', style: TextStyle(fontSize: 12, color: Color(0xFF1565C0))), onPressed: () => Navigator.pop(c, 'EVENING')),
+          const SizedBox(height: 6),
+          ElevatedButton.icon(icon: const Icon(Icons.copy_all, size: 16), label: const Text('الاثنين معا (Both) — نسختين', style: TextStyle(fontSize: 12)), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0B8A3E), foregroundColor: Colors.white), onPressed: () => Navigator.pop(c, 'BOTH')),
+        ]),
+        actions: [TextButton(onPressed: () => Navigator.pop(c, null), child: const Text('إلغاء'))],
+      ),
+    );
+  }
+
+  Future<void> _copyByTicketNumber() async {
+    final ctrl = TextEditingController();
+    final code = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('Search by Ticket Number', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Enter Ticket ID or Serial — e.g. 000001 or 00000001', style: TextStyle(fontSize: 11)),
+          const SizedBox(height: 10),
+          TextField(controller: ctrl, autofocus: true, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: 'Ticket ID / Serial', isDense: true, prefixIcon: Icon(Icons.confirmation_number, size: 18)), onSubmitted: (v)=> Navigator.pop(c, v)),
+        ]),
+        actions: [TextButton(onPressed: ()=> Navigator.pop(c), child: const Text('Cancel')), ElevatedButton(onPressed: ()=> Navigator.pop(c, ctrl.text.trim()), child: const Text('Search'))],
+      ),
+    );
+    if(code==null || code.trim().isEmpty) return;
+    // delegate to same flow as scan but with manual code
+    await _handleReplayCode(code.trim());
+  }
+
+  Future<void> _handleReplayCode(String code) async {
+    final app = context.read<AppState>();
+    final res = await app.validateTicket(code.trim());
+    if(!mounted) return;
+    if(res['found']==false){
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ticket not found: $code — جرّب الباركود أو الرقم التسلسلي'), backgroundColor: Colors.red));
+      return;
+    }
+    final ticket = res['ticket'] as Map<String,dynamic>;
+    final lines = res['lines'] as List<Map<String,dynamic>>?;
+    final lineDetails = res['lineDetails'] as List?;
+    final isWinning = res['isWinning']==true;
+    final alreadyPaid = res['alreadyPaid']==true;
+    final prize = (res['prize'] as num?)?.toDouble() ?? 0;
+    final pending = res['pending']==true;
+    await showDialog(context: context, builder: (ctx)=> AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      title: Row(children: [
+        Icon(isWinning? Icons.emoji_events: Icons.confirmation_number, color: isWinning? AppTheme.green: Colors.black54),
+        const SizedBox(width: 8),
+        Expanded(child: Text('Ticket ${ticket['id']}', style: const TextStyle(fontSize: 13))),
+        if(alreadyPaid) Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(12)), child: const Text('Paid', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green))),
+        if(!alreadyPaid && isWinning) Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: Colors.green.shade100, borderRadius: BorderRadius.circular(12)), child: const Text('Winner', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green))),
+        if(pending) Container(margin: const EdgeInsets.only(left:4), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: Colors.orange.shade100, borderRadius: BorderRadius.circular(12)), child: const Text('Pending', style: TextStyle(fontSize: 9))),
+      ]),
+      content: SizedBox(width: 400, child: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Serial: ${ticket['serialNumber']} - ${fmtDate(ticket['createdAt'])}', style: const TextStyle(fontSize: 10, color: Colors.black54)),
+        Text('Status: ${ticket['status']} - Total: ${fmtMoney(ticket['total']??ticket['amount'])}', style: const TextStyle(fontSize: 11)),
+        if(isWinning) Text('Prize: ${fmtMoney(prize)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.green)),
+        const Divider(height: 12),
+        if(lines!=null && lines.isNotEmpty) ...[
+          const Text('All numbers in this ticket:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          for(int i=0;i<lines.length;i++)
+            Container(margin: const EdgeInsets.only(bottom: 6), padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: (lineDetails!=null && lineDetails[i]['isWinning']==true)? Colors.green.shade50 : Colors.grey.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: (lineDetails!=null && lineDetails[i]['isWinning']==true)? Colors.green: Colors.grey.shade300)), child: Row(children: [
+              Text('${i+1}.', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+              const SizedBox(width: 6),
+              Text((lines[i]['numbers'] as String).replaceAll(',', ' '), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+              const SizedBox(width: 6),
+              Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.grey.shade300)), child: Text(_dispBet(lines[i]['betType']), style: const TextStyle(fontSize: 9))),
+              const Spacer(),
+              Text(fmtMoney(lines[i]['amount']), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+              const SizedBox(width: 6),
+              if(lineDetails!=null)
+                Icon(lineDetails[i]['isWinning']==true ? Icons.check_circle : lineDetails[i]['pending']==true ? Icons.hourglass_empty : Icons.cancel, size: 16, color: lineDetails[i]['isWinning']==true ? Colors.green : lineDetails[i]['pending']==true ? Colors.orange : Colors.red),
+            ])),
+        ] else ...[
+          Text('Number: ${(ticket['numbers'] as String).replaceAll(',', ' ')} - ${_dispBet(ticket['betType'])}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+        ],
+        const SizedBox(height: 8),
+        Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: const Color(0xFFEFF7FF), borderRadius: BorderRadius.circular(8)), child: const Text('عند النسخ ستختار فترة اللعب: صباحي (Midday 14:30) أو مسائي (Evening 22:30) أو الاثنين معا.', style: TextStyle(fontSize: 9, color: Colors.black54))),
+      ]))),
+      actions: [
+        TextButton(onPressed: ()=> Navigator.pop(ctx), child: const Text('Close')),
+        ElevatedButton.icon(icon: const Icon(Icons.copy, size: 16), label: const Text('نسخ — اختر الفترة', style: TextStyle(fontSize: 11)), style: ElevatedButton.styleFrom(backgroundColor: AppTheme.green, foregroundColor: Colors.white), onPressed: () async {
+          Navigator.pop(ctx);
+          final choice = await _askDrawChoiceForReplay();
+          if(choice==null) return;
+          try{
+            final db = context.read<AppDatabase>();
+            final tt = await db.getTicketByBarcode(code.trim());
+            final tid = tt!=null ? tt['id'] as String : code.trim();
+            final count = await app.replayTicketToCartWithChoice(tid, choice);
+            if(!mounted) return;
+            final label = choice=='BOTH' ? 'الاثنين معا (×2)' : choice=='MIDDAY' ? 'صباحي فقط' : 'مسائي فقط';
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم النسخ $count لعبة → $label — اضغط SALE للطباعة'), backgroundColor: AppTheme.green));
+          }catch(e){
+            if(!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red));
+          }
+        }),
+      ],
+    ));
+  }
+
+  Future<void> _scanAndReplay() async {
+    try{
+      final code = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()));
+      if(code==null || code.isEmpty) return;
+      await _handleReplayCode(code.trim());
+    }catch(e){
+      if(!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final w=MediaQuery.of(context).size.width;
-    final isTablet=w>=600;
-    return Scaffold(
+    final isTablet = Responsive.isTablet(context) || Responsive.isDesktop(context);
+    final isLand = Responsive.isLandscape(context);
+    final useTwoPane = isTablet && isLand && MediaQuery.of(context).size.width >= 900;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if(didPop) return;
+        if(Navigator.canPop(context)){
+          Navigator.pushNamedAndRemoveUntil(context, '/home', (r)=> false);
+        } else {
+          Navigator.pushReplacementNamed(context, '/home');
+        }
+      },
+      child: Scaffold(
       backgroundColor: AppTheme.bg,
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: _appBarDrawField(),
         centerTitle: true,
         actions: [
+          IconButton(icon: const Icon(Icons.qr_code_scanner, size: 20), tooltip: 'Scan barcode (مسح)', onPressed: _scanAndReplay),
+          IconButton(icon: const Icon(Icons.search, size: 20), tooltip: 'Search by Ticket Number (بحث برقم التذكرة)', onPressed: _copyByTicketNumber),
           Consumer<AppState>(builder: (_, app, __) => app.isCartEmpty ? const SizedBox() : Padding(padding: const EdgeInsets.only(right: 8), child: Center(child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)), child: Text('${app.cartCount} • ${fmtMoney(app.cartTotal)}', style: const TextStyle(color: AppTheme.green, fontWeight: FontWeight.w800, fontSize: 11)))))),
-          IconButton(icon: const Icon(Icons.help_outline, size: 18), onPressed: ()=> Navigator.pushNamed(context,'/help')),
           IconButton(icon: const Icon(Icons.logout, size: 18), onPressed: ()=> _logout())],
       ),
-      drawer: _drawer(),
+      drawer: const AppDrawer(currentRoute: '/numbers'),
       body: Center(
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: isTablet? 760: double.infinity),
-          child: Column(children: [
+          constraints: BoxConstraints(maxWidth: Responsive.contentMaxWidth(context)),
+          child: useTwoPane ? Row(children: [
+              Expanded(flex: 5, child: Column(children: [Expanded(child: _buildCurrentPlays()), _buildCartSection()])),
+              VerticalDivider(width: 1, thickness: 1, color: AppTheme.cardBorder),
+              Expanded(flex: 4, child: Column(children: [_buildInputPanel(), _buildKeypad(), const SizedBox(height: 8)])),
+            ]) : Column(children: [
             Expanded(child: _buildCurrentPlays()),
             _buildCartSection(),
             _buildInputPanel(),
@@ -574,6 +760,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
           ]),
         ),
       ),
+    ),
     );
   }
 
@@ -601,22 +788,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
     ])));
   }
 
-  Widget _drawer(){
-    final user=context.watch<AppState>().currentUser;
-    return Drawer(child: ListView(padding: EdgeInsets.zero, children: [
-      DrawerHeader(decoration: BoxDecoration(gradient: LinearGradient(colors: [AppTheme.green, AppTheme.greenDark])), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Icon(Icons.storefront, color: Colors.white, size: 32), const SizedBox(height: 8), const Text('NY Lottery POS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)), Text('${user?['username']??''} • ${user?['role']??''}', style: const TextStyle(color: Colors.white70, fontSize: 11))])),
-      ListTile(leading: const Icon(Icons.home_outlined), title: const Text('Home'), onTap: (){ Navigator.pop(context); Navigator.pushNamed(context,'/home'); }),
-      ListTile(leading: const Icon(Icons.numbers, color: AppTheme.green), title: const Text('Numbers'), selected: true, onTap: ()=> Navigator.pop(context)),
-      ListTile(leading: const Icon(Icons.emoji_events, color: AppTheme.orange), title: const Text('Win 4'), onTap: (){ Navigator.pop(context); Navigator.pushNamed(context,'/winz'); }),
-      const Divider(),
-      ListTile(leading: const Icon(Icons.confirmation_number), title: const Text('Tickets'), onTap: ()=> Navigator.pushNamed(context,'/tickets')),
-      ListTile(leading: const Icon(Icons.verified, color: AppTheme.green), title: const Text('Winning Tickets'), onTap: ()=> Navigator.pushNamed(context,'/winning')),
-      ListTile(leading: const Icon(Icons.print), title: const Text('Print'), onTap: ()=> Navigator.pushNamed(context,'/print')),
-      ListTile(leading: const Icon(Icons.settings), title: const Text('Settings'), onTap: ()=> Navigator.pushNamed(context,'/config')),
-      const Divider(),
-      ListTile(leading: const Icon(Icons.logout, color: Colors.red), title: const Text('Logout', style: TextStyle(color: Colors.red)), onTap: (){ context.read<AppState>().logout(); Navigator.pushNamedAndRemoveUntil(context,'/login', (_)=>false); }),
-    ]));
-  }
+  Widget _drawer() => const AppDrawer(currentRoute: '/numbers');
 
   Widget _keyBtn(String label, {VoidCallback? onTap, Color? bg, Color? fg, Color? border, IconData? icon}){
     return Material(

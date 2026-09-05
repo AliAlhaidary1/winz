@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../data/database.dart';
+import '../providers/app_state.dart';
 import '../utils/format.dart';
 import '../theme/app_theme.dart';
+import '../utils/responsive.dart';
 import 'barcode_scanner_screen.dart';
 
 class TicketsScreen extends StatefulWidget {
@@ -13,22 +15,116 @@ class TicketsScreen extends StatefulWidget {
 
 class _TicketsScreenState extends State<TicketsScreen> {
   List<Map<String,dynamic>> _tickets = [];
+  List<Map<String,dynamic>> _allTickets = [];
   String _filter = 'all';
   bool _loading = true;
+  DateTime? _from;
+  DateTime? _to;
+  String _datePreset = 'today';
+  final TextEditingController _searchCtrl = TextEditingController();
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    _from = today;
+    _to = today;
+    _datePreset = 'today';
+    super.initState();
+    _load();
+  }
 
   Future<void> _load() async {
     final db = context.read<AppDatabase>();
     List<Map<String,dynamic>> t;
     if (_filter=='all') t = await db.getTickets();
     else t = await db.getTickets(status: _filter);
-    if(mounted) setState(() { _tickets=t; _loading=false; });
+    _allTickets = t;
+    _applyDateFilter();
   }
 
+  void _applyDateFilter(){
+    if(_from==null && _to==null){
+      if(mounted) setState(() { _tickets = List.from(_allTickets); _loading=false; });
+      return;
+    }
+    final filtered = _allTickets.where((e){
+      final dt = DateTime.fromMillisecondsSinceEpoch(e['createdAt'] as int);
+      final d = DateTime(dt.year, dt.month, dt.day);
+      if(_from!=null && d.isBefore(DateTime(_from!.year,_from!.month,_from!.day))) return false;
+      if(_to!=null && d.isAfter(DateTime(_to!.year,_to!.month,_to!.day))) return false;
+      return true;
+    }).toList();
+    if(mounted) setState(() { _tickets = filtered; _loading=false; });
+  }
+
+  void _applyPreset(String p){
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    setState((){
+      _datePreset=p;
+      if(p=='today'){ _from=today; _to=today; }
+      else if(p=='yesterday'){ final y=today.subtract(const Duration(days:1)); _from=y; _to=y; }
+      else if(p=='week'){ _from=today.subtract(const Duration(days:6)); _to=today; }
+      else if(p=='all'){ _from=null; _to=null; }
+    });
+    _applyDateFilter();
+  }
+  String _fmtShort(DateTime? d)=> d==null? '--': '${d.year}/${d.month.toString().padLeft(2,'0')}/${d.day.toString().padLeft(2,'0')}';
+
+  String _dispBet(String raw){
+    final n = raw.trim().toLowerCase().replaceAll('-', '/').replaceAll('_', '/').replaceAll(' ', '');
+    if(n=='all' || n=='all/box' || n=='all/straight' || n=='straightbox' || n=='str/box' || n=='strbox' || n=='st/box' || n=='stbox' || (n.contains('straight') && n.contains('box'))) return 'ST/BOX';
+    return raw;
+  }
   Color _color(String s){
     switch(s){ case 'paid': return AppTheme.green; case 'winning': return Colors.orange; case 'losing': return Colors.red; case 'cancelled': return Colors.grey; default: return AppTheme.blue; }
+  }
+
+  @override
+  void dispose(){ _searchCtrl.dispose(); super.dispose(); }
+
+  Future<void> _searchAndOpen(String raw) async {
+    final code = raw.trim();
+    if(code.isEmpty){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('أدخل رقم التذكرة / الباركود'))); return; }
+    final res = await context.read<AppState>().validateTicket(code);
+    if(res['found']==false){
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ticket not found: $code'), backgroundColor: Colors.red));
+      return;
+    }
+    final t = res['ticket'] as Map<String,dynamic>;
+    if(mounted) Navigator.pushNamed(context,'/ticket_detail', arguments: t);
+  }
+
+  Future<void> _copyWithChoice(String ticketId) async {
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (c)=> AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('اختر فترة اللعب', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const Text('هل تريد نسخ التذكرة للصباحي أم المسائي أم الاثنين؟', style: TextStyle(fontSize: 11)),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(icon: const Icon(Icons.wb_sunny, size: 15, color: AppTheme.green), label: const Text('صباحي — Midday 14:30', style: TextStyle(fontSize: 11, color: AppTheme.green)), onPressed: ()=> Navigator.pop(c,'MIDDAY')),
+          const SizedBox(height: 6),
+          OutlinedButton.icon(icon: const Icon(Icons.nights_stay, size: 15, color: AppTheme.blue), label: const Text('مسائي — Evening 22:30', style: TextStyle(fontSize: 11, color: AppTheme.blue)), onPressed: ()=> Navigator.pop(c,'EVENING')),
+          const SizedBox(height: 6),
+          ElevatedButton.icon(icon: const Icon(Icons.copy_all, size: 14), label: const Text('الاثنين معا (Both)', style: TextStyle(fontSize: 11)), style: ElevatedButton.styleFrom(backgroundColor: AppTheme.green, foregroundColor: Colors.white), onPressed: ()=> Navigator.pop(c,'BOTH')),
+        ]),
+        actions: [TextButton(onPressed: ()=> Navigator.pop(c), child: const Text('إلغاء'))],
+      ),
+    );
+    if(choice==null) return;
+    try{
+      final app = context.read<AppState>();
+      final count = await app.replayTicketToCartWithChoice(ticketId, choice);
+      if(!mounted) return;
+      final label = choice=='BOTH' ? 'الاثنين (×2)' : choice=='MIDDAY' ? 'صباحي' : 'مسائي';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم النسخ $count لعبة → $label — اضغط SALE'), backgroundColor: AppTheme.green));
+      Navigator.pushNamed(context,'/numbers');
+    }catch(e){
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red));
+    }
   }
 
   @override
@@ -36,6 +132,27 @@ class _TicketsScreenState extends State<TicketsScreen> {
     return Scaffold(
       backgroundColor: AppTheme.bg,
       appBar: AppBar(title: const Text('Tickets'), actions: [
+        IconButton(icon: const Icon(Icons.search, size: 20, color: Colors.white), tooltip: 'Search by Ticket Number', onPressed: () async {
+          final ctrl = TextEditingController();
+          final code = await showDialog<String>(context: context, builder: (c)=> AlertDialog(
+            title: const Text('Search by Ticket Number', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+            content: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Text('Enter ID or Serial — e.g. 000001', style: TextStyle(fontSize: 11)),
+              const SizedBox(height: 8),
+              TextField(controller: ctrl, autofocus: true, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: 'Ticket ID / Serial', isDense: true), onSubmitted: (v)=> Navigator.pop(c, v)),
+            ]),
+            actions: [TextButton(onPressed: ()=> Navigator.pop(c), child: const Text('Cancel')), ElevatedButton(onPressed: ()=> Navigator.pop(c, ctrl.text.trim()), child: const Text('Search'))],
+          ));
+          if(code!=null && code.trim().isNotEmpty){
+            final db = context.read<AppDatabase>();
+            final t = await db.getTicketByBarcode(code.trim());
+            if(t==null){
+              if(context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ticket not found: $code'), backgroundColor: Colors.red));
+            } else {
+              await _copyWithChoice(t['id'] as String);
+            }
+          }
+        }),
         IconButton(icon: const Icon(Icons.qr_code_scanner, color: Colors.white), tooltip: 'Scan barcode', onPressed: () async {
           final code = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()));
           if(code!=null && code.isNotEmpty){
@@ -48,11 +165,37 @@ class _TicketsScreenState extends State<TicketsScreen> {
         IconButton(icon: const Icon(Icons.refresh, color: Colors.white), onPressed: _load)]),
       body: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760),
+          constraints: BoxConstraints(maxWidth: Responsive.contentMaxWidth(context)),
           child: Column(children: [
             Container(
               color: Colors.white,
-              padding: const EdgeInsets.fromLTRB(12,10,12,10),
+              padding: EdgeInsets.fromLTRB(Responsive.horizontalPadding(context),8,Responsive.horizontalPadding(context),8),
+              child: Row(children: [
+                Expanded(child: TextField(
+                  controller: _searchCtrl,
+                  decoration: InputDecoration(
+                    hintText: 'ابحث برقم التذكرة / السيريال / الباركود...',
+                    hintStyle: const TextStyle(fontSize: 11),
+                    isDense: true,
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.search, size: 18),
+                    suffixIcon: Row(mainAxisSize: MainAxisSize.min, children: [
+                      IconButton(icon: const Icon(Icons.qr_code_scanner, size: 18, color: AppTheme.green), tooltip: 'Scan', onPressed: () async {
+                        final code = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()));
+                        if(code!=null && code.isNotEmpty){ _searchCtrl.text = code; _searchAndOpen(code); }
+                      }),
+                      IconButton(icon: const Icon(Icons.clear, size: 16), onPressed: ()=> _searchCtrl.clear()),
+                    ]),
+                  ),
+                  onSubmitted: _searchAndOpen,
+                )),
+                const SizedBox(width: 8),
+                ElevatedButton(onPressed: ()=> _searchAndOpen(_searchCtrl.text), style: ElevatedButton.styleFrom(backgroundColor: AppTheme.green, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14)), child: const Text('بحث', style: TextStyle(fontSize: 11))),
+              ]),
+            ),
+            Container(
+              color: Colors.white,
+              padding: EdgeInsets.fromLTRB(Responsive.horizontalPadding(context),10,Responsive.horizontalPadding(context),10),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [const Text('Filter', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)), const Spacer(), Text('${_tickets.length} tickets', style: const TextStyle(fontSize: 11, color: AppTheme.textMuted))]),
                 const SizedBox(height: 8),
@@ -67,6 +210,37 @@ class _TicketsScreenState extends State<TicketsScreen> {
                       onSelected: (_)=> setState(()=> { _filter=f, _loading=true, _load()}),
                     )),
                 ])),
+                const SizedBox(height: 8),
+                const Divider(height: 1),
+                const SizedBox(height: 8),
+                Row(children: [const Text('Date', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11)), const Spacer(), Text('${_allTickets.length} total • ${_tickets.length} shown', style: const TextStyle(fontSize: 10, color: AppTheme.textMuted))]),
+                const SizedBox(height: 6),
+                SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+                  ChoiceChip(label: Text('All', style: TextStyle(color: _datePreset=='all'? Colors.white: Colors.black87, fontSize: 10, fontWeight: FontWeight.bold)), selected: _datePreset=='all', selectedColor: AppTheme.green, backgroundColor: Colors.white, side: BorderSide(color: _datePreset=='all'? AppTheme.green: Colors.grey.shade300), onSelected: (_)=> _applyPreset('all')),
+                  const SizedBox(width: 6),
+                  ChoiceChip(label: Text('Today', style: TextStyle(color: _datePreset=='today'? Colors.white: Colors.black87, fontSize: 10, fontWeight: FontWeight.bold)), selected: _datePreset=='today', selectedColor: AppTheme.green, backgroundColor: Colors.white, side: BorderSide(color: _datePreset=='today'? AppTheme.green: Colors.grey.shade300), onSelected: (_)=> _applyPreset('today')),
+                  const SizedBox(width: 6),
+                  ChoiceChip(label: Text('Yesterday', style: TextStyle(color: _datePreset=='yesterday'? Colors.white: Colors.black87, fontSize: 10, fontWeight: FontWeight.bold)), selected: _datePreset=='yesterday', selectedColor: AppTheme.green, backgroundColor: Colors.white, side: BorderSide(color: _datePreset=='yesterday'? AppTheme.green: Colors.grey.shade300), onSelected: (_)=> _applyPreset('yesterday')),
+                  const SizedBox(width: 6),
+                  ChoiceChip(label: Text('Week', style: TextStyle(color: _datePreset=='week'? Colors.white: Colors.black87, fontSize: 10, fontWeight: FontWeight.bold)), selected: _datePreset=='week', selectedColor: AppTheme.green, backgroundColor: Colors.white, side: BorderSide(color: _datePreset=='week'? AppTheme.green: Colors.grey.shade300), onSelected: (_)=> _applyPreset('week')),
+                  const SizedBox(width: 6),
+                  ChoiceChip(label: Text('Custom', style: TextStyle(color: _datePreset=='custom'? Colors.white: Colors.black87, fontSize: 10, fontWeight: FontWeight.bold)), selected: _datePreset=='custom', selectedColor: AppTheme.green, backgroundColor: Colors.white, side: BorderSide(color: _datePreset=='custom'? AppTheme.green: Colors.grey.shade300), onSelected: (_)=> setState(()=> _datePreset='custom')),
+                ])),
+                if(_datePreset=='custom') ...[
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    Expanded(child: OutlinedButton.icon(icon: const Icon(Icons.calendar_today, size: 14), label: Text('From: ${_fmtShort(_from)}', style: const TextStyle(fontSize: 10)), onPressed: () async {
+                      final d = await showDatePicker(context: context, firstDate: DateTime(2024), lastDate: DateTime(2030), initialDate: _from??DateTime.now());
+                      if(d!=null){ setState(()=> _from=d); _applyDateFilter(); }
+                    })),
+                    const SizedBox(width: 6),
+                    Expanded(child: OutlinedButton.icon(icon: const Icon(Icons.calendar_today, size: 14), label: Text('To: ${_fmtShort(_to)}', style: const TextStyle(fontSize: 10)), onPressed: () async {
+                      final d = await showDatePicker(context: context, firstDate: DateTime(2024), lastDate: DateTime(2030), initialDate: _to??DateTime.now());
+                      if(d!=null){ setState(()=> _to=d); _applyDateFilter(); }
+                    })),
+                    IconButton(icon: const Icon(Icons.clear, size: 16), onPressed: (){ setState((){ _from=null; _to=null; _datePreset='all';}); _applyDateFilter(); }),
+                  ]),
+                ],
               ]),
             ),
             Expanded(child: _loading? const Center(child: CircularProgressIndicator(color: AppTheme.green))
@@ -77,7 +251,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
                     const Text('Try another filter or create a sale', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                   ])))
                 : ListView.separated(
-                    padding: const EdgeInsets.all(12),
+                    padding: EdgeInsets.all(Responsive.horizontalPadding(context)),
                     itemCount: _tickets.length,
                     separatorBuilder: (_,__)=> const SizedBox(height: 10),
                     itemBuilder: (c,i){
@@ -88,6 +262,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
                         child: InkWell(
                           borderRadius: BorderRadius.circular(16),
                           onTap: ()=> Navigator.pushNamed(context,'/ticket_detail', arguments: t),
+                          onLongPress: ()=> _copyWithChoice(t['id'] as String),
                           child: Padding(padding: const EdgeInsets.all(12), child: Row(children: [
                             Container(width: 4, height: 56, decoration: BoxDecoration(color: col, borderRadius: BorderRadius.circular(4))),
                             const SizedBox(width: 12),
@@ -97,7 +272,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
                                 Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: col.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(20)), child: Text(t['status'], style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: col))),
                               ]),
                               const SizedBox(height: 4),
-                              Text('${t['gameName']} • ${t['betType']}', style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                              Text('${t['gameName']} • ${_dispBet(t['betType'])}', style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                               const SizedBox(height: 6),
                               Row(children: [
                                 Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: AppTheme.bg, borderRadius: BorderRadius.circular(8)), child: Text((t['numbers'] as String).replaceAll(',', '  '), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1))),
@@ -107,7 +282,10 @@ class _TicketsScreenState extends State<TicketsScreen> {
                                 Text(fmtMoney(t['total'] ?? t['amount']), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
                               ]),
                               const SizedBox(height: 4),
-                              Text('ID ${t['id']} • ${fmtDate(t['createdAt'])} • ${t['operatorName']}', style: const TextStyle(fontSize: 10, color: AppTheme.textMuted), overflow: TextOverflow.ellipsis),
+                              Row(children: [
+                                Expanded(child: Text('ID ${t['id']} • ${fmtDate(t['createdAt'])} • ${t['operatorName']}', style: const TextStyle(fontSize: 10, color: AppTheme.textMuted), overflow: TextOverflow.ellipsis)),
+                                InkWell(onTap: ()=> _copyWithChoice(t['id'] as String), borderRadius: BorderRadius.circular(6), child: Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4), decoration: BoxDecoration(color: AppTheme.greenLight, borderRadius: BorderRadius.circular(6)), child: const Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.copy, size: 10, color: AppTheme.green), SizedBox(width: 3), Text('نسخ', style: TextStyle(fontSize: 9, color: AppTheme.green, fontWeight: FontWeight.bold))]))),
+                              ]),
                             ])),
                           ])),
                         ),

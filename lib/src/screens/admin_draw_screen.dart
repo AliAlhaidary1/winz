@@ -18,13 +18,16 @@ class _AdminDrawScreenState extends State<AdminDrawScreen> with SingleTickerProv
   String? _selectedDrawId;
   List<Map<String, dynamic>> _draws = []; // all draws for selected game
   List<Map<String, dynamic>> _periodsCache = [];
+  bool _winningRestricted = true;
   List<Map<String, dynamic>> get _pendingDraws {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-    // فقط الفترة الحالية التي حان وقت سحبها (نافذة الإدخال: من salesClose حتى drawTime+2h)
-    // لا يعرض أي خيارات إضافية — خيار واحد فقط للفترة التي وقت السحب لها الآن
     return _draws.where((d) {
       final win = d['winningNumbers'] as String?;
       if (win != null && win.trim().isNotEmpty) return false;
+      if(!_winningRestricted){
+        // Unrestricted: show all pending draws regardless of time
+        return true;
+      }
       final dt = d['drawTime'] as int;
       final name = d['name'] as String;
       final isMidday = name.contains('Midday')||name.contains('Morning');
@@ -36,18 +39,216 @@ class _AdminDrawScreenState extends State<AdminDrawScreen> with SingleTickerProv
       if (p == null) return false;
       final salesClose = p['salesCloseTime'] as int;
       final drawTime = p['drawTime'] as int;
-      const windowMs = 2*3600*1000; // ساعتان بعد السحب للسماح بالإدخال
-      // يسمح فقط إذا الآن داخل [salesClose, drawTime+2h]
+      const windowMs = 2*3600*1000;
       return nowMs >= salesClose && nowMs <= drawTime + windowMs;
     }).toList()..sort((a,b)=> (a['drawTime'] as int).compareTo(b['drawTime'] as int));
   }
   final _winCtrl = TextEditingController();
+  final Map<String, TextEditingController> _ctrl3 = {};
+  final Map<String, TextEditingController> _ctrl4 = {};
   bool _processing = false;
   String? _error;
   String? _success;
   Map<String, dynamic>? _lastResult;
   List<Map<String, dynamic>> _winningTickets = [];
   bool _autoPay = false;
+
+  String _fmt12FromMs(int ms) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(ms);
+    int h = dt.hour; int m = dt.minute; bool am = h < 12; int h12 = h % 12; if (h12 == 0) h12 = 12;
+    return '$h12:${m.toString().padLeft(2,'0')} ${am ? 'AM' : 'PM'}';
+  }
+  bool _canEnterPeriod(Map<String,dynamic> p) {
+    if (!_winningRestricted) return true;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final sc = p['salesCloseTime'] as int;
+    final dr = p['drawTime'] as int;
+    const window = 2*3600*1000;
+    return now >= sc && now <= dr + window;
+  }
+  String _windowLabelPeriod(Map<String,dynamic> p) {
+    final sc = _fmt12FromMs(p['salesCloseTime'] as int);
+    final dr = _fmt12FromMs(p['drawTime'] as int);
+    final dr2 = DateTime.fromMillisecondsSinceEpoch((p['drawTime'] as int) + 2*3600*1000);
+    int h = dr2.hour; int m = dr2.minute; bool am = h < 12; int h12 = h % 12; if (h12 == 0) h12 = 12;
+    final dr2Str = '$h12:${m.toString().padLeft(2,'0')} ${am ? 'AM' : 'PM'}';
+    return '$sc — $dr (window till $dr2Str)';
+  }
+  List<Map<String,dynamic>> get _availablePeriods {
+    // Only periods where at least one of result3/4 is pending AND window open (if restricted)
+    return _periodsCache.where((p){
+      if (p['status'] == 'CANCELLED' || p['status'] == 'POSTPONED' || p['status'] == 'SUSPENDED') return false;
+      final r3 = p['result3'] as String?; final r4 = p['result4'] as String?;
+      final hasPending3 = r3 == null || r3.trim().isEmpty;
+      final hasPending4 = r4 == null || r4.trim().isEmpty;
+      if (!hasPending3 && !hasPending4) return false; // both already published
+      if (_winningRestricted && !_canEnterPeriod(p)) return false;
+      // فقط حق هذا اليوم — كما طلب العميل: لا تعرض أربعة لتواريخ مختلفة
+      try {
+        final d = DateTime.parse(p['drawDate'] as String);
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+        final diff = d.difference(today).inDays;
+        if (diff != 0) return false; // اليوم فقط
+      } catch(_){}
+      return true;
+    }).toList()..sort((a,b)=> (a['salesCloseTime'] as int).compareTo(b['salesCloseTime'] as int));
+  }
+
+  Widget _buildExclusiveWinnerTab() {
+    final available = _availablePeriods;
+    // init controllers for available periods if missing
+    for(final p in available){
+      final id = p['id'] as String;
+      _ctrl3.putIfAbsent(id, ()=> TextEditingController(text: (p['result3'] as String?) ?? ''));
+      _ctrl4.putIfAbsent(id, ()=> TextEditingController(text: (p['result4'] as String?) ?? ''));
+      // sync existing values
+      final v3 = (p['result3'] as String?) ?? '';
+      final v4 = (p['result4'] as String?) ?? '';
+      if(_ctrl3[id]!.text != v3) _ctrl3[id]!.text = v3;
+      if(_ctrl4[id]!.text != v4) _ctrl4[id]!.text = v4;
+    }
+    if(available.isEmpty){
+      final now = DateTime.now();
+      int h = now.hour; bool am = h<12; int h12 = h%12; if(h12==0) h12=12;
+      final now12 = '$h12:${now.minute.toString().padLeft(2,'0')} ${am?'AM':'PM'}';
+      return Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(children: [
+              Card(color: Colors.orange.shade50, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), child: Padding(padding: const EdgeInsets.all(20), child: Column(children: [
+                const Icon(Icons.timer_off, color: Colors.orange, size: 36),
+                const SizedBox(height:12),
+                const Text('لا توجد فترة متاحة الآن', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                const SizedBox(height:6),
+                Text('الوقت الآن $now12 — النافذة تفتح فقط خلال [إغلاق البيع — السحب + 2 ساعة]', style: const TextStyle(fontSize: 11, color: Colors.black54), textAlign: TextAlign.center),
+                const SizedBox(height:10),
+                Builder(builder: (_){
+                  final todayStr = '${now.year}-${now.month.toString().padLeft(2,'0')}-${now.day.toString().padLeft(2,'0')}';
+                  final todayPeriods = _periodsCache.where((p)=> p['drawDate']==todayStr).toList()..sort((a,b)=> (a['salesCloseTime'] as int).compareTo(b['salesCloseTime'] as int));
+                  return Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)), child: Column(children: [
+                    const Text('فترات اليوم (12h):', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    const SizedBox(height:6),
+                    if(todayPeriods.isEmpty) const Text('لا توجد فترات لليوم', style: TextStyle(fontSize:10, color: Colors.black54)),
+                    ...todayPeriods.map((p){
+                      final sc = _fmt12FromMs(p['salesCloseTime'] as int);
+                      final dr = _fmt12FromMs(p['drawTime'] as int);
+                      final type = p['drawType'] as String;
+                      final r3 = (p['result3'] as String?) ?? ''; final r4 = (p['result4'] as String?) ?? '';
+                      final done = r3.isNotEmpty && r4.isNotEmpty;
+                      return Padding(padding: const EdgeInsets.symmetric(vertical:2), child: Row(children: [
+                        Container(width:8, height:8, decoration: BoxDecoration(color: done? Colors.blue: p['status']=='OPEN'? Colors.green: Colors.grey, shape: BoxShape.circle)),
+                        const SizedBox(width:6),
+                        Expanded(child: Text('${type=='MIDDAY'?'صباحي':'مسائي'} — $sc → $dr • ${p['status']}${done?' • تم':' • متاح ${r3.isEmpty?'3':''}${r3.isEmpty&&r4.isEmpty?' & ':''}${r4.isEmpty?'4':''}'}', style: const TextStyle(fontSize:10))),
+                      ]));
+                    }),
+                  ]));
+                }),
+                const SizedBox(height:12),
+                ElevatedButton.icon(icon: const Icon(Icons.refresh, size:16), label: const Text('تحديث'), onPressed: _loadDraws, style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0B8A3E), foregroundColor: Colors.white)),
+              ]))),
+              const SizedBox(height:12),
+              Card(color: Colors.white, child: Padding(padding: const EdgeInsets.all(12), child: Row(children: [
+                Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: const Color(0xFFE8F5E9), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.info_outline, color: Color(0xFF0B8A3E), size:16)),
+                const SizedBox(width:8),
+                const Expanded(child: Text('التعديل مسموح طالما النافذة مفتوحة. بمجرد انتهاء [السحب + 2 ساعة] يُغلق التعديل تلقائياً.', style: TextStyle(fontSize:11, color: Colors.black87))),
+              ]))),
+            ]),
+          ),
+        ),
+      );
+    }
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Card(color: Colors.green.shade50, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), child: Padding(padding: const EdgeInsets.all(12), child: Row(children: [
+              Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.green, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.emoji_events, color: Colors.white, size:18)),
+              const SizedBox(width:8),
+              const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('إدخال الفائز — حصرياً هنا (12h)', style: TextStyle(fontWeight: FontWeight.bold, fontSize:13)),
+                Text('تظهر فقط الفترة المتاحة الآن. الفترات الأخرى مخفية لتسهيل تجربة المستخدم.', style: TextStyle(fontSize:10, color: Colors.black54)),
+              ])),
+              Container(padding: const EdgeInsets.symmetric(horizontal:8, vertical:4), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)), child: Text('${available.length} متاحة', style: const TextStyle(fontSize:10, fontWeight: FontWeight.bold, color: Colors.green))),
+            ]))),
+            const SizedBox(height:12),
+            ...available.map((p){
+              final id = p['id'] as String;
+              final type = p['drawType'] as String;
+              final sc12 = _fmt12FromMs(p['salesCloseTime'] as int);
+              final dr12 = _fmt12FromMs(p['drawTime'] as int);
+              final status = p['status'] as String;
+              final can = _canEnterPeriod(p);
+              final r3 = p['result3'] as String?; final r4 = p['result4'] as String?;
+              final hasPending3 = r3==null || r3.isEmpty; final hasPending4 = r4==null || r4.isEmpty;
+              final statusColor = status=='OPEN'? const Color(0xFF0B8A3E): status=='RESULT_PENDING'? Colors.orange: Colors.blue;
+              final isLocked = !can;
+              return Card(color: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: isLocked? Colors.grey.shade300: statusColor.withValues(alpha:0.2))), child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  CircleAvatar(backgroundColor: type=='MIDDAY'? Colors.orange.withValues(alpha:0.15): Colors.indigo.withValues(alpha:0.15), child: Icon(type=='MIDDAY'? Icons.wb_sunny: Icons.nights_stay, size:16, color: type=='MIDDAY'? Colors.orange: Colors.indigo)),
+                  const SizedBox(width:8),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('${type=='MIDDAY'?'صباحي — Morning':'مسائي — Evening'} • ${p['drawDate']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize:13)),
+                    Text('إغلاق: $sc12 • سحب: $dr12', style: const TextStyle(fontSize:11, color: Colors.black87, fontWeight: FontWeight.w600)),
+                    Text('النافذة: ${_windowLabelPeriod(p)}', style: TextStyle(fontSize:9, color: isLocked? Colors.red: const Color(0xFF0B8A3E))),
+                  ])),
+                  Container(padding: const EdgeInsets.symmetric(horizontal:8, vertical:4), decoration: BoxDecoration(color: isLocked? Colors.grey.shade200: statusColor.withValues(alpha:0.12), borderRadius: BorderRadius.circular(20)), child: Text(isLocked? 'مغلق': status, style: TextStyle(fontSize:9, fontWeight: FontWeight.bold, color: isLocked? Colors.grey: statusColor))),
+                ]),
+                if(isLocked) Container(margin: const EdgeInsets.only(top:8), padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8)), child: Row(children: [const Icon(Icons.lock, size:14, color: Colors.red), const SizedBox(width:6), Expanded(child: Text('انتهت فترة الإدخال — التعديل مغلق حتى الفترة القادمة', style: TextStyle(fontSize:10, color: Colors.red.shade700)))])),
+                const Divider(height:16),
+                // 3-digit
+                Opacity(opacity: hasPending3 && !isLocked? 1: (hasPending3? 0.5: 1), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: Colors.green.withValues(alpha:0.12), borderRadius: BorderRadius.circular(6)), child: const Text('3', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green))),
+                    const SizedBox(width:8),
+                    const Text('فائز 3 أرقام', style: TextStyle(fontWeight: FontWeight.bold, fontSize:12)),
+                    const Spacer(),
+                    if(r3!=null && r3.isNotEmpty) Container(padding: const EdgeInsets.symmetric(horizontal:6, vertical:2), decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(6)), child: Text('حالي: $r3', style: const TextStyle(fontSize:11, color: Colors.green))),
+                    if(!hasPending3) const Padding(padding: EdgeInsets.only(left:6), child: Icon(Icons.check_circle, size:14, color: Colors.green)),
+                  ]),
+                  const SizedBox(height:6),
+                  Row(children: [
+                    Expanded(child: TextField(controller: _ctrl3[id]!, keyboardType: TextInputType.number, maxLength: 3, enabled: !isLocked, decoration: InputDecoration(isDense:true, border: const OutlineInputBorder(), labelText: '3 أرقام (مثال 123)', counterText:'', suffixIcon: _ctrl3[id]!.text.isNotEmpty && !isLocked? IconButton(icon: const Icon(Icons.clear, size:16), onPressed: ()=> setState(()=> _ctrl3[id]!.clear())): null))),
+                    const SizedBox(width:8),
+                    ElevatedButton.icon(icon: Icon((r3!=null&&r3.isNotEmpty)? Icons.edit: Icons.save, size:14), label: Text((r3!=null&&r3.isNotEmpty)?'تصحيح':'حفظ', style: const TextStyle(fontSize:11)), style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white), onPressed: isLocked? null: ()=> _savePeriod3(id)),
+                  ]),
+                  if(isLocked && hasPending3) Padding(padding: const EdgeInsets.only(top:4), child: Text('مغلق — سيفتح عند $sc12', style: const TextStyle(fontSize:10, color: Colors.red))),
+                ])),
+                const SizedBox(height:12),
+                // 4-digit
+                Opacity(opacity: hasPending4 && !isLocked? 1: (hasPending4? 0.5: 1), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: Colors.indigo.withValues(alpha:0.12), borderRadius: BorderRadius.circular(6)), child: const Text('4', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo))),
+                    const SizedBox(width:8),
+                    const Text('فائز 4 أرقام', style: TextStyle(fontWeight: FontWeight.bold, fontSize:12)),
+                    const Spacer(),
+                    if(r4!=null && r4.isNotEmpty) Container(padding: const EdgeInsets.symmetric(horizontal:6, vertical:2), decoration: BoxDecoration(color: Colors.indigo.shade50, borderRadius: BorderRadius.circular(6)), child: Text('حالي: $r4', style: const TextStyle(fontSize:11, color: Colors.indigo))),
+                    if(!hasPending4) const Padding(padding: EdgeInsets.only(left:6), child: Icon(Icons.check_circle, size:14, color: Colors.indigo)),
+                  ]),
+                  const SizedBox(height:6),
+                  Row(children: [
+                    Expanded(child: TextField(controller: _ctrl4[id]!, keyboardType: TextInputType.number, maxLength: 4, enabled: !isLocked, decoration: InputDecoration(isDense:true, border: const OutlineInputBorder(), labelText: '4 أرقام (مثال 1234)', counterText:'', suffixIcon: _ctrl4[id]!.text.isNotEmpty && !isLocked? IconButton(icon: const Icon(Icons.clear, size:16), onPressed: ()=> setState(()=> _ctrl4[id]!.clear())): null))),
+                    const SizedBox(width:8),
+                    ElevatedButton.icon(icon: Icon((r4!=null&&r4.isNotEmpty)? Icons.edit: Icons.save, size:14), label: Text((r4!=null&&r4.isNotEmpty)?'تصحيح':'حفظ', style: const TextStyle(fontSize:11)), style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white), onPressed: isLocked? null: ()=> _savePeriod4(id)),
+                  ]),
+                  if(isLocked && hasPending4) Padding(padding: const EdgeInsets.only(top:4), child: Text('مغلق — سيفتح عند $sc12', style: const TextStyle(fontSize:10, color: Colors.red))),
+                ])),
+                if(_processing) Padding(padding: const EdgeInsets.only(top:8), child: const LinearProgressIndicator()),
+              ])));
+            }),
+            const SizedBox(height:12),
+            Card(color: const Color(0xFFE8F5E9), child: Padding(padding: const EdgeInsets.all(12), child: Row(children: [const Icon(Icons.lightbulb, color: Color(0xFF0B8A3E), size:16), const SizedBox(width:8), const Expanded(child: Text('التعديل مسموح طالما النافذة مفتوحة. بعد انتهاء [السحب + 2 ساعة] يُغلق تلقائياً وتختفي الفترة من هنا وتظهر في السجل.', style: TextStyle(fontSize:11)))]))),
+            const SizedBox(height:12),
+            Card(color: const Color(0xFFE8F5E9), child: Padding(padding: const EdgeInsets.all(12), child: Row(children: [const Icon(Icons.lightbulb, color: Color(0xFF0B8A3E), size:16), const SizedBox(width:8), const Expanded(child: Text('التعديل مسموح طالما النافذة مفتوحة. بعد انتهاء [السحب + 2 ساعة] يُغلق تلقائياً وتختفي الفترة من هنا وتظهر في السجل.', style: TextStyle(fontSize:11)))]))),
+          ]),
+        ),
+      ),
+    );
+  }
 
   // --- History tab filters ---
   String _historyGame = 'all'; // all / g_numbers / g_winz
@@ -65,9 +266,64 @@ class _AdminDrawScreenState extends State<AdminDrawScreen> with SingleTickerProv
     _loadDraws();
   }
 
+  Future<void> _savePeriod3(String periodId) async {
+    final raw = _ctrl3[periodId]?.text.trim().replaceAll(',', '').replaceAll(' ', '') ?? '';
+    if (!RegExp(r'^[0-9]{3}$').hasMatch(raw)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('فائز 3 أرقام يجب أن يكون 3 أرقام (0-9)'), backgroundColor: Colors.red));
+      return;
+    }
+    final period = _periodsCache.firstWhere((e)=> e['id']==periodId, orElse: ()=> {});
+    if (period.isEmpty) return;
+    if (_winningRestricted && !_canEnterPeriod(period)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('انتهت نافذة الإدخال — ${_windowLabelPeriod(period)}'), backgroundColor: Colors.orange));
+      return;
+    }
+    final existing = period['result3'] as String?;
+    final isCorrection = existing != null && existing.isNotEmpty;
+    setState(()=> _processing=true);
+    try {
+      final app = context.read<AppState>();
+      final res = await app.processPeriodResult(periodId: periodId, winningNumbers: raw.split(''), isCorrection: isCorrection);
+      await _loadDraws();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم حفظ فائز 3 أرقام $raw — رابحون: ${res['winningCount']} • جوائز: ${fmtMoney(res['totalPrize'])}'), backgroundColor: const Color(0xFF0B8A3E)));
+      setState(()=> _success = '3-digit $raw saved');
+    } catch(e){
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: Colors.red));
+    } finally { if(mounted) setState(()=> _processing=false); }
+  }
+  Future<void> _savePeriod4(String periodId) async {
+    final raw = _ctrl4[periodId]?.text.trim().replaceAll(',', '').replaceAll(' ', '') ?? '';
+    if (!RegExp(r'^[0-9]{4}$').hasMatch(raw)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('فائز 4 أرقام يجب أن يكون 4 أرقام (0-9)'), backgroundColor: Colors.red));
+      return;
+    }
+    final period = _periodsCache.firstWhere((e)=> e['id']==periodId, orElse: ()=> {});
+    if (period.isEmpty) return;
+    if (_winningRestricted && !_canEnterPeriod(period)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('انتهت نافذة الإدخال — ${_windowLabelPeriod(period)}'), backgroundColor: Colors.orange));
+      return;
+    }
+    final existing = period['result4'] as String?;
+    final isCorrection = existing != null && existing.isNotEmpty;
+    setState(()=> _processing=true);
+    try {
+      final app = context.read<AppState>();
+      final res = await app.processPeriodResult(periodId: periodId, winningNumbers: raw.split(''), isCorrection: isCorrection);
+      await _loadDraws();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم حفظ فائز 4 أرقام $raw — رابحون: ${res['winningCount']} • جوائز: ${fmtMoney(res['totalPrize'])}'), backgroundColor: Colors.indigo));
+      setState(()=> _success = '4-digit $raw saved');
+    } catch(e){
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: Colors.red));
+    } finally { if(mounted) setState(()=> _processing=false); }
+  }
+
   @override
   void dispose() {
     _winCtrl.dispose();
+    for(final c in _ctrl3.values) c.dispose();
+    for(final c in _ctrl4.values) c.dispose();
     _tabCtrl.dispose();
     super.dispose();
   }
@@ -77,6 +333,11 @@ class _AdminDrawScreenState extends State<AdminDrawScreen> with SingleTickerProv
     await db.seedDrawPeriods();
     await db.refreshPeriodStatuses();
     _periodsCache = await db.getAllPeriods();
+    // Load winning restriction setting
+    final cfg = await db.getAppConfig();
+    final wr = cfg.where((e)=> e['key']=='winning_time_restricted').firstOrNull;
+    final restricted = wr==null ? true : wr['value']=='1';
+    if(mounted) setState(()=> _winningRestricted = restricted);
     List<Map<String, dynamic>> draws;
     if (_gameId == 'all') {
       draws = await db.getAllDraws();
@@ -149,32 +410,41 @@ class _AdminDrawScreenState extends State<AdminDrawScreen> with SingleTickerProv
   Future<void> _submit() async {
     setState(() { _error = null; _success = null; _lastResult = null; });
     if (_selectedDrawId == null) {
-      setState(() => _error = 'لا يوجد سحب معلق — انتقل إلى سجل السحوبات لعرض الكل');
+      setState(() => _error = 'No pending draws — go to History');
       return;
+    }
+    // Check time restriction
+    if(_winningRestricted){
+      final isPending = _pendingDraws.any((d)=> d['id']==_selectedDrawId);
+      if(!isPending){
+        setState(() => _error = 'Not the time to enter winning number — entry allowed only during [salesClose — drawTime+2h] window. Check history or wait for notification.');
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Important: Not the entry window — winning entry is time-restricted. Wait for notification.'), backgroundColor: Colors.orange, duration: Duration(seconds: 4)));
+        return;
+      }
     }
     final raw = _winCtrl.text.trim().replaceAll(',', '').replaceAll(' ', '');
     if (raw.isEmpty) {
-      setState(() => _error = 'أدخل الرقم الفائز (مثال 123 أو 1234)');
+      setState(() => _error = 'Enter winning number (e.g. 123 or 1234)');
       return;
     }
     if (!RegExp(r'^[0-9]+$').hasMatch(raw)) {
-      setState(() => _error = 'الرقم الفائز يجب أن يكون أرقام 0-9 فقط');
+      setState(() => _error = 'Winning number must be digits 0-9 only');
       return;
     }
     if (_gameId == 'g_numbers' && raw.length != 3 && raw.length != 4) {
-      setState(() => _error = 'Numbers يحتاج 3 أو 4 أرقام (مثال 123 أو 0123)');
+      setState(() => _error = 'Numbers needs 3 or 4 digits (e.g. 123 or 0123)');
       return;
     }
     if (_gameId == 'g_winz' && raw.length != 4) {
-      setState(() => _error = 'Win 4 يحتاج 4 أرقام بالضبط');
+      setState(() => _error = 'Win 4 needs exactly 4 digits');
       return;
     }
     final draw = _draws.where((e) => e['id'] == _selectedDrawId).firstOrNull;
     if (draw != null && draw['winningNumbers'] != null && (draw['winningNumbers'] as String).trim().isNotEmpty) {
       final confirm = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
-        title: const Text('تأكيد استبدال النتيجة'),
-        content: Text('السحب $_selectedDrawId لديه نتيجة سابقة: ${draw['winningNumbers']}. هل تريد الاستبدال بـ $raw وإعادة حساب الفائزين؟'),
-        actions: [TextButton(onPressed: () => Navigator.pop(c,false), child: const Text('إلغاء')), ElevatedButton(onPressed: () => Navigator.pop(c,true), child: const Text('استبدال'))],
+        title: const Text('Confirm replacement'),
+        content: Text('Draw $_selectedDrawId already has result: ${draw['winningNumbers']}. Replace with $raw and recalculate winners?'),
+        actions: [TextButton(onPressed: () => Navigator.pop(c,false), child: const Text('Cancel')), ElevatedButton(onPressed: () => Navigator.pop(c,true), child: const Text('Replace'))],
       ));
       if (confirm != true) return;
     }
@@ -184,11 +454,36 @@ class _AdminDrawScreenState extends State<AdminDrawScreen> with SingleTickerProv
       final digits = raw.split('');
       final app = context.read<AppState>();
       final res = await app.processDrawResult(drawId: _selectedDrawId!, winningNumbers: digits, autoPay: _autoPay);
+      // If unrestricted, immediately close the period for this draw
+      if(!_winningRestricted){
+        try{
+          final d = _draws.where((e)=> e['id']==_selectedDrawId).firstOrNull;
+          if(d!=null){
+            final dt = DateTime.fromMillisecondsSinceEpoch(d['drawTime'] as int);
+            final name = d['name'] as String;
+            final isMidday = name.contains('Midday')||name.contains('Morning');
+            final type = isMidday ? 'MIDDAY' : 'EVENING';
+            final dateStr = '${dt.year}-${dt.month.toString().padLeft(2,'0')}-${dt.day.toString().padLeft(2,'0')}';
+            final pid = '$dateStr-$type';
+            final db = context.read<AppDatabase>();
+            final p = await db.getPeriodById(pid);
+            if(p!=null){
+              // Close period immediately
+              await db.updatePeriodStatus(pid, 'COMPLETED');
+              // Ensure sales are closed - update salesClose to now if still future
+              final nowMs = DateTime.now().millisecondsSinceEpoch;
+              if((p['salesCloseTime'] as int) > nowMs){
+                await db.updatePeriodTimes(pid, p['salesOpenTime'] as int, nowMs, p['drawTime'] as int);
+              }
+            }
+          }
+        }catch(_){}
+      }
       await _loadDraws();
       await _loadWinningPreview();
       if (!mounted) return;
       setState(() {
-        _success = 'تم حفظ $raw — الفائزون: ${res['winningCount']} • الخاسرون: ${res['losingCount']} • الجوائز: ${fmtMoney(res['totalPrize'])}';
+        _success = 'Saved $raw — Winners: ${res['winningCount']} • Losers: ${res['losingCount']} • Prize: ${fmtMoney(res['totalPrize'])}';
         _lastResult = res;
       });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_success!)));
@@ -200,34 +495,54 @@ class _AdminDrawScreenState extends State<AdminDrawScreen> with SingleTickerProv
   }
 
   Future<void> _editWinnerForDraw(Map<String, dynamic> draw) async {
+    // Check window lock for this draw's period
+    try{
+      final dt = DateTime.fromMillisecondsSinceEpoch(draw['drawTime'] as int);
+      final name = draw['name'] as String;
+      final isMidday = name.contains('Midday')||name.contains('Morning');
+      final type = isMidday ? 'MIDDAY' : 'EVENING';
+      final dateStr = '${dt.year}-${dt.month.toString().padLeft(2,'0')}-${dt.day.toString().padLeft(2,'0')}';
+      final pid = '$dateStr-$type';
+      final p = await context.read<AppDatabase>().getPeriodById(pid);
+      if(p!=null && _winningRestricted){
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final sc = p['salesCloseTime'] as int; final dr = p['drawTime'] as int;
+        const window = 2*3600*1000;
+        final can = now >= sc && now <= dr + window;
+        if(!can){
+          if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('انتهت فترة التعديل لـ $pid — النافذة كانت حتى ${_fmt12FromMs(dr+window)}'), backgroundColor: Colors.red));
+          return;
+        }
+      }
+    }catch(_){}
     final ctrl = TextEditingController(text: (draw['winningNumbers'] as String?)?.replaceAll(',', '') ?? '');
     final gid = draw['gameId'] as String;
     final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
-      title: Text('تعديل الفائز — ${draw['name']}'),
+      title: Text(' Winner — ${draw['name']}'),
       content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('ID: ${draw['id']}', style: const TextStyle(fontSize: 10, color: Colors.black54)),
         const SizedBox(height: 8),
-        TextField(controller: ctrl, keyboardType: TextInputType.number, maxLength: gid=='g_numbers'?4:4, decoration: InputDecoration(labelText: 'الرقم الفائز', hintText: gid=='g_winz'?'0123':'123', border: const OutlineInputBorder(), counterText: '')),
+        TextField(controller: ctrl, keyboardType: TextInputType.number, maxLength: gid=='g_numbers'?4:4, decoration: InputDecoration(labelText: ' Winner', hintText: gid=='g_winz'?'0123':'123', border: const OutlineInputBorder(), counterText: '')),
         const SizedBox(height: 6),
-        Text(gid=='g_numbers' ? '3 أو 4 أرقام' : '4 أرقام بالضبط', style: const TextStyle(fontSize: 10, color: Colors.black54)),
+        Text(gid=='g_numbers' ? '3  4 ' : '4  ', style: const TextStyle(fontSize: 10, color: Colors.black54)),
         const SizedBox(height: 8),
         StatefulBuilder(builder: (ctx, setS){
-          return CheckboxListTile(value: _autoPay, dense: true, contentPadding: EdgeInsets.zero, title: const Text('دفع تلقائي', style: TextStyle(fontSize: 11)), onChanged: (v){ setState(()=> _autoPay=v??false); setS((){}); });
+          return CheckboxListTile(value: _autoPay, dense: true, contentPadding: EdgeInsets.zero, title: const Text(' ', style: TextStyle(fontSize: 11)), onChanged: (v){ setState(()=> _autoPay=v??false); setS((){}); });
         }),
       ]),
-      actions: [TextButton(onPressed: ()=> Navigator.pop(c,false), child: const Text('إلغاء')), ElevatedButton(onPressed: ()=> Navigator.pop(c,true), child: const Text('حفظ'))],
+      actions: [TextButton(onPressed: ()=> Navigator.pop(c,false), child: const Text('Cancel')), ElevatedButton(onPressed: ()=> Navigator.pop(c,true), child: const Text('Save'))],
     ));
     if(ok!=true) return;
     final raw = ctrl.text.trim().replaceAll(',', '').replaceAll(' ', '');
-    if(raw.isEmpty || !RegExp(r'^[0-9]+$').hasMatch(raw)){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('رقم غير صالح'))); return; }
-    if(gid=='g_winz' && raw.length!=4){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Win 4 يحتاج 4 أرقام'))); return; }
-    if(gid=='g_numbers' && raw.length!=3 && raw.length!=4){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Numbers 3 أو 4 أرقام'))); return; }
+    if(raw.isEmpty || !RegExp(r'^[0-9]+$').hasMatch(raw)){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('  '))); return; }
+    if(gid=='g_winz' && raw.length!=4){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Win 4  4 '))); return; }
+    if(gid=='g_numbers' && raw.length!=3 && raw.length!=4){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Numbers 3  4 '))); return; }
     setState(()=> _processing=true);
     try{
       final res = await context.read<AppState>().processDrawResult(drawId: draw['id'], winningNumbers: raw.split(''), autoPay: _autoPay);
       await _loadDraws();
       await _loadWinningPreview();
-      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم التحديث $raw — ${res['winningCount']} فائز')));
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('  $raw — ${res['winningCount']} Winner')));
     }catch(e){ if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
     finally{ if(mounted) setState(()=> _processing=false); }
   }
@@ -269,146 +584,19 @@ class _AdminDrawScreenState extends State<AdminDrawScreen> with SingleTickerProv
     final pending = _pendingDraws;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('نتيجة السحب — NY Lottery'),
+        title: const Text('Draw Result — NY Lottery'),
         backgroundColor: const Color(0xFF0B8A3E),
         foregroundColor: Colors.white,
         bottom: TabBar(controller: _tabCtrl, labelColor: Colors.white, unselectedLabelColor: Colors.white70, indicatorColor: Colors.white, tabs: const [
-          Tab(icon: Icon(Icons.edit), text: 'إدخال الفائز'),
-          Tab(icon: Icon(Icons.history), text: 'سجل السحوبات'),
+          Tab(icon: Icon(Icons.edit), text: 'Enter Winner'),
+          Tab(icon: Icon(Icons.history), text: 'History'),
         ]),
       ),
       body: TabBarView(controller: _tabCtrl, children: [
-        // TAB 1: إدخال الفائز — فقط المعلق
-        Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Expanded(child: DropdownButtonFormField<String>(
-                    value: _gameId,
-                    decoration: const InputDecoration(labelText: 'اللعبة', border: OutlineInputBorder(), isDense: true),
-                    items: const [
-                      DropdownMenuItem(value: 'g_numbers', child: Text('Numbers (Pick 3/4)')),
-                      DropdownMenuItem(value: 'g_winz', child: Text('Win 4 (Pick 4)')),
-                      DropdownMenuItem(value: 'all', child: Text('الكل')),
-                    ],
-                    onChanged: (v) async { setState(() { _gameId = v!; _selectedDrawId = null; _winCtrl.clear(); }); await _loadDraws(); },
-                  )),
-                  const SizedBox(width: 12),
-                  IconButton(icon: const Icon(Icons.refresh), onPressed: _loadDraws),
-                ]),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(color: const Color(0xFFE8F5E9), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF0B8A3E).withValues(alpha: 0.2))),
-                  child: Row(children: [
-                    const Icon(Icons.info_outline, size: 16, color: Color(0xFF0B8A3E)),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text('يُعرض فقط السحوبات التي لم يُكتب لها فائز بعد (${pending.length} معلق) — للتعديل انتقل إلى تبويب سجل السحوبات', style: const TextStyle(fontSize: 11, color: Color(0xFF0B8A3E)))),
-                    TextButton(onPressed: ()=> _tabCtrl.animateTo(1), child: const Text('عرض الكل', style: TextStyle(fontSize: 11))),
-                  ]),
-                ),
-                const SizedBox(height: 12),
-                if(pending.isEmpty)
-                  Card(color: Colors.orange.shade50, child: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
-                    const Icon(Icons.check_circle, color: Colors.orange, size: 28),
-                    const SizedBox(height: 8),
-                    const Text('لا يوجد سحوبات معلقة', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const Text('كل السحوبات الحالية لها فائز — راجع سجل السحوبات للتعديل أو الاستعراض', style: TextStyle(fontSize: 11, color: Colors.black54), textAlign: TextAlign.center),
-                    const SizedBox(height: 8),
-                    OutlinedButton.icon(icon: const Icon(Icons.history), label: const Text('فتح سجل السحوبات'), onPressed: ()=> _tabCtrl.animateTo(1)),
-                  ])))
-                else ...[
-                  DropdownButtonFormField<String>(
-                    value: _selectedDrawId,
-                    decoration: const InputDecoration(labelText: 'السحب (معلق فقط)', border: OutlineInputBorder(), isDense: true),
-                    isExpanded: true,
-                    items: pending.map((d) {
-                      final label = '${d['name']} • ${d['status']}';
-                      return DropdownMenuItem<String>(value: d['id'] as String, child: Text(label, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis));
-                    }).toList(),
-                    onChanged: (v) {
-                      setState(() { _selectedDrawId = v; _error=null; _success=null; _lastResult=null; });
-                      _fillWinCtrlFromDraw();
-                      _loadWinningPreview();
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  Builder(builder: (_){
-                    final draw = _selectedDrawId == null ? null : _draws.where((e)=> e['id']==_selectedDrawId).firstOrNull;
-                    if(draw==null) return const SizedBox();
-                    return Card(color: Colors.blue.shade50, child: Padding(padding: const EdgeInsets.all(10), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('السحب: ${draw['name']}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                      Text('ID: ${draw['id']}', style: const TextStyle(fontSize: 10, color: Colors.black54)),
-                      Text('الوقت: ${fmtDate(draw['drawTime'])} • الحالة: ${draw['status']}', style: const TextStyle(fontSize: 11)),
-                    ])));
-                  }),
-                  const SizedBox(height: 16),
-                  const Text('الرقم الفائز', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  Text(_gameId == 'g_numbers' ? 'أدخل 3 أو 4 أرقام (0-9)' : 'أدخل 4 أرقام (0-9)', style: const TextStyle(fontSize: 11, color: Colors.black54)),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _winCtrl,
-                    keyboardType: TextInputType.number,
-                    maxLength: 4,
-                    decoration: InputDecoration(
-                      labelText: 'الرقم الفائز',
-                      hintText: _gameId == 'g_numbers' ? 'مثال 123' : 'مثال 0123',
-                      border: const OutlineInputBorder(),
-                      counterText: '',
-                      suffixIcon: _winCtrl.text.isNotEmpty ? IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(() => _winCtrl.clear())) : null,
-                    ),
-                    onChanged: (_) => setState(() { _error=null; }),
-                  ),
-                  const SizedBox(height: 8),
-                  CheckboxListTile(
-                    value: _autoPay,
-                    onChanged: (v) => setState(() => _autoPay = v ?? false),
-                    title: const Text('دفع تلقائي للفائزين', style: TextStyle(fontSize: 12)),
-                    subtitle: const Text('إذا لم يُحدد: تُعلّم التذاكر كفائزة فقط بدون خصم من الصندوق', style: TextStyle(fontSize: 10, color: Colors.black54)),
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  if (_error != null) Card(color: Colors.red.shade50, child: Padding(padding: const EdgeInsets.all(10), child: Row(children: [const Icon(Icons.error, color: Colors.red, size: 18), const SizedBox(width: 8), Expanded(child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12)))]))),
-                  if (_success != null) Card(color: Colors.green.shade50, child: Padding(padding: const EdgeInsets.all(10), child: Row(children: [const Icon(Icons.check_circle, color: Colors.green, size: 18), const SizedBox(width: 8), Expanded(child: Text(_success!, style: const TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.w600)))]))),
-                  if (_processing) const LinearProgressIndicator(),
-                  const SizedBox(height: 12),
-                  SizedBox(width: double.infinity, height: 46, child: ElevatedButton.icon(
-                    icon: _processing ? const SizedBox(width: 16, height:16, child: CircularProgressIndicator(strokeWidth:2, color: Colors.white)) : const Icon(Icons.save),
-                    label: Text(_processing ? 'جاري الحفظ...' : 'حفظ النتيجة وتقييم الفائزين'),
-                    onPressed: _processing ? null : _submit,
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple),
-                  )),
-                ],
-                const SizedBox(height: 16),
-                if (_lastResult != null) Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('نتيجة المعالجة + المحاسبة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                  const SizedBox(height: 6),
-                  Text('إجمالي التذاكر: ${_lastResult!['totalTickets']}', style: const TextStyle(fontSize: 12)),
-                  Text('الفائزون: ${_lastResult!['winningCount']} • الخاسرون: ${_lastResult!['losingCount']}', style: const TextStyle(fontSize: 12)),
-                  Text('المبيعات: ${fmtMoney(_lastResult!['totalSales'] ?? 0)}', style: const TextStyle(fontSize: 12)),
-                  Text('الجوائز: ${fmtMoney(_lastResult!['totalPrize'])}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.green)),
-                ]))),
-                if (_winningTickets.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  const Text('التذاكر الفائزة في هذا السحب', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  const SizedBox(height: 6),
-                  ..._winningTickets.map((t) => Card(child: ListTile(
-                    dense: true,
-                    title: Text('${t['id']} • ${t['numbers'].toString().replaceAll(',', ' ')} • ${t['betType']}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                    subtitle: Text('${t['gameName']} • ${fmtMoney(t['amount'])} → ${fmtMoney(t['prizeAmount'] ?? 0)} • ${t['status']}', style: const TextStyle(fontSize: 11)),
-                    trailing: t['status']=='paid' ? const Icon(Icons.check_circle, color: Colors.green) : const Icon(Icons.emoji_events, color: Colors.orange),
-                    onTap: () => Navigator.pushNamed(context, '/ticket_detail', arguments: t),
-                  ))),
-                ],
-              ]),
-            ),
-          ),
-        ),
-        // TAB 2: سجل السحوبات — عرض الكل مع فلترة حسب التاريخ
+        // TAB 1: Winner exclusive — available period only (12h) — الفترة المتاحة فقط
+        _buildExclusiveWinnerTab(),
+        // TAB 2: History
+        // TAB 2: History —  All    
         Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 760),
@@ -418,13 +606,13 @@ class _AdminDrawScreenState extends State<AdminDrawScreen> with SingleTickerProv
                 padding: const EdgeInsets.fromLTRB(12,12,12,8),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
-                    const Text('فلترة السجل', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    const Text(' ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                     const Spacer(),
-                    Text('${_filteredHistory.length}/${_draws.length} سحب', style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                    Text('${_filteredHistory.length}/${_draws.length} ', style: const TextStyle(fontSize: 11, color: Colors.black54)),
                   ]),
                   const SizedBox(height: 8),
                   SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
-                    ChoiceChip(label: const Text('الكل'), selected: _historyGame=='all', onSelected: (_)=> setState(()=> _historyGame='all')),
+                    ChoiceChip(label: const Text('All'), selected: _historyGame=='all', onSelected: (_)=> setState(()=> _historyGame='all')),
                     const SizedBox(width: 6),
                     ChoiceChip(label: const Text('Numbers'), selected: _historyGame=='g_numbers', onSelected: (_)=> setState(()=> _historyGame='g_numbers')),
                     const SizedBox(width: 6),
@@ -432,23 +620,23 @@ class _AdminDrawScreenState extends State<AdminDrawScreen> with SingleTickerProv
                     const SizedBox(width: 12),
                     Container(width: 1, height: 24, color: Colors.grey.shade300),
                     const SizedBox(width: 12),
-                    ChoiceChip(label: const Text('الكل'), selected: _historyStatus=='all', onSelected: (_)=> setState(()=> _historyStatus='all')),
+                    ChoiceChip(label: const Text('All'), selected: _historyStatus=='all', onSelected: (_)=> setState(()=> _historyStatus='all')),
                     const SizedBox(width: 6),
-                    ChoiceChip(label: const Text('معلق'), selected: _historyStatus=='pending', onSelected: (_)=> setState(()=> _historyStatus='pending')),
+                    ChoiceChip(label: const Text('Pending'), selected: _historyStatus=='pending', onSelected: (_)=> setState(()=> _historyStatus='pending')),
                     const SizedBox(width: 6),
-                    ChoiceChip(label: const Text('مُعلن'), selected: _historyStatus=='done', onSelected: (_)=> setState(()=> _historyStatus='done')),
+                    ChoiceChip(label: const Text('Announced'), selected: _historyStatus=='done', onSelected: (_)=> setState(()=> _historyStatus='done')),
                   ])),
                   const SizedBox(height: 8),
                   Row(children: [
                     Expanded(child: TextField(
-                      decoration: const InputDecoration(isDense: true, prefixIcon: Icon(Icons.search, size: 16), hintText: 'بحث بالاسم أو ID أو الرقم الفائز', border: OutlineInputBorder(), hintStyle: TextStyle(fontSize: 11)),
+                      decoration: const InputDecoration(isDense: true, prefixIcon: Icon(Icons.search, size: 16), hintText: '   ID   Winner', border: OutlineInputBorder(), hintStyle: TextStyle(fontSize: 11)),
                       style: const TextStyle(fontSize: 12),
                       onChanged: (v)=> setState(()=> _historySearch=v),
                     )),
                   ]),
                   const SizedBox(height: 8),
                   SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
-                    OutlinedButton.icon(icon: const Icon(Icons.calendar_today, size: 14), label: Text(_historyDate==null ? 'كل التواريخ' : '${_historyDate!.year}/${_historyDate!.month.toString().padLeft(2,'0')}/${_historyDate!.day.toString().padLeft(2,'0')}', style: const TextStyle(fontSize: 11)), onPressed: () async {
+                    OutlinedButton.icon(icon: const Icon(Icons.calendar_today, size: 14), label: Text(_historyDate==null ? ' ' : '${_historyDate!.year}/${_historyDate!.month.toString().padLeft(2,'0')}/${_historyDate!.day.toString().padLeft(2,'0')}', style: const TextStyle(fontSize: 11)), onPressed: () async {
                       final picked = await showDatePicker(context: context, initialDate: _historyDate ?? DateTime.now(), firstDate: DateTime(2024), lastDate: DateTime(2030));
                       if(picked!=null) setState(()=> _historyDate=picked);
                     }),
@@ -457,14 +645,14 @@ class _AdminDrawScreenState extends State<AdminDrawScreen> with SingleTickerProv
                       IconButton(icon: const Icon(Icons.clear, size: 16), onPressed: ()=> setState(()=> _historyDate=null)),
                     ],
                     const SizedBox(width: 6),
-                    OutlinedButton.icon(icon: const Icon(Icons.today, size: 14), label: const Text('اليوم', style: TextStyle(fontSize: 11)), onPressed: ()=> setState(()=> _historyDate=DateTime.now())),
+                    OutlinedButton.icon(icon: const Icon(Icons.today, size: 14), label: const Text('Today', style: TextStyle(fontSize: 11)), onPressed: ()=> setState(()=> _historyDate=DateTime.now())),
                     const SizedBox(width: 6),
-                    OutlinedButton.icon(icon: const Icon(Icons.history, size: 14), label: const Text('أمس', style: TextStyle(fontSize: 11)), onPressed: ()=> setState(()=> _historyDate=DateTime.now().subtract(const Duration(days:1)))),
+                    OutlinedButton.icon(icon: const Icon(Icons.history, size: 14), label: const Text('Yesterday', style: TextStyle(fontSize: 11)), onPressed: ()=> setState(()=> _historyDate=DateTime.now().subtract(const Duration(days:1)))),
                   ])),
                 ]),
               ),
               const Divider(height: 1),
-              Expanded(child: _filteredHistory.isEmpty ? const Center(child: Text('لا يوجد سحوبات مطابقة للفلتر', style: TextStyle(color: Colors.black54))) : ListView.separated(
+              Expanded(child: _filteredHistory.isEmpty ? const Center(child: Text('    ', style: TextStyle(color: Colors.black54))) : ListView.separated(
                 padding: const EdgeInsets.all(12),
                 itemCount: _filteredHistory.length,
                 separatorBuilder: (_,__)=> const SizedBox(height: 8),
@@ -474,15 +662,35 @@ class _AdminDrawScreenState extends State<AdminDrawScreen> with SingleTickerProv
                   final hasWinner = win!=null && win.trim().isNotEmpty;
                   final dt = DateTime.fromMillisecondsSinceEpoch(d['drawTime'] as int);
                   final statusColor = hasWinner ? Colors.green : Colors.orange;
+                  // window check for history edit lock
+                  bool canEditHistory = true;
+                  try{
+                    final n = d['name'] as String; final isMid = n.contains('Midday')||n.contains('Morning');
+                    final tt = isMid? 'MIDDAY':'EVENING';
+                    final ds = '${dt.year}-${dt.month.toString().padLeft(2,'0')}-${dt.day.toString().padLeft(2,'0')}';
+                    final pidH = '$ds-$tt';
+                    final ph = _periodsCache.where((e)=> e['id']==pidH).firstOrNull;
+                    if(ph!=null && _winningRestricted){
+                      final now = DateTime.now().millisecondsSinceEpoch;
+                      final sc = ph['salesCloseTime'] as int; final dr = ph['drawTime'] as int;
+                      canEditHistory = now >= sc && now <= dr + 2*3600*1000;
+                      // if no winner yet and window closed, also cannot add
+                      if(!hasWinner && !canEditHistory) canEditHistory = false;
+                    }
+                  }catch(_){}
                   return Container(
                     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: statusColor.withValues(alpha:0.2))),
                     child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Row(children: [
-                        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: statusColor.withValues(alpha:0.1), borderRadius: BorderRadius.circular(20)), child: Text(hasWinner ? 'مُعلن' : 'معلق', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: statusColor))),
+                        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: statusColor.withValues(alpha:0.1), borderRadius: BorderRadius.circular(20)), child: Text(hasWinner ? 'Announced' : 'Pending', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: statusColor))),
                         const SizedBox(width: 6),
                         Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(20)), child: Text(d['gameId']=='g_winz'?'Win 4':'Numbers', style: const TextStyle(fontSize: 10))),
                         const Spacer(),
-                        Text('${dt.year}/${dt.month.toString().padLeft(2,'0')}/${dt.day.toString().padLeft(2,'0')} • ${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}', style: const TextStyle(fontSize: 10, color: Colors.black54)),
+                        Builder(builder: (_){
+                          int h=dt.hour; bool am=h<12; int h12=h%12; if(h12==0) h12=12;
+                          final t12='$h12:${dt.minute.toString().padLeft(2,'0')} ${am?'AM':'PM'}';
+                          return Text('${dt.year}/${dt.month.toString().padLeft(2,'0')}/${dt.day.toString().padLeft(2,'0')} • $t12', style: const TextStyle(fontSize: 10, color: Colors.black54));
+                        }),
                       ]),
                       const SizedBox(height: 6),
                       Text(d['name'], style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
@@ -491,14 +699,14 @@ class _AdminDrawScreenState extends State<AdminDrawScreen> with SingleTickerProv
                       const SizedBox(height: 6),
                       Row(children: [
                         Expanded(child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: hasWinner? Colors.green.shade50: Colors.grey.shade50, borderRadius: BorderRadius.circular(8)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          const Text('الرقم الفائز', style: TextStyle(fontSize: 10, color: Colors.black54)),
-                          Text(hasWinner ? win.replaceAll(',', ' ') : '— لم يُعلن بعد —', style: TextStyle(fontSize: hasWinner?16:12, fontWeight: hasWinner? FontWeight.w900: FontWeight.w500, letterSpacing: hasWinner?2:0, color: hasWinner? Colors.green.shade700: Colors.black45)),
+                          const Text(' Winner', style: TextStyle(fontSize: 10, color: Colors.black54)),
+                          Text(hasWinner ? win.replaceAll(',', ' ') : '—    —', style: TextStyle(fontSize: hasWinner?16:12, fontWeight: hasWinner? FontWeight.w900: FontWeight.w500, letterSpacing: hasWinner?2:0, color: hasWinner? Colors.green.shade700: Colors.black45)),
                         ]))),
                         const SizedBox(width: 8),
                         Column(children: [
-                          ElevatedButton.icon(icon: Icon(hasWinner? Icons.edit: Icons.add, size: 14), label: Text(hasWinner? 'تعديل':'إدخال', style: const TextStyle(fontSize: 11)), style: ElevatedButton.styleFrom(backgroundColor: hasWinner? Colors.orange: const Color(0xFF0B8A3E), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)), onPressed: ()=> _editWinnerForDraw(d)),
+                          ElevatedButton.icon(icon: Icon(canEditHistory? (hasWinner? Icons.edit: Icons.add): Icons.lock, size: 14), label: Text(hasWinner? (canEditHistory?'':'مغلق'): '', style: const TextStyle(fontSize: 11)), style: ElevatedButton.styleFrom(backgroundColor: canEditHistory? (hasWinner? Colors.orange: const Color(0xFF0B8A3E)): Colors.grey, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)), onPressed: canEditHistory? ()=> _editWinnerForDraw(d): null),
                           const SizedBox(height: 4),
-                          if(hasWinner) Text('Tap لتعديل', style: TextStyle(fontSize: 9, color: Colors.black45)),
+                          if(hasWinner) Text(canEditHistory? 'Tap ': 'مغلق', style: TextStyle(fontSize: 9, color: canEditHistory? Colors.black45: Colors.red)),
                         ]),
                       ]),
                     ])),

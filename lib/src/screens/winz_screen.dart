@@ -4,7 +4,10 @@ import 'package:provider/provider.dart';
 import '../data/database.dart';
 import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
+import '../utils/responsive.dart';
+import '../widgets/app_drawer.dart';
 import '../utils/format.dart';
+import 'barcode_scanner_screen.dart';
 
 class WinzScreen extends StatefulWidget {
   const WinzScreen({super.key});
@@ -19,7 +22,7 @@ class _WinzScreenState extends State<WinzScreen> {
   final _amountCtrl = TextEditingController(text: '0.50');
   String _digits = '';
   bool _loadingDraws = true;
-  final types = ['Straight', 'Box', 'Combo', 'All'];
+  final types = ['Straight', 'Box', 'ST/BOX', 'Combo'];
 
   bool get _isAllBet {
     final l = _winzType.toLowerCase();
@@ -34,17 +37,22 @@ class _WinzScreenState extends State<WinzScreen> {
   Widget _appBarDrawField(){
     if(_loadingDraws) return const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white));
     if(_draws.isEmpty) return const Text('No draws', style: TextStyle(color: Colors.white, fontSize: 13));
+    // قائمة منسدلة كبيرة وواضحة لكبار السن
     return Container(
-      height: 36,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+      height: 50,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppTheme.orange.withValues(alpha: 0.20)), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0,2))]),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: _drawId,
-          isDense: true,
-          icon: const Icon(Icons.arrow_drop_down, size: 18, color: AppTheme.orange),
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppTheme.orange),
-          items: _draws.map((d)=> DropdownMenuItem(value: d['id'] as String, child: Text(_drawLabel(d), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.orange)))).toList(),
+          isExpanded: true,
+          icon: const Icon(Icons.arrow_drop_down, size: 24, color: AppTheme.orange),
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AppTheme.orange),
+          items: _draws.map((d)=> DropdownMenuItem(value: d['id'] as String, child: Row(children: [
+            Container(padding: const EdgeInsets.all(5), decoration: BoxDecoration(color: AppTheme.orange.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(7)), child: Icon(d['name'].toString().contains('Evening')? Icons.nights_stay: Icons.wb_sunny, size: 14, color: AppTheme.orange)),
+            const SizedBox(width: 8),
+            Text(_drawLabel(d), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: AppTheme.orange)),
+          ]))).toList(),
           onChanged: (v)=> setState(()=> _drawId=v),
         ),
       ),
@@ -117,13 +125,22 @@ class _WinzScreenState extends State<WinzScreen> {
     if(amt==null){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid amount'))); return; }
     final low = _winzType.toLowerCase();
     final isCombo = low.contains('combo');
-    final isAll = low=='all' || (low.contains('straight') && low.contains('box'));
-    if(!isCombo && !isAll){
-      if(amt<0.5||amt>10){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Amount \$0.50 - \$10.00'))); return; }
+    final isAll = low=='all' || low=='st/box' || low=='stbox' || (low.contains('straight') && low.contains('box'));
+    final isBox = low=='box';
+    final allSame = _digits.split('').toSet().length==1;
+    if(allSame && (isBox || isAll || isCombo)){
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('الأرقام المتطابقة مثل $_digits مسموحة فقط في Straight'), backgroundColor: Colors.red));
+      return;
+    }
+    if(!isCombo && !isAll && !isBox){
+      if(amt<0.5||amt>10){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Amount \$0.50 - \$10.00 for Straight 4'))); return; }
+      if(((amt)*100).round()%50!=0){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Amount must be \$0.50 steps'))); return; }
+    } else if(isBox){
+      if(amt<0.5||amt>50){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Amount \$0.50 - \$50.00 for Box (limit per number per period \$50)'))); return; }
       if(((amt)*100).round()%50!=0){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Amount must be \$0.50 steps'))); return; }
     }
     if(isCombo){ final c=_combo(_digits.split('')); if(c<=1){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Combo not valid for $_digits'))); return;} if(amt < 0.5 - 1e-9){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Combo min \$0.50 per combo'))); return; } if(amt > 10 + 1e-9){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Combo max \$10 per combo'))); return; } if(((amt)*100).round()%50!=0){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Amount must be \$0.50 steps per combo'))); return; } }
-    if(isAll){ if(amt<0.5-1e-9){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('All min \$0.50'))); return;} if(amt>10+1e-9){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('All max \$10.00'))); return; } if(((amt)*100).round()%50!=0){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Amount must be \$0.50 steps'))); return; } }
+    if(isAll){ if(amt<0.5-1e-9){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('All min \$0.50'))); return;} if(amt>25+1e-9){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('All max \$25.00 (total \$50)'))); return; } if(((amt)*100).round()%50!=0){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Amount must be \$0.50 steps'))); return; } }
     final draw=_draws.firstWhere((d)=> d['id']==_drawId, orElse: ()=>{});
     try{
       double cartAmount = amt;
@@ -149,6 +166,105 @@ class _WinzScreenState extends State<WinzScreen> {
       await _load();
       Navigator.pushNamed(context, '/print', arguments: ticket);
     }catch(e){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red)); }
+  }
+
+  Future<String?> _askDrawChoiceForReplay() async {
+    return showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('متى تريد اللعب؟', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const Text('اختر فترة السحب للتذكرة المكررة:', style: TextStyle(fontSize: 11)),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(icon: const Icon(Icons.wb_sunny, size: 16, color: AppTheme.orange), label: const Text('صباحي  (Midday) — 14:30', style: TextStyle(fontSize: 12, color: AppTheme.orange)), onPressed: () => Navigator.pop(c, 'MIDDAY')),
+          const SizedBox(height: 6),
+          OutlinedButton.icon(icon: const Icon(Icons.nights_stay, size: 16, color: AppTheme.blue), label: const Text('مسائي  (Evening) — 22:30', style: TextStyle(fontSize: 12, color: AppTheme.blue)), onPressed: () => Navigator.pop(c, 'EVENING')),
+          const SizedBox(height: 6),
+          ElevatedButton.icon(icon: const Icon(Icons.copy_all, size: 16), label: const Text('الاثنين معا (Both) — نسختين', style: TextStyle(fontSize: 12)), style: ElevatedButton.styleFrom(backgroundColor: AppTheme.orange, foregroundColor: Colors.white), onPressed: () => Navigator.pop(c, 'BOTH')),
+        ]),
+        actions: [TextButton(onPressed: () => Navigator.pop(c, null), child: const Text('إلغاء'))],
+      ),
+    );
+  }
+
+  Future<void> _handleReplayCode(String code) async {
+    final app = context.read<AppState>();
+    final res = await app.validateTicket(code.trim());
+    if(!mounted) return;
+    if(res['found']==false){
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ticket not found: $code'), backgroundColor: Colors.red));
+      return;
+    }
+    final ticket = res['ticket'] as Map<String,dynamic>;
+    final lines = res['lines'] as List<Map<String,dynamic>>?;
+    await showDialog(context: context, builder: (ctx)=> AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      title: Text('Ticket ${ticket['id']} • ${ticket['serialNumber']}', style: const TextStyle(fontSize: 12)),
+      content: SizedBox(width: 400, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Status: ${ticket['status']} • Total: ${fmtMoney(ticket['total']??ticket['amount'])}', style: const TextStyle(fontSize: 11)),
+        const SizedBox(height: 8),
+        if(lines!=null && lines.isNotEmpty) for(int i=0;i<lines.length;i++) Padding(padding: const EdgeInsets.only(bottom:4), child: Row(children: [
+          Text('${i+1}.', style: const TextStyle(fontSize: 10)),
+          const SizedBox(width: 6),
+          Text((lines[i]['numbers'] as String).replaceAll(',', ' '), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
+          const SizedBox(width: 6),
+          Text(lines[i]['betType'], style: const TextStyle(fontSize: 9)),
+          const Spacer(),
+          Text(fmtMoney(lines[i]['amount']), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+        ]))
+        else Text('Numbers: ${(ticket['numbers'] as String).replaceAll(',', ' ')} • ${ticket['betType']}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: const Color(0xFFFFF3E0), borderRadius: BorderRadius.circular(8)), child: const Text('عند النسخ ستختار: صباحي / مسائي / الاثنين معا', style: TextStyle(fontSize: 9, color: Colors.black54))),
+      ])),
+      actions: [
+        TextButton(onPressed: ()=> Navigator.pop(ctx), child: const Text('Close')),
+        ElevatedButton.icon(icon: const Icon(Icons.copy, size: 14), label: const Text('نسخ — اختر الفترة', style: TextStyle(fontSize: 11)), style: ElevatedButton.styleFrom(backgroundColor: AppTheme.orange, foregroundColor: Colors.white), onPressed: () async {
+          Navigator.pop(ctx);
+          final choice = await _askDrawChoiceForReplay();
+          if(choice==null) return;
+          try{
+            final db = context.read<AppDatabase>();
+            final tt = await db.getTicketByBarcode(code.trim());
+            final tid = tt!=null ? tt['id'] as String : code.trim();
+            final count = await app.replayTicketToCartWithChoice(tid, choice);
+            if(!mounted) return;
+            final label = choice=='BOTH' ? 'الاثنين (×2)' : choice=='MIDDAY' ? 'صباحي' : 'مسائي';
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم النسخ $count لعبة → $label — اضغط SALE'), backgroundColor: AppTheme.orange));
+          }catch(e){
+            if(!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red));
+          }
+        }),
+      ],
+    ));
+  }
+
+  Future<void> _scanAndReplay() async {
+    try{
+      final code = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()));
+      if(code==null || code.isEmpty) return;
+      await _handleReplayCode(code.trim());
+    }catch(e){
+      if(!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red));
+    }
+  }
+
+  Future<void> _copyByTicketNumber() async {
+    final ctrl = TextEditingController();
+    final code = await showDialog<String>(context: context, builder: (c)=> AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      title: const Text('Search by Ticket Number', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Text('Enter Ticket ID or Serial — e.g. 000001', style: TextStyle(fontSize: 11)),
+        const SizedBox(height: 10),
+        TextField(controller: ctrl, autofocus: true, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: 'Ticket ID / Serial', isDense: true, prefixIcon: Icon(Icons.confirmation_number, size: 18)), onSubmitted: (v)=> Navigator.pop(c, v)),
+      ]),
+      actions: [TextButton(onPressed: ()=> Navigator.pop(c), child: const Text('Cancel')), ElevatedButton(onPressed: ()=> Navigator.pop(c, ctrl.text.trim()), child: const Text('Search'))],
+    ));
+    if(code==null || code.trim().isEmpty) return;
+    await _handleReplayCode(code.trim());
   }
 
   Widget _buildControlBar(){
@@ -217,10 +333,12 @@ class _WinzScreenState extends State<WinzScreen> {
     return Scaffold(
       backgroundColor: AppTheme.bg,
       resizeToAvoidBottomInset: false,
-      appBar: AppBar(title: _appBarDrawField(), centerTitle: true, actions: [
+      appBar: AppBar(toolbarHeight: 60, title: _appBarDrawField(), centerTitle: true, actions: [
+        IconButton(icon: const Icon(Icons.qr_code_scanner, size: 18), tooltip: 'مسح باركود', onPressed: _scanAndReplay),
+        IconButton(icon: const Icon(Icons.search, size: 18), tooltip: 'بحث برقم التذكرة', onPressed: _copyByTicketNumber),
         Consumer<AppState>(builder: (_, app, __)=> app.isCartEmpty? const SizedBox() : Padding(padding: const EdgeInsets.only(right:6), child: Center(child: Container(padding: const EdgeInsets.symmetric(horizontal:8, vertical:4), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)), child: Text('${app.cartCount} • ${fmtMoney(app.cartTotal)}', style: const TextStyle(color: AppTheme.orange, fontWeight: FontWeight.w800, fontSize: 11)))))),
-        IconButton(icon: const Icon(Icons.help_outline, size: 18), onPressed: ()=> Navigator.pushNamed(context,'/help')), IconButton(icon: const Icon(Icons.logout, size: 18), onPressed: ()=> _logout())]),
-      drawer: _drawer(),
+        IconButton(icon: const Icon(Icons.logout, size: 18), onPressed: ()=> _logout())]),
+      drawer: const AppDrawer(currentRoute: '/winz'),
       body: Center(child: ConstrainedBox(constraints: BoxConstraints(maxWidth: isTablet?760:double.infinity), child: Column(children: [
         Expanded(child: Consumer<AppState>(builder: (ctx, app, __){
           final cart = app.cart;

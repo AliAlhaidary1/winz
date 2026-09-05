@@ -12,7 +12,7 @@ class AppDatabase extends GeneratedDatabase {
   AppDatabase.forTesting(QueryExecutor e) : super(e);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 11;
 
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => const [];
@@ -41,7 +41,7 @@ class AppDatabase extends GeneratedDatabase {
             await customStatement("UPDATE app_config SET value='USD' WHERE key='currency'");
             await customStatement("UPDATE app_config SET value='en-US' WHERE key='language'");
             await customStatement("UPDATE app_config SET value='NY Lottery POS' WHERE key='company_name'");
-            await customStatement("UPDATE app_config SET value='Good luck! Please play responsibly.' WHERE key='ticket_footer'");
+            await customStatement("UPDATE app_config SET value='' WHERE key='ticket_footer'");
             await customStatement("UPDATE games SET minAmount=0.5, maxAmount=10, numberRangeMin=1, numberRangeMax=9, description='NY Lottery style: Pick 3/4 using keypad 1-9' WHERE id='g_numbers'");
             await customStatement("UPDATE games SET minAmount=1, maxAmount=20, numberRangeMin=1, numberRangeMax=9, description='NY Lottery style Winz' WHERE id='g_winz'");
           }
@@ -57,7 +57,7 @@ class AppDatabase extends GeneratedDatabase {
           }
           if (from < 5) {
             final now = DateTime.now().millisecondsSinceEpoch;
-            // NY Lottery الرسمي — Numbers (Pick3)
+            // NY Lottery  — Numbers (Pick3)
             await customStatement("UPDATE app_config SET value='500', updatedAt=$now WHERE key='straight_multiplier'");
             await customStatement("INSERT OR REPLACE INTO app_config (key, value, scope, updatedAt) VALUES ('numbers_straight', '500', 'local', $now)");
             await customStatement("INSERT OR REPLACE INTO app_config (key, value, scope, updatedAt) VALUES ('numbers_box_3way', '160', 'local', $now)");
@@ -78,7 +78,7 @@ class AppDatabase extends GeneratedDatabase {
           }
           if (from < 6) {
             final now = DateTime.now().millisecondsSinceEpoch;
-            // Fix 0-9 range and payouts — NY الرسمي 0-9
+            // Fix 0-9 range and payouts — NY  0-9
             await customStatement("UPDATE games SET numberRangeMin=0, numberRangeMax=9, minAmount=0.5, maxAmount=10, description='NY Lottery Pick 3 (0-9) — Straight/Box/Combo/StrBox/Pairs' WHERE id='g_numbers'");
             await customStatement("UPDATE games SET numberRangeMin=0, numberRangeMax=9, minAmount=0.5, maxAmount=10, description='NY Lottery Win 4 (0-9) — 4 digits Straight/Box/Combo' WHERE id='g_winz'");
             await customStatement("UPDATE app_config SET value='1200', updatedAt=$now WHERE key='win4_box_4way'");
@@ -133,6 +133,15 @@ class AppDatabase extends GeneratedDatabase {
                 timezone TEXT
               )
             ''');
+            // Dual winners: 3-digit and 4-digit (added in v10, but ensure for fresh v8 DB)
+            try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result3 TEXT'); } catch (_) {}
+            try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result3PublishedAt INTEGER'); } catch (_) {}
+            try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result3PublishedBy TEXT'); } catch (_) {}
+            try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result3Source TEXT'); } catch (_) {}
+            try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result4 TEXT'); } catch (_) {}
+            try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result4PublishedAt INTEGER'); } catch (_) {}
+            try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result4PublishedBy TEXT'); } catch (_) {}
+            try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result4Source TEXT'); } catch (_) {}
             await customStatement('CREATE INDEX IF NOT EXISTS idx_draw_periods_date ON draw_periods(drawDate)');
             await customStatement('CREATE INDEX IF NOT EXISTS idx_draw_periods_type ON draw_periods(drawType)');
             await customStatement('CREATE INDEX IF NOT EXISTS idx_draw_periods_status ON draw_periods(status)');
@@ -166,6 +175,27 @@ class AppDatabase extends GeneratedDatabase {
             await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('midday_result_mode', 'manual', 'local', $now)");
             await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('evening_result_mode', 'manual', 'local', $now)");
             await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('auto_open_next', '1', 'local', $now)");
+            await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('winning_time_restricted', '1', 'local', $now)");
+            try { await customStatement('ALTER TABLE accounts ADD COLUMN commission REAL DEFAULT 0'); } catch (_) {}
+            // Migrate roles: only admin and worker
+            await customStatement("UPDATE accounts SET role='worker' WHERE role IN ('agent','cashier','worker')");
+            await customStatement("UPDATE accounts SET commission=5.0 WHERE role='worker' AND (commission IS NULL OR commission=0)");
+          }
+          if (from < 10) {
+            try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result3 TEXT'); } catch (_) {}
+            try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result3PublishedAt INTEGER'); } catch (_) {}
+            try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result3PublishedBy TEXT'); } catch (_) {}
+            try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result3Source TEXT'); } catch (_) {}
+            try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result4 TEXT'); } catch (_) {}
+            try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result4PublishedAt INTEGER'); } catch (_) {}
+            try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result4PublishedBy TEXT'); } catch (_) {}
+            try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result4Source TEXT'); } catch (_) {}
+          }
+          if (from < 11) {
+            final now = DateTime.now().millisecondsSinceEpoch;
+            await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('backup_enabled', '1', 'local', $now)");
+            await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('backup_interval', 'daily', 'local', $now)");
+            await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('backup_retention', '10', 'local', $now)");
           }
         },
         beforeOpen: (details) async {
@@ -188,9 +218,46 @@ class AppDatabase extends GeneratedDatabase {
           await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('win4_box_6way', '800', 'local', $now)");
           await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('win4_box_12way', '400', 'local', $now)");
           await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('win4_box_24way', '200', 'local', $now)");
+          await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('winning_time_restricted', '1', 'local', $now)");
+          await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('limit_straight_3', '100', 'local', $now)");
+          await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('limit_straight_4', '10', 'local', $now)");
+          await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('limit_box_3', '50', 'local', $now)");
+          await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('limit_box_4', '50', 'local', $now)");
+          await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('limit_combo_3', '100', 'local', $now)");
+          await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('limit_combo_4', '10', 'local', $now)");
+          await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('limit_strbox_3', '50', 'local', $now)");
+          await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('limit_strbox_4', '50', 'local', $now)");
           // Ensure 0-9 and 1200 fix on every open (for existing installs)
           await customStatement("UPDATE games SET numberRangeMin=0, numberRangeMax=9 WHERE id IN ('g_numbers','g_winz')");
           await customStatement("UPDATE app_config SET value='1200' WHERE key='win4_box_4way' AND value='1198'");
+          // Clear ticket footer per user request — remove "Good luck..." message
+          await customStatement("UPDATE app_config SET value='' WHERE key='ticket_footer' AND value='Good luck! Please play responsibly.'");
+          await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('ticket_footer', '', 'local', $now)");
+          // Ensure dual winner columns exist for v10
+          try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result3 TEXT'); } catch (_) {}
+          try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result3PublishedAt INTEGER'); } catch (_) {}
+          try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result3PublishedBy TEXT'); } catch (_) {}
+          try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result3Source TEXT'); } catch (_) {}
+          try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result4 TEXT'); } catch (_) {}
+          try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result4PublishedAt INTEGER'); } catch (_) {}
+          try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result4PublishedBy TEXT'); } catch (_) {}
+          try { await customStatement('ALTER TABLE draw_periods ADD COLUMN result4Source TEXT'); } catch (_) {}
+          // Migrate legacy single result into result3/result4 if applicable (heuristic: length)
+          try {
+            final legacy = await customSelect("SELECT id, result FROM draw_periods WHERE result IS NOT NULL AND result != '' AND (result3 IS NULL OR result3='') AND (result4 IS NULL OR result4='')").get();
+            for (final r in legacy) {
+              final res = (r.data['result'] as String).trim();
+              if (res.length == 3) {
+                await customStatement("UPDATE draw_periods SET result3 = ? WHERE id = ?", [res, r.data['id']]);
+              } else if (res.length == 4) {
+                await customStatement("UPDATE draw_periods SET result4 = ? WHERE id = ?", [res, r.data['id']]);
+              }
+            }
+          } catch (_) {}
+          // Ensure backup defaults (v11)
+          await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('backup_enabled', '1', 'local', $now)");
+          await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('backup_interval', 'daily', 'local', $now)");
+          await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('backup_retention', '10', 'local', $now)");
         },
       );
 
@@ -208,7 +275,15 @@ class AppDatabase extends GeneratedDatabase {
         resultPublishedAt INTEGER,
         publishedBy TEXT,
         resultSource TEXT,
-        timezone TEXT
+        timezone TEXT,
+        result3 TEXT,
+        result3PublishedAt INTEGER,
+        result3PublishedBy TEXT,
+        result3Source TEXT,
+        result4 TEXT,
+        result4PublishedAt INTEGER,
+        result4PublishedBy TEXT,
+        result4Source TEXT
       )
     ''');
     await exec('CREATE INDEX IF NOT EXISTS idx_draw_periods_date ON draw_periods(drawDate)');
@@ -254,7 +329,8 @@ class AppDatabase extends GeneratedDatabase {
         password TEXT NOT NULL,
         role TEXT NOT NULL,
         status TEXT NOT NULL,
-        createdAt INTEGER NOT NULL
+        createdAt INTEGER NOT NULL,
+        commission REAL DEFAULT 0
       )
     ''');
     await exec('''
@@ -352,18 +428,18 @@ class AppDatabase extends GeneratedDatabase {
 
   Future<void> _seedIfEmpty() async {
     final now = DateTime.now().millisecondsSinceEpoch;
-    // تأكد أن الحسابات موجودة دائماً — حتى بعد التحديث (نسخ مطابق NY)
+    try { await customStatement('ALTER TABLE accounts ADD COLUMN commission REAL DEFAULT 0'); } catch (_) {}
+    await customStatement("UPDATE accounts SET role='worker' WHERE role IN ('agent','cashier')");
     await customStatement(
-        "INSERT OR IGNORE INTO accounts (id, username, password, role, status, createdAt) VALUES ('acc_admin', 'admin', 'admin123', 'admin', 'active', $now)");
+        "INSERT OR IGNORE INTO accounts (id, username, password, role, status, createdAt, commission) VALUES ('acc_admin', 'admin', 'admin123', 'admin', 'active', $now, 0)");
     await customStatement(
-        "INSERT OR IGNORE INTO accounts (id, username, password, role, status, createdAt) VALUES ('acc_agent1', 'agent1', 'agent123', 'agent', 'active', $now)");
-    await customStatement(
-        "INSERT OR IGNORE INTO accounts (id, username, password, role, status, createdAt) VALUES ('acc_cashier', 'cashier', 'cashier123', 'cashier', 'active', $now)");
-    // إصلاح كلمات مرور قديمة لو تغيرت
-    await customStatement("UPDATE accounts SET password='admin123', status='active' WHERE username='admin'");
-    await customStatement("UPDATE accounts SET password='agent123', status='active' WHERE username='agent1'");
-    await customStatement("UPDATE accounts SET password='cashier123', status='active' WHERE username='cashier'");
-    // إصلاح فوري للأجهزة القديمة: 0-9
+        "INSERT OR IGNORE INTO accounts (id, username, password, role, status, createdAt, commission) VALUES ('acc_worker1', 'worker1', 'worker123', 'worker', 'active', $now, 5.0)");
+    await customStatement("UPDATE accounts SET password='admin123', status='active', role='admin' WHERE username='admin'");
+    await customStatement("UPDATE accounts SET password='worker123', status='active', role='worker' WHERE username='worker1'");
+    // Keep legacy agent1 for backward compat but as worker
+    await customStatement("UPDATE accounts SET role='worker', commission=COALESCE(commission,5.0) WHERE username='agent1'");
+    await customStatement("UPDATE accounts SET role='worker' WHERE username='cashier'");
+    //    : 0-9
     await customStatement("UPDATE games SET numberRangeMin=0, numberRangeMax=9, description='NY Lottery Pick 3 (0-9) — Straight/Box/Combo/StrBox/Pairs' WHERE id='g_numbers' AND numberRangeMin!=0");
     await customStatement("UPDATE games SET numberRangeMin=0, numberRangeMax=9, description='NY Lottery Win 4 (0-9) — 4 digits Straight/Box/Combo' WHERE id='g_winz' AND numberRangeMin!=0");
     final games = await customSelect('SELECT COUNT(*) as c FROM games').getSingle();
@@ -441,6 +517,20 @@ class AppDatabase extends GeneratedDatabase {
     await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('midday_result_mode', 'manual', 'local', $nowCfg)");
     await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('evening_result_mode', 'manual', 'local', $nowCfg)");
     await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('auto_open_next', '1', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('winning_time_restricted', '1', 'local', $nowCfg)");
+    // Per-number per-period limits (risk control) — user request: Straight4=10, Straight3=100, Box4=50
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('limit_straight_3', '100', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('limit_straight_4', '10', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('limit_box_3', '50', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('limit_box_4', '50', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('limit_combo_3', '100', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('limit_combo_4', '10', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('limit_strbox_3', '50', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('limit_strbox_4', '50', 'local', $nowCfg)");
+    // Backup defaults (v11)
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('backup_enabled', '1', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('backup_interval', 'daily', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('backup_retention', '10', 'local', $nowCfg)");
 
     final configs = await customSelect('SELECT COUNT(*) as c FROM app_config').getSingle();
     if ((configs.data['c'] as int) == 0) {
@@ -454,7 +544,7 @@ class AppDatabase extends GeneratedDatabase {
       await customStatement(
           "INSERT INTO app_config (key, value, scope, updatedAt) VALUES ('language', 'en-US', 'local', $now)");
       await customStatement(
-          "INSERT INTO app_config (key, value, scope, updatedAt) VALUES ('ticket_footer', 'Good luck! Please play responsibly.', 'local', $now)");
+          "INSERT INTO app_config (key, value, scope, updatedAt) VALUES ('ticket_footer', '', 'local', $now)");
       await customStatement(
           "INSERT INTO app_config (key, value, scope, updatedAt) VALUES ('company_name', 'NY Lottery POS', 'server', $now)");
       await customStatement(
@@ -499,10 +589,34 @@ class AppDatabase extends GeneratedDatabase {
   Future<void> seedDrawPeriods() async => _seedDrawPeriods();
   Future<void> refreshPeriodStatuses() async {
     try {
+      // إعادة حساب الحالة مع السماح بإعادة الفتح إذا مُدد وقت الإغلاق لليوم نفسه
       final nowMs = DateTime.now().millisecondsSinceEpoch;
-      await customStatement("UPDATE draw_periods SET status='OPEN' WHERE status='SCHEDULED' AND salesOpenTime <= $nowMs AND salesCloseTime > $nowMs");
-      await customStatement("UPDATE draw_periods SET status='SALES_CLOSED' WHERE status='OPEN' AND salesCloseTime <= $nowMs AND drawTime > $nowMs");
-      await customStatement("UPDATE draw_periods SET status='RESULT_PENDING' WHERE status IN ('SALES_CLOSED','DRAWING') AND drawTime <= $nowMs AND (result IS NULL OR result='')");
+      final periods = await getAllPeriods();
+      for(final p in periods){
+        final status = p['status'] as String;
+        if(status=='CANCELLED' || status=='POSTPONED' || status=='SUSPENDED') continue;
+        final r = p['result'] as String?; final r3 = p['result3'] as String?; final r4 = p['result4'] as String?;
+        final hasResult = (r!=null&&r.isNotEmpty) || (r3!=null&&r3.isNotEmpty) || (r4!=null&&r4.isNotEmpty);
+        if(hasResult){
+          if(status=='RESULT_PENDING' || status=='SALES_CLOSED' || status=='OPEN' || status=='SCHEDULED' || status=='DRAWING'){
+            await customStatement("UPDATE draw_periods SET status='RESULT_PUBLISHED' WHERE id=?", [p['id']]);
+          } else if(status=='RESULT_PUBLISHED'){
+            await customStatement("UPDATE draw_periods SET status='COMPLETED' WHERE id=?", [p['id']]);
+          }
+          continue;
+        }
+        final salesOpen = p['salesOpenTime'] as int;
+        final salesClose = p['salesCloseTime'] as int;
+        final drawTime = p['drawTime'] as int;
+        String desired;
+        if(nowMs < salesOpen) desired='SCHEDULED';
+        else if(nowMs < salesClose) desired='OPEN';
+        else if(nowMs < drawTime) desired='SALES_CLOSED';
+        else desired='RESULT_PENDING';
+        if(desired != status){
+          await customStatement("UPDATE draw_periods SET status=? WHERE id=?", [desired, p['id']]);
+        }
+      }
     } catch (_) {}
   }
   Future<void> ensurePeriodExists(String periodId) async {
@@ -599,11 +713,8 @@ class AppDatabase extends GeneratedDatabase {
           }
         }
       }
-      // Auto-open logic: ensure statuses reflect time
-      final nowMs = DateTime.now().millisecondsSinceEpoch;
-      await customStatement("UPDATE draw_periods SET status='OPEN' WHERE status='SCHEDULED' AND salesOpenTime <= $nowMs AND salesCloseTime > $nowMs");
-      await customStatement("UPDATE draw_periods SET status='SALES_CLOSED' WHERE status='OPEN' AND salesCloseTime <= $nowMs AND drawTime > $nowMs");
-      await customStatement("UPDATE draw_periods SET status='RESULT_PENDING' WHERE status IN ('SALES_CLOSED','DRAWING') AND drawTime <= $nowMs AND (result IS NULL OR result='')");
+      // Auto-open logic: ensure statuses reflect time (مع السماح بإعادة الفتح لليوم نفسه)
+      await refreshPeriodStatuses();
     } catch (_) {}
   }
 
@@ -690,6 +801,18 @@ class AppDatabase extends GeneratedDatabase {
     return rows.map((r) => r.data).toList();
   }
 
+  Future<List<Map<String, dynamic>>> getTicketLinesByPeriod(String periodId) async {
+    final rows = await customSelect('SELECT * FROM ticket_lines WHERE periodId = ?',
+        variables: [Variable.withString(periodId)]).get();
+    return rows.map((r) => r.data).toList();
+  }
+
+  Future<double> sumTicketLinesAmountByPeriod(String periodId) async {
+    final row = await customSelect('SELECT COALESCE(SUM(amount),0) as s FROM ticket_lines WHERE periodId = ?',
+        variables: [Variable.withString(periodId)]).getSingle();
+    return (row.data['s'] as num).toDouble();
+  }
+
   // Insert ticket with its lines in a single helper
   Future<void> insertTicketWithLines(Map<String, dynamic> ticket, List<Map<String, dynamic>> lines) async {
     await insertTicket(ticket);
@@ -722,6 +845,41 @@ class AppDatabase extends GeneratedDatabase {
   Future<void> updateTicketStatus(String id, String status, {double? prizeAmount, int? paidAt, String? paidBy}) async {
     await customStatement('UPDATE tickets SET status = ?, prizeAmount = COALESCE(?, prizeAmount), paidAt = COALESCE(?, paidAt), paidBy = COALESCE(?, paidBy) WHERE id = ?',
         [status, prizeAmount, paidAt, paidBy, id]);
+  }
+
+  // Partial void: cancel a single line inside a multi-play ticket
+  Future<Map<String, dynamic>?> getTicketLineById(String id) async {
+    final rows = await customSelect('SELECT * FROM ticket_lines WHERE id = ? LIMIT 1', variables: [Variable.withString(id)]).get();
+    if (rows.isEmpty) return null;
+    return rows.first.data;
+  }
+
+  Future<void> voidTicketLine(String lineId) async {
+    await customStatement("UPDATE ticket_lines SET periodStatus='cancelled', winningStatus='void', prizeAmount=0 WHERE id = ?", [lineId]);
+  }
+
+  Future<void> recalcTicketTotals(String ticketId) async {
+    final rows = await customSelect("SELECT COALESCE(SUM(amount),0) as s, COUNT(*) as c FROM ticket_lines WHERE ticketId = ? AND periodStatus != 'cancelled'", variables: [Variable.withString(ticketId)]).getSingle();
+    final sum = (rows.data['s'] as num).toDouble();
+    final cnt = (rows.data['c'] as int);
+    if (cnt == 0) {
+      await customStatement("UPDATE tickets SET total=0, amount=0, status='cancelled' WHERE id = ?", [ticketId]);
+    } else {
+      // rebuild header numbers/betType for display
+      final lines = await customSelect("SELECT numbers, betType FROM ticket_lines WHERE ticketId = ? AND periodStatus != 'cancelled' ORDER BY rowid", variables: [Variable.withString(ticketId)]).get();
+      String headerNums;
+      String headerBet;
+      if (lines.length == 1) {
+        headerNums = lines.first.data['numbers'] as String;
+        headerBet = lines.first.data['betType'] as String;
+      } else {
+        headerNums = lines.map((r) => r.data['numbers'] as String).join(';');
+        headerBet = 'Multi';
+      }
+      await customStatement("UPDATE tickets SET total=?, amount=?, numbers=?, betType=? WHERE id = ?", [sum, sum, headerNums, headerBet, ticketId]);
+      // if ticket was cancelled but now has active lines? keep active
+      await customStatement("UPDATE tickets SET status='active' WHERE id = ? AND status='cancelled'", [ticketId]);
+    }
   }
 
   Future<void> insertCashLedger(Map<String, dynamic> e) async {
@@ -780,6 +938,38 @@ class AppDatabase extends GeneratedDatabase {
     await customStatement(
         'INSERT OR REPLACE INTO app_config (key, value, scope, updatedAt) VALUES (?, ?, ?, ?)',
         [key, value, scope, now]);
+  }
+
+  Future<String> nextTicketId() async {
+    // Sequential numeric ticket IDs: 000001, 000002, ...
+    final row = await customSelect("SELECT value FROM app_config WHERE key='ticket_seq' LIMIT 1").get();
+    int seq = 0;
+    if(row.isNotEmpty){
+      seq = int.tryParse(row.first.data['value'] as String? ?? '0') ?? 0;
+    } else {
+      // Fallback: try max numeric id from tickets
+      try{
+        final maxRow = await customSelect("SELECT MAX(CAST(id AS INTEGER)) as m FROM tickets WHERE id GLOB '[0-9]*'").getSingle();
+        final m = maxRow.data['m'];
+        if(m != null) seq = (m as num).toInt();
+      }catch(_){}
+    }
+    seq += 1;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await customStatement("INSERT OR REPLACE INTO app_config (key, value, scope, updatedAt) VALUES ('ticket_seq', ?, 'local', ?)", [seq.toString(), now]);
+    return seq.toString().padLeft(6, '0');
+  }
+
+  Future<String> nextSerialNumber() async {
+    final row = await customSelect("SELECT value FROM app_config WHERE key='serial_seq' LIMIT 1").get();
+    int seq = 0;
+    if(row.isNotEmpty){
+      seq = int.tryParse(row.first.data['value'] as String? ?? '0') ?? 0;
+    }
+    seq += 1;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await customStatement("INSERT OR REPLACE INTO app_config (key, value, scope, updatedAt) VALUES ('serial_seq', ?, 'local', ?)", [seq.toString(), now]);
+    return seq.toString().padLeft(8, '0');
   }
 
   Future<double> sumCash(String direction, {String? type, String? operatorId}) async {
@@ -857,6 +1047,25 @@ class AppDatabase extends GeneratedDatabase {
     await customStatement('UPDATE draw_periods SET result = ?, resultPublishedAt = ?, publishedBy = ?, resultSource = ?, status = ? WHERE id = ?',
         [result, publishedAt, publishedBy, source, 'RESULT_PUBLISHED', id]);
     // Also set to COMPLETED after? Keep RESULT_PUBLISHED for immediate, service will transition to COMPLETED
+  }
+
+  // Dual winners: separate 3-digit and 4-digit results
+  Future<void> publishPeriodResult3(String id, String result, int publishedAt, String publishedBy, String source) async {
+    await customStatement('UPDATE draw_periods SET result3 = ?, result3PublishedAt = ?, result3PublishedBy = ?, result3Source = ?, result = COALESCE(result, ?), status = ? WHERE id = ?',
+        [result, publishedAt, publishedBy, source, result, 'RESULT_PUBLISHED', id]);
+  }
+
+  Future<void> publishPeriodResult4(String id, String result, int publishedAt, String publishedBy, String source) async {
+    await customStatement('UPDATE draw_periods SET result4 = ?, result4PublishedAt = ?, result4PublishedBy = ?, result4Source = ?, result = COALESCE(result, ?), status = ? WHERE id = ?',
+        [result, publishedAt, publishedBy, source, result, 'RESULT_PUBLISHED', id]);
+  }
+
+  Future<void> clearPeriodResult3(String id) async {
+    await customStatement("UPDATE draw_periods SET result3 = NULL, result3PublishedAt = NULL, result3PublishedBy = NULL, result3Source = NULL WHERE id = ?", [id]);
+  }
+
+  Future<void> clearPeriodResult4(String id) async {
+    await customStatement("UPDATE draw_periods SET result4 = NULL, result4PublishedAt = NULL, result4PublishedBy = NULL, result4Source = NULL WHERE id = ?", [id]);
   }
 
   Future<void> resetPeriodTickets(String periodId) async {

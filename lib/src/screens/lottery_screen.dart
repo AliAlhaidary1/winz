@@ -11,9 +11,9 @@ class LotteryScreen extends StatelessWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           const Text('Choose a game', style: TextStyle(color: Colors.black54)),
           const SizedBox(height: 16),
-          _gameCard(context, title: 'Numbers', subtitle: 'Pick 3 / Pick 4 — keypad 0-9', icon: Icons.grid_on, color: Colors.indigo, route: '/numbers', details: r'Straight / Box / Combo / StrBox / Pairs • $0.50 - $10.00 • Midday 2:30 / Evening 10:30'),
+          _gameCard(context, title: 'Numbers', subtitle: 'Pick 3 / Pick 4 — keypad 0-9', icon: Icons.grid_on, color: Colors.indigo, route: '/numbers', details: r'Numbers unified: 3-Digit & 4-Digit • Straight/Box/Combo/ST/BOX/Pairs • $0.50 - $10.00 • Midday 2:30 / Evening 10:30'),
           const SizedBox(height: 12),
-          _gameCard(context, title: 'Win 4', subtitle: 'Pick 4 — 4 digits 0-9', icon: Icons.emoji_events, color: Colors.orange, route: '/winz', details: r'4 digits • Straight/Box/Combo • $0.50 - $10.00 • Midday/Evening'),
+          // Win 4 مدمج داخل Numbers (3D/4D) — تم إلغاء الصفحة المنفصلة
         ]),
       ),
     );

@@ -194,8 +194,13 @@ class DrawPeriodService {
             'timezone': tz,
           });
         } else {
-          // Update times if config changed and status still scheduled/open
-          if (existing['status'] == DrawStatus.scheduled || existing['status'] == DrawStatus.open) {
+          // إذا غيّر الوقت وقد كان مغلقاً — أعد فتحه من اليوم نفسه كما طلب العميل
+          final hasResult = (existing['result3'] != null && (existing['result3'] as String).isNotEmpty) || (existing['result4'] != null && (existing['result4'] as String).isNotEmpty) || (existing['result'] != null && (existing['result'] as String).isNotEmpty);
+          final isTodayOrFuture = dateStr.compareTo('${now.year}-${now.month.toString().padLeft(2,'0')}-${now.day.toString().padLeft(2,'0')}') >= 0;
+          // حدّث الوقت دائماً إذا لم يُنشر فائز بعد ويوم اليوم أو بعده — يعيد فتح الفترة المغلقة
+          if (!hasResult && isTodayOrFuture) {
+            await db.updatePeriodTimes(id, salesOpenEpoch, salesCloseEpoch, drawEpoch);
+          } else if (existing['status'] == DrawStatus.scheduled || existing['status'] == DrawStatus.open) {
             await db.updatePeriodTimes(id, salesOpenEpoch, salesCloseEpoch, drawEpoch);
           }
         }
@@ -210,43 +215,44 @@ class DrawPeriodService {
     final periods = await db.getAllPeriods();
     for (final p in periods) {
       final status = p['status'] as String;
+      final salesOpen = p['salesOpenTime'] as int;
       final salesClose = p['salesCloseTime'] as int;
       final drawTime = p['drawTime'] as int;
       final result = p['result'] as String?;
-      String? newStatus;
+      final r3 = p['result3'] as String?;
+      final r4 = p['result4'] as String?;
+      final hasResult = (result != null && result.isNotEmpty) || (r3 != null && r3.isNotEmpty) || (r4 != null && r4.isNotEmpty);
       if (status == DrawStatus.cancelled || status == DrawStatus.postponed || status == DrawStatus.suspended) {
         continue;
       }
-      if (status == DrawStatus.scheduled && now >= (p['salesOpenTime'] as int)) {
-        newStatus = DrawStatus.open;
-      }
-      // If custom: check transitions
-      if (status == DrawStatus.open && now >= (salesClose)) {
-        newStatus = DrawStatus.salesClosed;
-      }
-      if ((status == DrawStatus.salesClosed || status == DrawStatus.open) && now >= (drawTime)) {
-        // Move to drawing then result pending
-        if (status == DrawStatus.salesClosed) {
-          newStatus = DrawStatus.drawing;
-        } else if (status == DrawStatus.open) {
-          // Sales should have closed first, but if missed, jump to salesClosed first
-          newStatus = DrawStatus.salesClosed;
+      // إذا يوجد فائز بالفعل — لا تعيد فتحه، فقط ترقية إلى منشور/مكتمل
+      if (hasResult) {
+        if (status == DrawStatus.resultPending || status == DrawStatus.salesClosed || status == DrawStatus.open || status == DrawStatus.scheduled || status == DrawStatus.drawing) {
+          await db.updatePeriodStatus(p['id'] as String, DrawStatus.resultPublished);
+        } else if (status == DrawStatus.resultPublished) {
+          await db.updatePeriodStatus(p['id'] as String, DrawStatus.completed);
         }
+        continue;
       }
-      if (status == DrawStatus.drawing) {
-        newStatus = DrawStatus.resultPending;
+      // بدون فائز — احسب الحالة المطلوبة من الوقت (يسمح بإعادة الفتح كما طلب العميل)
+      String desired;
+      if (now < salesOpen) {
+        desired = DrawStatus.scheduled;
+      } else if (now < salesClose) {
+        desired = DrawStatus.open;
+      } else if (now < drawTime) {
+        desired = DrawStatus.salesClosed;
+      } else {
+        desired = DrawStatus.resultPending;
       }
-      if (status == DrawStatus.resultPublished) {
-        // After published, move to completed automatically
-        newStatus = DrawStatus.completed;
+      // ترقية تدريجية عبر drawing إذا لزم الأمر
+      if (desired == DrawStatus.resultPending && status == DrawStatus.salesClosed) {
+        // سيمر عبر drawing أولاً لكن نسمح بالقفز مباشرة
+        desired = DrawStatus.resultPending;
       }
-      if (newStatus != null && newStatus != status) {
-        await db.updatePeriodStatus(p['id'] as String, newStatus);
-      }
-      // Also handle resultPublished -> completed delay? We'll keep immediate for now
-      if (result != null && result.toString().isNotEmpty && status == DrawStatus.resultPending) {
-        // Already has result but status still pending -> promote
-        await db.updatePeriodStatus(p['id'] as String, DrawStatus.resultPublished);
+      if (desired != status) {
+        // السماح بإعادة الفتح: SALES_CLOSED/RESULT_PENDING → OPEN إذا الوقت عاد قبل salesClose
+        await db.updatePeriodStatus(p['id'] as String, desired);
       }
     }
   }
@@ -356,6 +362,51 @@ class DrawPeriodService {
     await _audit(isCorrection ? 'RESULT_CORRECTED' : 'RESULT_PUBLISHED', periodId, existing, winningNumber, user: publishedBy);
     // Also update legacy draws for backward compat (if any draw matches period)
     await _syncLegacyDraws(periodId, winningNumber);
+  }
+
+  // --- Dual winners (3-digit & 4-digit) ---
+  Future<void> publishResult3({
+    required String periodId,
+    required String winningNumber,
+    required String publishedBy,
+    String resultSource = 'manual',
+    bool isCorrection = false,
+  }) async {
+    final p = await db.getPeriodById(periodId);
+    if (p == null) throw Exception('Period not found: $periodId');
+    if (p['status'] == DrawStatus.cancelled) throw Exception('Cannot publish result for cancelled period');
+    final digits = winningNumber.trim().replaceAll(',', '').replaceAll(' ', '');
+    if (!RegExp(r'^[0-9]{3}$').hasMatch(digits)) throw Exception('Result3 must be exactly 3 digits (0-9)');
+    final existing = p['result3'] as String?;
+    if (existing != null && existing.isNotEmpty && !isCorrection) {
+      throw Exception('Result 3-digit already published for $periodId: $existing — use correction');
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.publishPeriodResult3(periodId, digits, now, publishedBy, resultSource);
+    await _audit(isCorrection ? 'RESULT3_CORRECTED' : 'RESULT3_PUBLISHED', periodId, existing, digits, user: publishedBy);
+    await _syncLegacyDraws(periodId, digits);
+  }
+
+  Future<void> publishResult4({
+    required String periodId,
+    required String winningNumber,
+    required String publishedBy,
+    String resultSource = 'manual',
+    bool isCorrection = false,
+  }) async {
+    final p = await db.getPeriodById(periodId);
+    if (p == null) throw Exception('Period not found: $periodId');
+    if (p['status'] == DrawStatus.cancelled) throw Exception('Cannot publish result for cancelled period');
+    final digits = winningNumber.trim().replaceAll(',', '').replaceAll(' ', '');
+    if (!RegExp(r'^[0-9]{4}$').hasMatch(digits)) throw Exception('Result4 must be exactly 4 digits (0-9)');
+    final existing = p['result4'] as String?;
+    if (existing != null && existing.isNotEmpty && !isCorrection) {
+      throw Exception('Result 4-digit already published for $periodId: $existing — use correction');
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.publishPeriodResult4(periodId, digits, now, publishedBy, resultSource);
+    await _audit(isCorrection ? 'RESULT4_CORRECTED' : 'RESULT4_PUBLISHED', periodId, existing, digits, user: publishedBy);
+    await _syncLegacyDraws(periodId, digits);
   }
 
   Future<void> _syncLegacyDraws(String periodId, String winningNumber) async {

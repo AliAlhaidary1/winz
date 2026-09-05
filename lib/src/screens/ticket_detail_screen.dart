@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/responsive.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -29,6 +30,11 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     if (mounted) setState((){ _ticket = fresh ?? _ticket; _lines = lines; _loading=false; });
   }
 
+  String _dispBet(String raw){
+    final n = raw.trim().toLowerCase().replaceAll('-', '/').replaceAll('_', '/').replaceAll(' ', '');
+    if(n=='all' || n=='all/box' || n=='all/straight' || n=='straightbox' || n=='str/box' || n=='strbox' || n=='st/box' || n=='stbox' || (n.contains('straight') && n.contains('box'))) return 'ST/BOX';
+    return raw;
+  }
   String _period(String? name){
     if(name==null) return '-';
     if(name.contains('Morning') || name.contains('Midday')) return 'Morning';
@@ -48,28 +54,100 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
 
   Future<void> _cancel() async {
     if (_ticket!['status'] != 'active') return;
-    final ok = await showDialog<bool>(context: context, builder: (c)=> AlertDialog(title: const Text('Cancel Ticket'), content: const Text('Cancel this ticket? This will cancel the whole invoice (all plays).'), actions: [TextButton(onPressed: ()=> Navigator.pop(c,false), child: const Text('Keep')), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.red), onPressed: ()=> Navigator.pop(c,true), child: const Text('Cancel Ticket'))]));
+    final isMulti = _lines.length > 1;
+    final ok = await showDialog<bool>(context: context, builder: (c)=> AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      title: Text(isMulti ? 'إلغاء الفاتورة كاملة؟' : 'إلغاء التذكرة؟'),
+      content: Text(isMulti
+          ? 'هذه الفاتورة فيها ${_lines.length} ألعاب. هل تريد إلغاء كل الألعاب المتبقية؟\nيمكنك أيضاً إلغاء لعبة واحدة فقط بالضغط على زر الحذف بجانب كل رقم.'
+          : 'هل تريد إلغاء هذه التذكرة واسترداد المبلغ؟'),
+      actions: [TextButton(onPressed: ()=> Navigator.pop(c,false), child: const Text('إبقاء')), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.red), onPressed: ()=> Navigator.pop(c,true), child: Text(isMulti ? 'إلغاء الكل (${_lines.where((e)=> (e['periodStatus'] as String?)!='cancelled').length} Plays)' : 'إلغاء التذكرة'))]));
     if(ok!=true) return;
-    final db = context.read<AppDatabase>();
-    await db.updateTicketStatus(_ticket!['id'], 'cancelled');
-    await _refresh();
-    if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ticket cancelled')));
+    try {
+      final refund = await context.read<AppState>().cancelWholeTicket(_ticket!['id'] as String);
+      await _refresh();
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم إلغاء الفاتورة — استرداد ${fmtMoney(refund)}'), backgroundColor: Colors.orange));
+    } catch(e){
+      // fallback legacy: direct cancel if no active lines
+      try {
+        final db = context.read<AppDatabase>();
+        await db.updateTicketStatus(_ticket!['id'], 'cancelled');
+        await _refresh();
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: Colors.red));
+      } catch(_){
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  Future<void> _cancelLine(Map<String,dynamic> line) async {
+    final isVoided = (line['periodStatus'] as String?) == 'cancelled' || (line['winningStatus'] as String?) == 'void';
+    if(isVoided) return;
+    if(_ticket!['status'] != 'active') {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Only active tickets can be voided'), backgroundColor: Colors.red));
+      return;
+    }
+    final numbers = (line['numbers'] as String).replaceAll(',', ' ');
+    final bet = line['betType'] as String;
+    final amt = fmtMoney(line['amount']);
+    final ok = await showDialog<bool>(context: context, builder: (c)=> AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      title: const Text('إلغاء هذا الرقم؟', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('الرقم: $numbers', style: const TextStyle(fontWeight: FontWeight.bold)),
+        Text('النوع: $bet  •  المبلغ: $amt'),
+        const SizedBox(height: 8),
+        Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(8)), child: const Text('سيتم إلغاء هذا السطر فقط، وسيُسترد المبلغ للعميل، وتبقى بقية الألعاب في الفاتورة. لا يمكن الإلغاء بعد إغلاق السحب أو نشر النتيجة.', style: TextStyle(fontSize: 11))),
+      ]),
+      actions: [TextButton(onPressed: ()=> Navigator.pop(c,false), child: const Text('تراجع')), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.red), onPressed: ()=> Navigator.pop(c,true), child: const Text('إلغاء الرقم'))],
+    ));
+    if(ok!=true) return;
+    try {
+      final refund = await context.read<AppState>().cancelTicketLine(ticketId: _ticket!['id'] as String, lineId: line['id'] as String);
+      await _refresh();
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم إلغاء $numbers — استرداد ${fmtMoney(refund)}'), backgroundColor: Colors.green));
+    } catch(e){
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: Colors.red));
+    }
+  }
+
+  Future<String?> _askDrawChoice() async {
+    return showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('اختر فترة اللعب', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const Text('هل تريد تكرار التذكرة للسحب الصباحي أم المسائي أم الاثنين معا؟', style: TextStyle(fontSize: 12)),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(icon: const Icon(Icons.wb_sunny, size: 16, color: Color(0xFF0B8A3E)), label: const Text('صباحي  (Midday) — 14:30', style: TextStyle(fontSize: 12, color: Color(0xFF0B8A3E))), onPressed: () => Navigator.pop(c, 'MIDDAY')),
+          const SizedBox(height: 6),
+          OutlinedButton.icon(icon: const Icon(Icons.nights_stay, size: 16, color: Color(0xFF1565C0)), label: const Text('مسائي  (Evening) — 22:30', style: TextStyle(fontSize: 12, color: Color(0xFF1565C0))), onPressed: () => Navigator.pop(c, 'EVENING')),
+          const SizedBox(height: 6),
+          ElevatedButton.icon(icon: const Icon(Icons.copy_all, size: 16), label: const Text('الاثنين معا — نسختين (Both)', style: TextStyle(fontSize: 12)), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0B8A3E), foregroundColor: Colors.white), onPressed: () => Navigator.pop(c, 'BOTH')),
+        ]),
+        actions: [TextButton(onPressed: () => Navigator.pop(c, null), child: const Text('إلغاء'))],
+      ),
+    );
   }
 
   Future<void> _replay() async {
     final id = _ticket!['id'] as String;
+    final choice = await _askDrawChoice();
+    if(choice==null) return;
     try{
-      final count = await context.read<AppState>().replayTicketToCart(id);
+      final count = await context.read<AppState>().replayTicketToCartWithChoice(id, choice);
       if(!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied $count plays to cart — now SALE to create new ticket'), backgroundColor: const Color(0xFF0B8A3E)));
-      // Navigate to Numbers if Numbers game else Winz — stay on this screen but offer to go
+      final label = choice=='BOTH' ? 'كلا السحبين (مضاعف)' : choice=='MIDDAY' ? 'الصباحي فقط' : 'المسائي فقط';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم النسخ $count لعبة → $label — اذهب لـ SALE لطباعة التذكرة الجديدة'), backgroundColor: const Color(0xFF0B8A3E)));
+      if(!mounted) return;
       showDialog(context: context, builder: (c)=> AlertDialog(
-        title: const Text('Re-play Ticket'),
-        content: Text('$count plays copied to cart.\nGo to SALE screen?'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('تم النسخ — Re-play', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+        content: Text('$count لعبة نُسخت إلى السلة ($label).\nهل تريد الانتقال لشاشة البيع؟', style: const TextStyle(fontSize: 11)),
         actions: [
-          TextButton(onPressed: ()=> Navigator.pop(c), child: const Text('Stay')),
-          ElevatedButton(onPressed: (){ Navigator.pop(c); Navigator.pushNamed(context,'/numbers'); }, child: const Text('Go to Numbers')),
-          ElevatedButton(onPressed: (){ Navigator.pop(c); Navigator.pushNamed(context,'/winz'); }, style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF8E00)), child: const Text('Go to Win 4')),
+          TextButton(onPressed: ()=> Navigator.pop(c), child: const Text('البقاء')),
+          ElevatedButton(onPressed: (){ Navigator.pop(c); Navigator.pushNamed(context,'/numbers'); }, child: const Text('Numbers (3D/4D)')),
         ],
       ));
     }catch(e){
@@ -91,9 +169,9 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
       appBar: AppBar(backgroundColor: green, foregroundColor: Colors.white, title: const Text('Ticket Detail'), actions: [IconButton(icon: const Icon(Icons.refresh, color: Colors.white), onPressed: _refresh)]),
       body: _loading ? const Center(child: CircularProgressIndicator(color: green)) : Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 600),
+          constraints: BoxConstraints(maxWidth: Responsive.contentMaxWidth(context)),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(14),
+            padding: EdgeInsets.all(Responsive.horizontalPadding(context)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Card(color: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
@@ -104,7 +182,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                 ]),
                 const SizedBox(height: 12),
                 const Text('NY LOTTERY POS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1)),
-                Text('${t['gameName']} • ${t['betType']} ${_lines.length>1 ? '• ${_lines.length} plays' : ''}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                Text('${t['gameName']} • ${_dispBet(t['betType'])} ${_lines.length>1 ? '• ${_lines.length} plays' : ''}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                 Text('${t['drawName'] ?? '-'}  •  Period: ${_period(t['drawName'])}', style: const TextStyle(fontSize: 11, color: Colors.black54)),
                 const Divider(height: 16),
                 if(_lines.isNotEmpty && _lines.length>1)
@@ -112,37 +190,66 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(border: Border.all(color: Colors.black87, width: 1.0), borderRadius: BorderRadius.circular(8)),
                     child: Column(children: [
-                      for(int i=0;i<_lines.length;i++)
-                        Container(
+                      for(int i=0;i<_lines.length;i++) Builder(builder: (ctx){
+                        final l = _lines[i];
+                        final isVoid = (l['periodStatus'] as String?) == 'cancelled' || (l['winningStatus'] as String?) == 'void';
+                        return Container(
                           margin: EdgeInsets.only(bottom: i==_lines.length-1?0:6),
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                          decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(6), color: i%2==0? Colors.white: Colors.grey.shade50),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: isVoid ? Colors.red.shade300 : Colors.grey.shade400),
+                            borderRadius: BorderRadius.circular(6),
+                            color: isVoid ? Colors.red.shade50 : (i%2==0? Colors.white: Colors.grey.shade50),
+                          ),
                           child: Row(children: [
-                            Text('${i+1}.', style: const TextStyle(fontSize: 10, color: Colors.black54, fontWeight: FontWeight.bold)),
+                            Text('${i+1}.', style: TextStyle(fontSize: 10, color: isVoid ? Colors.red : Colors.black54, fontWeight: FontWeight.bold)),
                             const SizedBox(width: 8),
-                            Text((_lines[i]['numbers'] as String).replaceAll(',', ' '), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                            Text((l['numbers'] as String).replaceAll(',', ' '), style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 2, decoration: isVoid ? TextDecoration.lineThrough : null, color: isVoid ? Colors.red.shade700 : Colors.black)),
+                            if(isVoid) Container(margin: const EdgeInsets.only(left:6), padding: const EdgeInsets.symmetric(horizontal:6, vertical:2), decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)), child: const Text('ملغي', style: TextStyle(fontSize: 8, color: Colors.white, fontWeight: FontWeight.bold))),
                             const Spacer(),
-                            Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.grey.shade300)), child: Text(_lines[i]['betType'], style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w600))),
+                            Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.grey.shade300)), child: Text(_dispBet(l['betType']), style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w600))),
                             const SizedBox(width: 6),
-                            Text(fmtMoney(_lines[i]['amount']), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                            Text(fmtMoney(l['amount']), style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, decoration: isVoid ? TextDecoration.lineThrough : null, color: isVoid ? Colors.red : Colors.black)),
+                            const SizedBox(width: 4),
+                            if(!isVoid && isActive)
+                              InkWell(
+                                onTap: ()=> _cancelLine(l),
+                                borderRadius: BorderRadius.circular(6),
+                                child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.red.shade200)), child: const Icon(Icons.close, size: 14, color: Colors.red)),
+                              )
+                            else if(isVoid)
+                              const Icon(Icons.block, size: 14, color: Colors.red),
                           ]),
-                        ),
+                        );
+                      }),
                       const Divider(height: 12),
-                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)), Text(fmtMoney(t['total'] ?? t['amount']), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: green))]),
+                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                        const Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                          Text(fmtMoney(t['total'] ?? t['amount']), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: green)),
+                          if(_lines.any((e)=> (e['periodStatus'] as String?)=='cancelled')) Text('بعد الإلغاء — الأصلي كان ${fmtMoney(_lines.fold<double>(0,(s,e)=> s + (e['amount'] as num).toDouble()))}', style: const TextStyle(fontSize: 9, color: Colors.black54)),
+                        ]),
+                      ]),
                     ]),
                   )
                 else
-                  Center(child: Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), decoration: BoxDecoration(border: Border.all(color: Colors.black87, width: 1.2), borderRadius: BorderRadius.circular(8)), child: Column(children: [
-                    Text((t['numbers'] as String).replaceAll(',', '  '), style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, letterSpacing: 4)),
-                    const SizedBox(height: 4),
-                    Text('${t['betType']} • ${fmtMoney(t['amount'])}', style: const TextStyle(fontSize: 11, color: Colors.black54)),
-                    if(isWinning || isPaid) Padding(padding: const EdgeInsets.only(top: 6), child: Text(isPaid ? 'PAID • ${fmtMoney(t['prizeAmount'] ?? 0)}' : 'WINNER • ${fmtMoney(t['prizeAmount'] ?? 0)}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isPaid ? Colors.green.shade700 : Colors.orange.shade700))),
-                  ]))),
+                  Builder(builder: (ctx){
+                    final singleLine = _lines.isNotEmpty ? _lines.first : null;
+                    final isSingleVoid = singleLine != null && ((singleLine['periodStatus'] as String?)=='cancelled' || (singleLine['winningStatus'] as String?)=='void');
+                    return Center(child: Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), decoration: BoxDecoration(border: Border.all(color: isSingleVoid ? Colors.red : Colors.black87, width: 1.2), borderRadius: BorderRadius.circular(8), color: isSingleVoid ? Colors.red.shade50 : Colors.white), child: Column(children: [
+                      Text((t['numbers'] as String).replaceAll(',', '  '), style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, letterSpacing: 4, decoration: isSingleVoid ? TextDecoration.lineThrough : null, color: isSingleVoid ? Colors.red : Colors.black)),
+                      if(isSingleVoid) Container(margin: const EdgeInsets.only(top:6), padding: const EdgeInsets.symmetric(horizontal:8, vertical:3), decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(6)), child: const Text('ملغي — Voided', style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold))),
+                      const SizedBox(height: 4),
+                      Text('${_dispBet(t['betType'])} • ${fmtMoney(t['amount'])}', style: TextStyle(fontSize: 11, color: isSingleVoid ? Colors.red : Colors.black54, decoration: isSingleVoid ? TextDecoration.lineThrough : null)),
+                      if(isWinning || isPaid) Padding(padding: const EdgeInsets.only(top: 6), child: Text(isPaid ? 'PAID • ${fmtMoney(t['prizeAmount'] ?? 0)}' : 'WINNER • ${fmtMoney(t['prizeAmount'] ?? 0)}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isPaid ? Colors.green.shade700 : Colors.orange.shade700))),
+                      if(isActive && !isSingleVoid && singleLine != null) Padding(padding: const EdgeInsets.only(top:8), child: OutlinedButton.icon(icon: const Icon(Icons.close, size: 14, color: Colors.red), label: const Text('إلغاء هذا الرقم', style: TextStyle(fontSize: 11, color: Colors.red)), style: OutlinedButton.styleFrom(side: BorderSide(color: Colors.red.shade300)), onPressed: ()=> _cancelLine(singleLine))),
+                    ])));
+                  }),
                 const SizedBox(height: 12),
                 _row('Ticket ID', t['id']),
                 _row('Serial', t['serialNumber'] ?? '-'),
                 _row('Game', t['gameName']),
-                _row('Bet Type', t['betType']),
+                _row('Bet Type', _dispBet(t['betType'])),
                 _row('Plays', _lines.isNotEmpty ? '${_lines.length}' : '1'),
                 _row('Numbers', _lines.isNotEmpty && _lines.length>1 ? _lines.map((l)=> (l['numbers'] as String).replaceAll(',', '')).join(' | ') : (t['numbers'] as String).replaceAll(',', ', ')),
                 _row('Total', fmtMoney(t['total'] ?? t['amount'])),
@@ -161,8 +268,8 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                 const SizedBox(height: 6),
                 const Text('Show QR at validation counter — scan to validate', style: TextStyle(fontSize: 10, color: Colors.black45)),
               ]))),
-              if(isWinning) Card(color: Colors.green.shade50, child: Padding(padding: const EdgeInsets.all(12), child: Row(children: [const Icon(Icons.emoji_events, color: green), const SizedBox(width: 8), Expanded(child: Text('Winning ticket — go to Winning Tickets to collect ${fmtMoney(t['prizeAmount'])}', style: const TextStyle(fontSize: 11)))]))),
-              if(isActive) Card(color: Colors.blue.shade50, child: Padding(padding: const EdgeInsets.all(12), child: Row(children: [const Icon(Icons.info_outline, color: Colors.blue), const SizedBox(width: 8), const Expanded(child: Text('Active ticket — will be evaluated after draw. You can cancel before cutoff (5 min before draw).', style: TextStyle(fontSize: 11)))]))),
+              if(isWinning) Card(color: Colors.green.shade50, child: Padding(padding: EdgeInsets.all(Responsive.horizontalPadding(context)), child: Row(children: [const Icon(Icons.emoji_events, color: green), const SizedBox(width: 8), Expanded(child: Text('Winning ticket — go to Winning Tickets to collect ${fmtMoney(t['prizeAmount'])}', style: const TextStyle(fontSize: 11)))]))),
+              if(isActive) Card(color: Colors.blue.shade50, child: Padding(padding: EdgeInsets.all(Responsive.horizontalPadding(context)), child: Row(children: [const Icon(Icons.info_outline, color: Colors.blue), const SizedBox(width: 8), const Expanded(child: Text('Active ticket — will be evaluated after draw. You can cancel before cutoff (5 min before draw).', style: TextStyle(fontSize: 11)))]))),
               const SizedBox(height: 12),
               // Action buttons row 1
               Row(children: [

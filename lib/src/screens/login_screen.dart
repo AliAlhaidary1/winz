@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
+import '../utils/responsive.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -10,8 +11,8 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _userCtrl = TextEditingController(text: 'agent1');
-  final _passCtrl = TextEditingController(text: 'agent123');
+  final _userCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
   bool _loading = false;
   String? _error;
   bool _obscure = true;
@@ -32,7 +33,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (ok) {
         Navigator.of(context).pushReplacementNamed('/numbers');
       } else {
-        setState(() => _error = 'Invalid credentials — try: admin / admin123, agent1 / agent123, cashier / cashier123');
+        setState(() => _error = 'Invalid credentials');
       }
     } catch (e) {
       if (!mounted) return;
@@ -42,14 +43,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isTablet = Responsive.isTablet(context) || Responsive.isDesktop(context);
     return Scaffold(
       backgroundColor: AppTheme.bg,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.all(Responsive.horizontalPadding(context)),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
+              constraints: BoxConstraints(maxWidth: isTablet ? 560 : 440),
               child: Column(
                 children: [
                   // Brand header
@@ -61,7 +63,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(width: 12),
                       const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text('NY LOTTERY POS', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.8)),
-                        Text('Numbers • Win 4 • Official', style: TextStyle(fontSize: 10, color: AppTheme.textMuted)),
+                        Text('Official', style: TextStyle(fontSize: 10, color: AppTheme.textMuted)),
                       ])),
                       Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: AppTheme.greenLight, borderRadius: BorderRadius.circular(20)), child: const Text('POS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.green))),
                     ]),
@@ -70,7 +72,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   // Card
                   Container(
                     decoration: AppTheme.cardDecoration(),
-                    padding: const EdgeInsets.all(22),
+                    padding: EdgeInsets.all(isTablet ? 28 : 22),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                       const Text('Welcome back', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
                       const SizedBox(height: 4),
@@ -104,18 +106,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: _loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Login →'),
                         ),
                       ),
-                      const SizedBox(height: 14),
-                      Row(children: [Expanded(child: Divider(color: AppTheme.cardBorder)), Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('Demo accounts', style: TextStyle(fontSize: 10, color: AppTheme.textMuted, fontWeight: FontWeight.w600))), Expanded(child: Divider(color: AppTheme.cardBorder))]),
-                      const SizedBox(height: 12),
-                      _demoRow('Admin', 'admin / admin123', AppTheme.green),
-                      const SizedBox(height: 8),
-                      _demoRow('Agent', 'agent1 / agent123', AppTheme.blue),
-                      const SizedBox(height: 8),
-                      _demoRow('Cashier', 'cashier / cashier123', Colors.orange),
                     ]),
                   ),
-                  const SizedBox(height: 12),
-                  const Text('Accounts are created by administrator • No public registration • 18+', style: TextStyle(fontSize: 10, color: AppTheme.textMuted), textAlign: TextAlign.center),
                 ],
               ),
             ),
@@ -125,17 +117,4 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _demoRow(String role, String creds, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(10), border: Border.all(color: color.withValues(alpha: 0.12))),
-      child: Row(children: [
-        Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-        const SizedBox(width: 8),
-        Text(role, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color)),
-        const Spacer(),
-        Text(creds, style: const TextStyle(fontSize: 11, fontFamily: 'monospace')),
-      ]),
-    );
-  }
 }
