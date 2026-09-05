@@ -34,7 +34,7 @@ class YeLotteryApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AppState(db)),
       ],
       child: MaterialApp(
-        title: 'YeLottery POS',
+        title: 'Winz',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
         initialRoute: '/login',

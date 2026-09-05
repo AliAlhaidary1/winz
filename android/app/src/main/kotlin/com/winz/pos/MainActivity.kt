@@ -1,4 +1,4 @@
-package com.example.yelottery
+package com.winz.pos
 
 import io.flutter.embedding.android.FlutterActivity
 

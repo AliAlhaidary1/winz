@@ -1,5 +1,5 @@
-name: yelottery
-description: "Lottery Retailer / Agent POS System - Numbers & Winz"
+name: winz
+description: "Winz - Lottery Retailer / Agent POS System"
 publish_to: 'none'
 version: 1.0.0+1
 

@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.yelottery"
+    namespace = "com.winz.pos"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -15,8 +15,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.yelottery"
+        applicationId = "com.winz.pos"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -34,6 +33,23 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
+    // Rename APK output to Winz-xxx.apk so file sharing keeps brand name
+    // e.g. app-arm64-v8a-release.apk -> Winz-arm64-v8a-release.apk
+    // and Winz.apk for universal builds
+    applicationVariants.all {
+        outputs.all {
+            if (this is com.android.build.gradle.internal.api.BaseVariantOutputImpl) {
+                val original = outputFileName as String
+                var newName = original.replace(Regex("^app-"), "Winz-")
+                if (newName == original && !newName.startsWith("Winz")) {
+                    // universal apk like app-release.apk -> Winz-release.apk
+                    newName = newName.replace("app", "Winz")
+                }
+                outputFileName = newName
+            }
         }
     }
 }
