@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../data/database.dart';
 import '../providers/app_state.dart';
 import '../utils/format.dart';
+import '../widgets/draw_period_choice.dart';
 import 'barcode_scanner_screen.dart';
 
 class WinningTicketsScreen extends StatefulWidget {
@@ -51,30 +52,14 @@ class _WinningTicketsScreenState extends State<WinningTicketsScreen> {
   Future<void> _copyWithChoice() async {
     if(_result==null || _result!['found']!=true) return;
     final ticket = _result!['ticket'] as Map<String,dynamic>;
-    final choice = await showDialog<String>(
-      context: context,
-      builder: (c)=> AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: const Text('اختر فترة اللعب للنسخ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Text('هل تريد تكرار التذكرة للصباحي أم المسائي أم الاثنين؟', style: TextStyle(fontSize: 11)),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(icon: const Icon(Icons.wb_sunny, size: 15, color: Color(0xFF0B8A3E)), label: const Text('صباحي — Midday 14:30', style: TextStyle(fontSize: 11, color: Color(0xFF0B8A3E))), onPressed: ()=> Navigator.pop(c,'MIDDAY')),
-          const SizedBox(height: 6),
-          OutlinedButton.icon(icon: const Icon(Icons.nights_stay, size: 15, color: Color(0xFF1565C0)), label: const Text('مسائي — Evening 22:30', style: TextStyle(fontSize: 11, color: Color(0xFF1565C0))), onPressed: ()=> Navigator.pop(c,'EVENING')),
-          const SizedBox(height: 6),
-          ElevatedButton.icon(icon: const Icon(Icons.copy_all, size: 14), label: const Text('الاثنين معا (Both)', style: TextStyle(fontSize: 11)), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0B8A3E), foregroundColor: Colors.white), onPressed: ()=> Navigator.pop(c,'BOTH')),
-        ]),
-        actions: [TextButton(onPressed: ()=> Navigator.pop(c), child: const Text('إلغاء'))],
-      ),
-    );
+    final choice = await showDrawPeriodChoice(context);
     if(choice==null) return;
     try{
       final app = context.read<AppState>();
       final count = await app.replayTicketToCartWithChoice(ticket['id'] as String, choice);
       if(!mounted) return;
-      final label = choice=='BOTH' ? 'الاثنين (×2)' : choice=='MIDDAY' ? 'صباحي' : 'مسائي';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم النسخ $count لعبة → $label — اذهب لـ Numbers للبيع'), backgroundColor: const Color(0xFF0B8A3E)));
+      final label = choice=='BOTH' ? 'Both (×2)' : choice=='MIDDAY' ? 'Midday' : 'Evening';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied $count play(s) → $label — go to Numbers to sell'), backgroundColor: const Color(0xFF0B8A3E)));
       Navigator.pushNamed(context,'/numbers');
     }catch(e){
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red));

@@ -36,6 +36,8 @@ class YeLotteryApp extends StatelessWidget {
       child: MaterialApp(
         title: 'Winz',
         debugShowCheckedModeBanner: false,
+        locale: const Locale('en'),
+        supportedLocales: const [Locale('en')],
         theme: AppTheme.light(),
         initialRoute: '/login',
         routes: {

@@ -38,7 +38,7 @@ class HelpScreen extends StatelessWidget {
         _card('Support', [
           'Version 1.0.0+1',
           'No public registration — contact administrator for credentials.',
-          'Please play responsibly. Must be 18+.',
+          'Please play responsibly.',
         ]),
       ]),
     );

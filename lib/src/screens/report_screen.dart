@@ -8,6 +8,8 @@ import '../data/database.dart';
 import '../providers/app_state.dart';
 import '../utils/format.dart';
 import '../utils/responsive.dart';
+import '../utils/ticket_pdf.dart';
+import '../services/thermal_printer_service.dart';
 import '../theme/app_theme.dart';
 
 class ReportScreen extends StatefulWidget {
@@ -29,7 +31,7 @@ class _ReportScreenState extends State<ReportScreen> {
   double _salesMidday = 0, _salesEvening = 0;
   double _prizeMidday = 0, _prizeEvening = 0;
   double _commMidday = 0, _commEvening = 0;
-  double _commRate = 5.0;
+  double _commRate = 20.0;
 
   void _applyPreset(String p){
     final now=DateTime.now();
@@ -71,26 +73,11 @@ class _ReportScreenState extends State<ReportScreen> {
     final c = filterList(cAll);
     final m = filterList(mAll);
 
-    // commission — per-operator (worker Rate) — الإصلاح: كانت تحسب فقط نسبة المستخدم الحالي
-    final accs = await db.getAccounts();
-    final accMap = {for(final a in accs) a['id'] as String: (a['commission'] as num?)?.toDouble() ?? 0.0};
-    double rate = 5.0; // fallback for display
-    try{
-      final cur = app.currentUser;
-      if(cur!=null && cur['commission']!=null && (cur['commission'] as num).toDouble() != 0){
-        rate = (cur['commission'] as num).toDouble();
-      } else {
-        // if admin (0) take max worker rate for header display
-        final workerRates = accs.where((e)=> e['role']=='worker').map((e)=> (e['commission'] as num?)?.toDouble() ?? 0).where((v)=> v>0).toList();
-        if(workerRates.isNotEmpty) rate = workerRates.reduce((a,b)=> a>b?a:b);
-      }
-    }catch(_){}
-    // Sales & Commission per period — per-operator rate (إصلاح: كانت تستخدم نسبة المستخدم الحالي فقط)
+    // Global customer rate — default 20% of full sales (editable)
+    final rate = await db.getClientCommissionRate();
     double sMid=0, sEve=0;
-    double cMid=0, cEve=0;
     final filteredIds = t.map((e)=> e['id'] as String).toSet();
     final ticketById = {for(final tk in t) tk['id'] as String: tk};
-    // lines filtered by ticket in period and date
     for(final l in allLines){
       final tid = l['ticketId'] as String;
       if(!filteredIds.contains(tid)) continue;
@@ -102,24 +89,15 @@ class _ReportScreenState extends State<ReportScreen> {
       else if(drawName.contains('Midday') || drawName.contains('Morning')) type='MIDDAY';
       else if(drawName.contains('Evening')) type='EVENING';
       else {
-        // fallback: try to infer from ticket drawName
         final tick = ticketById[tid] ?? {};
         final tn = (tick['drawName'] as String?) ?? '';
         if(tn.contains('Midday')||tn.contains('Morning')) type='MIDDAY';
         else if(tn.contains('Evening')) type='EVENING';
-        else type='MIDDAY'; // default
+        else type='MIDDAY';
       }
       final amt = (l['amount'] as num).toDouble();
       if(type=='MIDDAY') sMid+=amt; else sEve+=amt;
-      // commission per line by operator
-      final tk = ticketById[tid];
-      final opId = tk?['operatorId'] as String?;
-      final opRate = opId!=null ? (accMap[opId] ?? rate) : rate;
-      final comm = amt * opRate / 100;
-      if(type=='MIDDAY') cMid+=comm; else cEve+=comm;
     }
-    // For tickets without lines (legacy single ticket), they were already counted via lines? If lines empty for those tickets, add from ticket total
-    // Check tickets that have no lines
     for(final tk in t){
       final hasLine = allLines.any((l)=> l['ticketId']==tk['id']);
       if(!hasLine){
@@ -129,12 +107,10 @@ class _ReportScreenState extends State<ReportScreen> {
         else if(drawName.contains('Midday')||drawName.contains('Morning')) type='MIDDAY';
         final amt = (tk['total'] as num?)?.toDouble() ?? (tk['amount'] as num).toDouble();
         if(type=='MIDDAY') sMid+=amt; else sEve+=amt;
-        final opId = tk['operatorId'] as String?;
-        final opRate = opId!=null ? (accMap[opId] ?? rate) : rate;
-        final comm = amt * opRate / 100;
-        if(type=='MIDDAY') cMid+=comm; else cEve+=comm;
       }
     }
+    final cMid = sMid * rate / 100;
+    final cEve = sEve * rate / 100;
 
     // Prize per period: use validateTicket per winning ticket to get per-line prize
     double pMid=0, pEve=0;
@@ -174,13 +150,6 @@ class _ReportScreenState extends State<ReportScreen> {
       }catch(_){}
     }
 
-    // effective rate for header (if multiple workers, average weighted)
-    final totalSalesForRate = sMid + sEve;
-    final totalCommForRate = cMid + cEve;
-    if(totalSalesForRate > 0 && totalCommForRate > 0){
-      rate = totalCommForRate / totalSalesForRate * 100;
-    }
-
     if(mounted) setState(() {
       _tickets=t; _cash=c; _moves=m;
       _salesMidday=sMid; _salesEvening=sEve;
@@ -190,59 +159,132 @@ class _ReportScreenState extends State<ReportScreen> {
     });
   }
 
+  Future<void> _editClientRate() async {
+    final ctrl = TextEditingController(text: _commRate == _commRate.roundToDouble() ? _commRate.toStringAsFixed(0) : _commRate.toString());
+    final ok = await showDialog<bool>(context: context, builder: (c)=> AlertDialog(
+      title: const Text('Customer percent', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Calculated from full sales (Midday + Evening).', style: TextStyle(fontSize: 11, color: Colors.black54)),
+        const SizedBox(height: 10),
+        TextField(
+          controller: ctrl,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Rate %', hintText: '20', suffixText: '%', border: OutlineInputBorder(), isDense: true),
+        ),
+      ]),
+      actions: [
+        TextButton(onPressed: ()=> Navigator.pop(c,false), child: const Text('Cancel')),
+        ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: AppTheme.green, foregroundColor: Colors.white), onPressed: ()=> Navigator.pop(c,true), child: const Text('Save')),
+      ],
+    ));
+    if(ok!=true) return;
+    final v = double.tryParse(ctrl.text.trim().replaceAll(',', '.'));
+    if(v==null || v<0 || v>100){
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a valid rate between 0 and 100'), backgroundColor: Colors.red));
+      return;
+    }
+    if(!mounted) return;
+    await context.read<AppDatabase>().setClientCommissionRate(v);
+    await _load();
+    if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Customer rate saved: ${v == v.roundToDouble() ? v.toStringAsFixed(0) : v}% of sales'), backgroundColor: AppTheme.green));
+  }
+
   Future<void> _printReport() async {
     final totalSales = _salesMidday + _salesEvening;
     final totalPrize = _prizeMidday + _prizeEvening;
     final totalComm = _commMidday + _commEvening;
     final balanceTotal = totalSales - totalPrize - totalComm;
-    final doc = pw.Document();
-    doc.addPage(pw.Page(
-      pageFormat: PdfPageFormat.a4,
-      build: (ctx)=> pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-        pw.Center(child: pw.Text('YeLottery Report', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold))),
-        pw.SizedBox(height: 4),
-        pw.Center(child: pw.Text(_preset=='all' ? 'All time' : 'From: ${_from!=null? dateOnlyFmt.format(_from!): '--'}  To: ${_to!=null? dateOnlyFmt.format(_to!): '--'}', style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700))),
-        pw.SizedBox(height: 12),
-        pw.Divider(),
-        _pdfSection('Sales', [
+    // مطلوب طباعة التقرير بنفس حجم الفواتير (58mm thermal Roll80) وليس A4
+    final db = context.read<AppDatabase>();
+    final cfg = await db.getAppConfig();
+    final map = {for (var c in cfg) c['key'] as String: c['value'] as String};
+    final printerType = normalizePrinterType(map['printer_type']);
+    final s = ThermalStyle.fromType(printerType);
+    final company = map['company_name'] ?? 'NY Lottery POS';
+    pw.Widget buildBody(pw.Context ctx)=> pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
+        pw.FittedBox(fit: pw.BoxFit.scaleDown, child: pw.Text('INVOICE REPORT', style: pw.TextStyle(fontSize: s.kicker, fontWeight: pw.FontWeight.bold, color: PdfColors.black))),
+        pw.SizedBox(height: 2),
+        pw.Center(child: pw.Text(_preset=='all' ? 'All time' : 'From: ${_from!=null? dateOnlyFmt.format(_from!): '--'}  To: ${_to!=null? dateOnlyFmt.format(_to!): '--'}', style: pw.TextStyle(fontSize: s.tiny, fontWeight: pw.FontWeight.bold, color: PdfColors.black))),
+        pw.SizedBox(height: 3),
+        pw.Divider(thickness: 0.6, color: PdfColors.black),
+        _pdfSection(s, 'Sales', [
           'Midday = ${fmtMoney(_salesMidday)}',
           'Evening = ${fmtMoney(_salesEvening)}',
           'Total = ${fmtMoney(totalSales)}',
         ]),
-        pw.SizedBox(height: 8),
-        _pdfSection('Prize', [
+        pw.SizedBox(height: s.gap),
+        _pdfSection(s, 'Prize', [
           'Midday = ${fmtMoney(_prizeMidday)}',
           'Evening = ${fmtMoney(_prizeEvening)}',
           'Total = ${fmtMoney(totalPrize)}',
         ]),
-        pw.SizedBox(height: 8),
-        _pdfSection('Customer ${_commRate.toStringAsFixed(1)}%', [
+        pw.SizedBox(height: s.gap),
+        _pdfSection(s, 'Customer ${_commRate.toStringAsFixed(1)}%', [
           'Midday = ${fmtMoney(_commMidday)}',
           'Evening = ${fmtMoney(_commEvening)}',
           'Total = ${fmtMoney(totalComm)}',
         ]),
-        pw.SizedBox(height: 8),
-        _pdfSection('The Balance', [
+        pw.SizedBox(height: s.gap),
+        _pdfSection(s, 'The Balance', [
           'Sales = ${fmtMoney(totalSales)}',
           'Prize = ${fmtMoney(totalPrize)}',
           'Customer % = ${fmtMoney(totalComm)}',
           'Total = ${fmtMoney(balanceTotal)}',
         ], highlight: true),
-        pw.SizedBox(height: 12),
-        pw.Text('Generated: ${DateTime.now().toString()}', style: pw.TextStyle(fontSize: 7, color: PdfColors.grey600)),
-      ]),
-    ));
-    await Printing.layoutPdf(onLayout: (_) async => doc.save());
+        pw.SizedBox(height: s.gap),
+        pw.Divider(thickness: 0.5, color: PdfColors.black),
+        pw.Center(child: pw.Text('Generated: ${fmtDate(DateTime.now().millisecondsSinceEpoch)}', style: pw.TextStyle(fontSize: s.tiny, fontWeight: pw.FontWeight.bold, color: PdfColors.black))),
+        pw.SizedBox(height: 2),
+        pw.Center(child: pw.Text('--- CUT HERE ---', style: pw.TextStyle(fontSize: s.tiny, color: PdfColors.black))),
+      ]);
+    final format = getTicketPageFormat(printerType);
+    final doc = pw.Document();
+    doc.addPage(pw.Page(pageFormat: format, build: buildBody));
+    final bytes = await doc.save();
+    final escPos = await buildReportEscPos(
+      printerType: printerType,
+      company: company,
+      rangeLabel: _preset=='all' ? 'All time' : 'From: ${_from!=null? dateOnlyFmt.format(_from!): '--'}  To: ${_to!=null? dateOnlyFmt.format(_to!): '--'}',
+      sections: [
+        (title: 'Sales', rows: ['Midday = ${fmtMoney(_salesMidday)}', 'Evening = ${fmtMoney(_salesEvening)}', 'Total = ${fmtMoney(totalSales)}']),
+        (title: 'Prize', rows: ['Midday = ${fmtMoney(_prizeMidday)}', 'Evening = ${fmtMoney(_prizeEvening)}', 'Total = ${fmtMoney(totalPrize)}']),
+        (title: 'Customer ${_commRate.toStringAsFixed(1)}%', rows: ['Midday = ${fmtMoney(_commMidday)}', 'Evening = ${fmtMoney(_commEvening)}', 'Total = ${fmtMoney(totalComm)}']),
+        (title: 'The Balance', rows: ['Sales = ${fmtMoney(totalSales)}', 'Prize = ${fmtMoney(totalPrize)}', 'Customer % = ${fmtMoney(totalComm)}', 'Total = ${fmtMoney(balanceTotal)}']),
+      ],
+      generated: 'Generated: ${fmtDate(DateTime.now().millisecondsSinceEpoch)}',
+    );
+    final result = await printPdfBytes(db: db, pdfBytes: bytes, format: format, jobName: 'Report', bluetoothBytes: escPos);
+    if(result.ok){
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report printed on the default printer'), backgroundColor: Color(0xFF0B8A3E)));
+      return;
+    }
+    if(!mounted) return;
+    if((map['default_printer_url'] ?? '').toString().trim().isNotEmpty){
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.error ?? 'Print failed'), backgroundColor: Colors.red));
+    }
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
+      appBar: AppBar(title: Text('Report preview — thermal ${s.mm80 ? '80mm' : '58mm'}'), backgroundColor: const Color(0xFF0B8A3E), foregroundColor: Colors.white),
+      body: PdfPreview(
+        build: (_) async => bytes,
+        initialPageFormat: format,
+        allowPrinting: false,
+        allowSharing: true,
+        canChangePageFormat: false,
+        canChangeOrientation: false,
+        pdfFileName: 'report.pdf',
+      ),
+    )));
   }
 
-  pw.Widget _pdfSection(String title, List<String> rows, {bool highlight=false}){
+  pw.Widget _pdfSection(ThermalStyle s, String title, List<String> rows, {bool highlight=false}){
     return pw.Container(
-      padding: const pw.EdgeInsets.all(8),
-      decoration: pw.BoxDecoration(border: pw.Border.all(color: highlight? PdfColors.green900: PdfColors.grey400), borderRadius: pw.BorderRadius.circular(6), color: highlight? PdfColors.green50: PdfColors.white),
+      padding: pw.EdgeInsets.all(s.pad),
+      decoration: pw.BoxDecoration(border: pw.Border.all(color: highlight? PdfColors.green900: PdfColors.grey400), borderRadius: pw.BorderRadius.circular(4), color: highlight? PdfColors.green50: PdfColors.white),
       child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-        pw.Text(title, style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: highlight? PdfColors.green900: PdfColors.black)),
-        pw.Divider(thickness: 0.5, color: PdfColors.grey300),
-        ...rows.map((r)=> pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 1), child: pw.Text(r, style: pw.TextStyle(fontSize: 10, fontWeight: highlight && r.startsWith('Total')? pw.FontWeight.bold: pw.FontWeight.normal)))),
+        pw.Text(title, style: pw.TextStyle(fontSize: s.section, fontWeight: pw.FontWeight.bold, color: highlight? PdfColors.green900: PdfColors.black)),
+        pw.Divider(thickness: 0.4, color: PdfColors.grey300),
+        ...rows.map((r)=> pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 0.5), child: pw.Text(r, style: pw.TextStyle(fontSize: s.meta, fontWeight: highlight && r.startsWith('Total')? pw.FontWeight.bold: pw.FontWeight.normal)))),
       ]),
     );
   }
@@ -257,7 +299,7 @@ class _ReportScreenState extends State<ReportScreen> {
     return Scaffold(
       backgroundColor: AppTheme.bg,
       appBar: AppBar(
-        title: const Text('Report — التقارير'),
+        title: const Text('Report'),
         backgroundColor: AppTheme.green,
         foregroundColor: Colors.white,
         actions: [
@@ -303,7 +345,7 @@ class _ReportScreenState extends State<ReportScreen> {
         ]))),
         const SizedBox(height: 10),
         // Sales
-        _reportCard(title: 'Sales — المبيعات', icon: Icons.point_of_sale, color: AppTheme.green, rows: [
+        _reportCard(title: 'Sales', icon: Icons.point_of_sale, color: AppTheme.green, rows: [
           _row('Midday', fmtMoney(_salesMidday), AppTheme.green),
           _row('Evening', fmtMoney(_salesEvening), AppTheme.blue),
           const Divider(height: 8),
@@ -311,15 +353,15 @@ class _ReportScreenState extends State<ReportScreen> {
         ]),
         const SizedBox(height: 8),
         // Prize
-        _reportCard(title: 'Prize — الجوائز', icon: Icons.emoji_events, color: AppTheme.orange, rows: [
+        _reportCard(title: 'Prize', icon: Icons.emoji_events, color: AppTheme.orange, rows: [
           _row('Midday', fmtMoney(_prizeMidday), AppTheme.orange),
           _row('Evening', fmtMoney(_prizeEvening), AppTheme.orange),
           const Divider(height: 8),
           _row('Total', fmtMoney(totalPrize), Colors.black, bold: true),
         ]),
         const SizedBox(height: 8),
-        // Customer percent
-        _reportCard(title: 'Customer ${_commRate.toStringAsFixed(1)}% — عمولة العميل', icon: Icons.percent, color: AppTheme.blue, rows: [
+        // Customer percent — 20% default of full sales, editable
+        _reportCard(title: 'Customer ${_commRate.toStringAsFixed(_commRate==_commRate.roundToDouble()?0:1)}%', icon: Icons.percent, color: AppTheme.blue, onEdit: _editClientRate, rows: [
           _row('Midday', fmtMoney(_commMidday), AppTheme.blue),
           _row('Evening', fmtMoney(_commEvening), AppTheme.blue),
           const Divider(height: 8),
@@ -331,12 +373,12 @@ class _ReportScreenState extends State<ReportScreen> {
           final cashIn = _cash.where((e)=> e['direction']=='in').fold(0.0, (s,e)=> s + (e['amount'] as num).toDouble());
           final cashOut = _cash.where((e)=> e['direction']=='out').fold(0.0, (s,e)=> s + (e['amount'] as num).toDouble());
           final cashNet = cashIn - cashOut;
-          return _reportCard(title: 'Cash Drawer — الصندوق', icon: Icons.account_balance_wallet, color: Colors.teal, rows: [
-            _row('IN (مبيعات+افتتاح)', fmtMoney(cashIn), Colors.teal),
-            _row('OUT (جوائز+سحب)', '- ${fmtMoney(cashOut)}', AppTheme.red),
+          return _reportCard(title: 'Cash Drawer', icon: Icons.account_balance_wallet, color: Colors.teal, rows: [
+            _row('IN (sales + opening)', fmtMoney(cashIn), Colors.teal),
+            _row('OUT (prizes + payouts)', '- ${fmtMoney(cashOut)}', AppTheme.red),
             const Divider(height: 8),
             _row('NET Cash', fmtMoney(cashNet), Colors.black, bold: true),
-            if(_cash.any((e)=> e['type']=='opening')) Padding(padding: const EdgeInsets.only(top:4), child: Text('يشمل مبلغ الافتتاح: ${fmtMoney(_cash.where((e)=> e['type']=='opening').fold(0.0,(s,e)=> s + (e['amount'] as num).toDouble()))}', style: const TextStyle(fontSize:9, color: Colors.black54))),
+            if(_cash.any((e)=> e['type']=='opening')) Padding(padding: const EdgeInsets.only(top:4), child: Text('Includes opening cash: ${fmtMoney(_cash.where((e)=> e['type']=='opening').fold(0.0,(s,e)=> s + (e['amount'] as num).toDouble()))}', style: const TextStyle(fontSize:9, color: Colors.black54))),
           ]);
         }),
         const SizedBox(height: 8),
@@ -345,7 +387,7 @@ class _ReportScreenState extends State<ReportScreen> {
           decoration: BoxDecoration(color: AppTheme.green, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: AppTheme.green.withValues(alpha: 0.25), blurRadius: 12, offset: const Offset(0,4))]),
           padding: const EdgeInsets.all(14),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [Container(padding: const EdgeInsets.all(7), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.account_balance_wallet, color: Colors.white, size: 16)), const SizedBox(width: 8), const Text('The Balance — الرصيد النهائي', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))]),
+            Row(children: [Container(padding: const EdgeInsets.all(7), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.account_balance_wallet, color: Colors.white, size: 16)), const SizedBox(width: 8), const Text('The Balance', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))]),
             const SizedBox(height: 10),
             _balanceRow('Sales', fmtMoney(totalSales), Colors.white),
             const SizedBox(height: 4),
@@ -358,19 +400,19 @@ class _ReportScreenState extends State<ReportScreen> {
         ),
         const SizedBox(height: 12),
         // print button
-        SizedBox(width: double.infinity, height: 48, child: ElevatedButton.icon(icon: const Icon(Icons.print, size: 18), label: const Text('طباعة التقرير — Print', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)), style: ElevatedButton.styleFrom(backgroundColor: AppTheme.green, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: _printReport)),
+        SizedBox(width: double.infinity, height: 48, child: ElevatedButton.icon(icon: const Icon(Icons.print, size: 18), label: const Text('Print report', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)), style: ElevatedButton.styleFrom(backgroundColor: AppTheme.green, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: _printReport)),
         const SizedBox(height: 8),
-        SizedBox(width: double.infinity, child: OutlinedButton.icon(icon: const Icon(Icons.share, size: 16), label: const Text('مشاركة — Share', style: TextStyle(fontSize: 11)), onPressed: (){
+        SizedBox(width: double.infinity, child: OutlinedButton.icon(icon: const Icon(Icons.share, size: 16), label: const Text('Share', style: TextStyle(fontSize: 11)), onPressed: (){
           final txt = 'YeLottery Report\nSales Midday=${fmtMoney(_salesMidday)} Evening=${fmtMoney(_salesEvening)} Total=${fmtMoney(totalSales)}\nPrize Midday=${fmtMoney(_prizeMidday)} Evening=${fmtMoney(_prizeEvening)} Total=${fmtMoney(totalPrize)}\nCustomer ${_commRate.toStringAsFixed(1)}% Midday=${fmtMoney(_commMidday)} Evening=${fmtMoney(_commEvening)} Total=${fmtMoney(totalComm)}\nBalance Sales=${fmtMoney(totalSales)} Prize=${fmtMoney(totalPrize)} Customer=${fmtMoney(totalComm)} Total=${fmtMoney(balanceTotal)}';
           Share.share(txt);
         })),
         const SizedBox(height: 8),
-        const Text('التقرير مقسّم حسب الفترة (Midday 14:30 / Evening 22:30) — العمولة = المبيعات × نسبة العميل.', style: TextStyle(fontSize: 10, color: AppTheme.textMuted), textAlign: TextAlign.center),
+        Text('Report is split by period (Midday 14:30 / Evening 22:30). Commission = full sales × ${_commRate.toStringAsFixed(_commRate==_commRate.roundToDouble()?0:1)}%. Tap the edit icon to change the rate.', style: const TextStyle(fontSize: 10, color: AppTheme.textMuted), textAlign: TextAlign.center),
       ])))),
     );
   }
 
-  Widget _reportCard({required String title, required IconData icon, required Color color, required List<Widget> rows}){
+  Widget _reportCard({required String title, required IconData icon, required Color color, required List<Widget> rows, VoidCallback? onEdit}){
     return Container(
       decoration: AppTheme.cardDecoration(),
       padding: const EdgeInsets.all(14),
@@ -378,7 +420,8 @@ class _ReportScreenState extends State<ReportScreen> {
         Row(children: [
           Container(padding: const EdgeInsets.all(7), decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)), child: Icon(icon, size: 14, color: color)),
           const SizedBox(width: 8),
-          Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: color)),
+          Expanded(child: Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: color))),
+          if(onEdit!=null) IconButton(icon: Icon(Icons.edit, size: 16, color: color), tooltip: 'Edit customer rate', onPressed: onEdit, visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
         ]),
         const Divider(height: 12),
         ...rows,

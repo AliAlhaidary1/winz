@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -6,7 +7,9 @@ import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
 import '../utils/format.dart';
+import '../utils/ticket_pdf.dart';
 import '../widgets/app_drawer.dart';
+import '../widgets/draw_period_choice.dart';
 import 'barcode_scanner_screen.dart';
 
 class NumbersScreen extends StatefulWidget {
@@ -27,9 +30,24 @@ class _NumbersScreenState extends State<NumbersScreen> {
   String _digitMode = '3D'; // 3D / 4D
   final betTypes = ['Straight', 'Box', 'ST/BOX', 'Combo'];
   List<Map<String,dynamic>> _periods = [];
+  Timer? _sellableTick;
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _load();
+    _sellableTick = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!mounted) return;
+      setState(_applySellableDrawMode);
+    });
+  }
+
+  @override
+  void dispose() {
+    _sellableTick?.cancel();
+    _amountCtrl.dispose();
+    super.dispose();
+  }
 
   Future<void> _load() async {
     final db = context.read<AppDatabase>();
@@ -53,34 +71,51 @@ class _NumbersScreenState extends State<NumbersScreen> {
       final pid = '${drawDt.year}-${drawDt.month.toString().padLeft(2,'0')}-${drawDt.day.toString().padLeft(2,'0')}-$type';
       return openIds.contains(pid);
     }).toList()..sort((a,b)=> (a['drawTime'] as int).compareTo(b['drawTime'] as int));
-    final List<Map<String,dynamic>> fallback = allDraws.where((d)=> (d['drawTime'] as int) > nowMs).take(4).toList();
-    final List<Map<String,dynamic>> finalDraws = draws.isNotEmpty ? draws : (openPeriods.isNotEmpty ? <Map<String,dynamic>>[] : fallback);
+    final List<Map<String,dynamic>> finalDraws = draws;
     final periods = await db.getAllPeriods();
     if (!mounted) return;
+    final cart = context.read<AppState>().cart;
+    String? modeFromCart;
+    if (cart.isNotEmpty) {
+      final types = cart.map((e) {
+        final t = (e.drawType ?? '').toUpperCase();
+        if (t == 'EVENING' || t == 'MIDDAY') return t;
+        final pid = (e.periodId ?? '').toUpperCase();
+        if (pid.endsWith('EVENING')) return 'EVENING';
+        if (pid.endsWith('MIDDAY')) return 'MIDDAY';
+        return '';
+      }).where((e) => e.isNotEmpty).toSet();
+      if (types.contains('MIDDAY') && types.contains('EVENING')) {
+        modeFromCart = 'Both';
+      } else if (types.contains('EVENING')) {
+        modeFromCart = 'Evening';
+      } else if (types.contains('MIDDAY')) {
+        modeFromCart = 'Midday';
+      }
+    }
     setState(() {
-      _draws = finalDraws.isNotEmpty ? finalDraws : fallback;
-      // اختر أقرب فترة مفتوحة لليوم الحالي (2026-09-01 وليس 2026-08-31 المنتهية)
+      _draws = finalDraws;
       if(_draws.isNotEmpty){
         _drawId = _draws.first['id'] as String;
-      } else if(openPeriods.isNotEmpty){
-        // لا يوجد draws متوافقة — سنستخدم الفترة مباشرة (يُنشأ drawId لاحقاً في addToCart)
-        _drawId = null;
       } else {
         _drawId = null;
       }
       _periods = periods;
       _loadingDraws = false;
+      if (modeFromCart != null) _drawMode = modeFromCart;
+      _applySellableDrawMode();
     });
-    _syncDrawModeToPeriods();
   }
 
   void _syncDrawModeToPeriods(){
     if(_drawMode=='Both') return;
-    // Pick drawId matching _drawMode
+    final wantEvening = _drawMode=='Evening';
     for(final d in _draws){
-      final n = d['name'] as String;
-      if(_drawMode=='Midday' && (n.contains('Midday')|| n.contains('Morning'))){ _drawId = d['id']; break; }
-      if(_drawMode=='Evening' && n.contains('Evening')){ _drawId = d['id']; break; }
+      final n = (d['name'] as String).toLowerCase();
+      final isEvening = n.contains('evening');
+      final isMidday = n.contains('midday') || n.contains('morning');
+      if(wantEvening && isEvening){ _drawId = d['id'] as String; return; }
+      if(!wantEvening && isMidday){ _drawId = d['id'] as String; return; }
     }
   }
 
@@ -169,83 +204,110 @@ class _NumbersScreenState extends State<NumbersScreen> {
     });
   }
 
+  String _clampDrawMode(String mode, {required bool morningOpen, required bool eveningOpen}) {
+    if (mode == 'Both' && !(morningOpen && eveningOpen)) {
+      if (eveningOpen) return 'Evening';
+      if (morningOpen) return 'Midday';
+    }
+    if (mode == 'Midday' && !morningOpen && eveningOpen) return 'Evening';
+    if (mode == 'Evening' && !eveningOpen && morningOpen) return 'Midday';
+    return mode;
+  }
+
+  void _applySellableDrawMode() {
+    _drawMode = _clampDrawMode(_drawMode, morningOpen: _isTypeSellable('MIDDAY'), eveningOpen: _isTypeSellable('EVENING'));
+    _syncDrawModeToPeriods();
+  }
+
+  bool _isTypeSellable(String type){
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    bool hasRes(Map e){
+      bool n(dynamic v)=> v!=null && v.toString().trim().isNotEmpty;
+      return n(e['result']) || n(e['result3']) || n(e['result4']);
+    }
+    return _periods.any((e){
+      final dt = (e['drawType'] as String? ?? '').toUpperCase();
+      if(dt != type) return false;
+      final st = (e['status'] as String? ?? '').toUpperCase();
+      if(st=='CANCELLED' || st=='POSTPONED' || st=='SUSPENDED') return false;
+      if(hasRes(e)) return false;
+      final open = e['salesOpenTime'] as int? ?? 0;
+      final close = e['salesCloseTime'] as int? ?? 0;
+      return nowMs >= open && nowMs < close;
+    });
+  }
+
   Widget _appBarDrawField(){
     if(_loadingDraws) return const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white));
-    // تحديد الفترات المفتوحة لتمكين/تعطيل الأزرار
-    bool isMorningOpen(){
-      final now=DateTime.now();
-      final today='${now.year}-${now.month.toString().padLeft(2,'0')}-${now.day.toString().padLeft(2,'0')}';
-      final p=_periods.where((e)=> e['id']=='$today-MIDDAY').firstOrNull;
-      if(p==null) return false;
-      final nowMs=DateTime.now().millisecondsSinceEpoch;
-      return p['status']=='OPEN' && nowMs >= (p['salesOpenTime'] as int) && nowMs < (p['salesCloseTime'] as int);
+    final morningOpen=_isTypeSellable('MIDDAY');
+    final eveningOpen=_isTypeSellable('EVENING');
+    final bothOpen=morningOpen && eveningOpen;
+    if(!morningOpen && !eveningOpen){
+      return const Text('Sales closed', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800));
     }
-    bool isEveningOpen(){
-      final now=DateTime.now();
-      final today='${now.year}-${now.month.toString().padLeft(2,'0')}-${now.day.toString().padLeft(2,'0')}';
-      final p=_periods.where((e)=> e['id']=='$today-EVENING').firstOrNull;
-      if(p==null){
-        // قد تكون الفترة التالية هي المفتوحة (بعد إغلاق الصباحي)
-        final open=_periods.where((e)=> e['status']=='OPEN').toList();
-        return open.any((e)=> (e['drawType'] as String)=='EVENING');
-      }
-      final nowMs=DateTime.now().millisecondsSinceEpoch;
-      if(p['status']=='OPEN' && nowMs < (p['salesCloseTime'] as int)) return true;
-      // إذا أغلق صباح اليوم، Evening اليوم قد يكون مغلق أيضاً ونحتاج Evening الغد
-      return _periods.any((e)=> e['drawType']=='EVENING' && e['status']=='OPEN');
-    }
-    bool isBothEnabled(){
-      final open=_periods.where((e)=> e['status']=='OPEN').length;
-      return open >= 2 || (isMorningOpen() && isEveningOpen());
-    }
-    final morningOpen=isMorningOpen();
-    final eveningOpen=isEveningOpen();
-    final bothOpen=isBothEnabled();
-    // قائمة منسدلة أطول وأكبر — انجليزية
+    final effective = _clampDrawMode(_drawMode, morningOpen: morningOpen, eveningOpen: eveningOpen);
     return SizedBox(
       height: 42,
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
-          value: _drawMode,
+          value: effective,
           isDense: true,
           isExpanded: false,
           icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: Colors.white),
           style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.white),
           dropdownColor: Colors.white,
           underline: const SizedBox(),
-          onChanged: (v){
+          onChanged: (v) async {
             if(v==null) return;
             if(v=='Midday' && !morningOpen) return;
             if(v=='Evening' && !eveningOpen) return;
             if(v=='Both' && !bothOpen) return;
-            setState(()=> {_drawMode=v, _syncDrawModeToPeriods()});
+            setState(() {
+              _drawMode = v;
+              _syncDrawModeToPeriods();
+            });
+            if(v=='Midday' || v=='Evening'){
+              final app = context.read<AppState>();
+              if(app.cart.isNotEmpty){
+                try{
+                  await app.remapCartToDrawType(v=='Evening' ? 'EVENING' : 'MIDDAY');
+                }catch(e){
+                  if(!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red));
+                }
+              }
+            }
           },
-          selectedItemBuilder: (ctx)=> [
-            for(final e in [
-              {'v':'Midday','l':'Morning'},
-              {'v':'Evening','l':'Evening'},
-              {'v':'Both','l':'Both'},
-            ]) Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(e['v']=='Midday'? Icons.wb_sunny: e['v']=='Evening'? Icons.nights_stay: Icons.copy_all, size: 16, color: Colors.white),
-              const SizedBox(width: 6),
-              Text(e['l']!, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.white)),
-            ]),
-          ],
+          selectedItemBuilder: (ctx) {
+            final labels = <String, String>{
+              if (morningOpen) 'Midday': 'Morning',
+              if (eveningOpen) 'Evening': 'Evening',
+              if (bothOpen) 'Both': 'Both',
+            };
+            return [
+              for (final e in labels.entries)
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(e.key=='Midday'? Icons.wb_sunny: e.key=='Evening'? Icons.nights_stay: Icons.copy_all, size: 16, color: Colors.white),
+                  const SizedBox(width: 6),
+                  Text(e.value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.white)),
+                ]),
+            ];
+          },
           items: [
-            DropdownMenuItem(value: 'Midday', enabled: morningOpen, child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.wb_sunny, size: 16, color: morningOpen? AppTheme.green: Colors.grey),
+            if (morningOpen) DropdownMenuItem(value: 'Midday', child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.wb_sunny, size: 16, color: AppTheme.green),
               const SizedBox(width: 8),
-              Flexible(child: Text('Morning', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: morningOpen? Colors.black87: Colors.grey), overflow: TextOverflow.ellipsis)),
+              const Flexible(child: Text('Morning', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87), overflow: TextOverflow.ellipsis)),
             ])),
-            DropdownMenuItem(value: 'Evening', enabled: eveningOpen, child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.nights_stay, size: 16, color: eveningOpen? AppTheme.green: Colors.grey),
+            if (eveningOpen) DropdownMenuItem(value: 'Evening', child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.nights_stay, size: 16, color: AppTheme.green),
               const SizedBox(width: 8),
-              Flexible(child: Text('Evening', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: eveningOpen? Colors.black87: Colors.grey), overflow: TextOverflow.ellipsis)),
+              const Flexible(child: Text('Evening', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87), overflow: TextOverflow.ellipsis)),
             ])),
-            DropdownMenuItem(value: 'Both', enabled: bothOpen, child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.copy_all, size: 16, color: bothOpen? AppTheme.green: Colors.grey),
+            if (bothOpen) DropdownMenuItem(value: 'Both', child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.copy_all, size: 16, color: AppTheme.green),
               const SizedBox(width: 8),
-              Flexible(child: Text('Both', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: bothOpen? Colors.black87: Colors.grey), overflow: TextOverflow.ellipsis)),
+              const Flexible(child: Text('Both', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87), overflow: TextOverflow.ellipsis)),
             ])),
           ],
         ),
@@ -255,6 +317,23 @@ class _NumbersScreenState extends State<NumbersScreen> {
 
   // ADD to cart (before SALE, removable) — supports Both (Spec §13-14)
   Future<void> _addToCart() async {
+    final morningOpen=_isTypeSellable('MIDDAY');
+    final eveningOpen=_isTypeSellable('EVENING');
+    if(_drawMode=='Both' && !(morningOpen && eveningOpen)){
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Both is not available — a period is closed. Play the open period only.'), backgroundColor: Colors.red));
+      setState(_applySellableDrawMode);
+      return;
+    }
+    if(_drawMode=='Midday' && !morningOpen){
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Morning is closed — Evening only'), backgroundColor: Colors.red));
+      setState(_applySellableDrawMode);
+      return;
+    }
+    if(_drawMode=='Evening' && !eveningOpen){
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Evening is closed'), backgroundColor: Colors.red));
+      setState(_applySellableDrawMode);
+      return;
+    }
     if(_digits.isEmpty){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter numbers first'))); return; }
     final need = _digitMode=='3D' ? 3 : 4;
     if(_digits.length != need){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Please enter exactly $need digits for $_digitMode mode'))); return; }
@@ -266,7 +345,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
     final isBox = low=='box';
     final allSame = _digits.split('').toSet().length==1;
     if(allSame && (isBox || isAll || isCombo)){
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('الأرقام المتطابقة مثل $_digits مسموحة فقط في Straight — اختر Straight أو غيّر الرقم'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Repeated digits like $_digits are allowed in Straight only — choose Straight or change the number'), backgroundColor: Colors.red));
       return;
     }
     if(!isCombo && !isAll && !isBox){
@@ -311,13 +390,23 @@ class _NumbersScreenState extends State<NumbersScreen> {
         _isQuickPick=false;
         if(!mounted) return;
         if(isCombo && savedCombos!=null){
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Added BOTH COMBO: \$${savedAmt.toStringAsFixed(2)}×$savedCombos = \$${savedTotal.toStringAsFixed(2)} per draw • الإجمالي \$${(savedTotal*2).toStringAsFixed(2)}'), backgroundColor: AppTheme.green));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Added BOTH COMBO: \$${savedAmt.toStringAsFixed(2)}×$savedCombos = \$${savedTotal.toStringAsFixed(2)} per draw • total \$${(savedTotal*2).toStringAsFixed(2)}'), backgroundColor: AppTheme.green));
         } else {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Added BOTH: ${cartAmount.toStringAsFixed(2)} Midday + ${cartAmount.toStringAsFixed(2)} Evening = \$${(cartAmount*2).toStringAsFixed(2)}'), backgroundColor: AppTheme.green));
         }
       } else {
         final draw=_draws.firstWhere((d)=> d['id']==_drawId, orElse: ()=>{});
-        await context.read<AppState>().addToCart(gameId:'g_numbers', gameName:'Numbers', drawId:_drawId, drawName:draw['name'] as String?, numbers:_digits.split(''), betType:_betType, amount:cartAmount, isQuickPick:_isQuickPick);
+        await context.read<AppState>().addToCart(
+          gameId:'g_numbers',
+          gameName:'Numbers',
+          drawId:_drawId,
+          drawName:draw['name'] as String?,
+          drawType: _drawMode=='Evening' ? 'EVENING' : 'MIDDAY',
+          numbers:_digits.split(''),
+          betType:_betType,
+          amount:cartAmount,
+          isQuickPick:_isQuickPick,
+        );
         setState(()=> _digits='');
         _isQuickPick=false;
         if(!mounted) return;
@@ -336,10 +425,34 @@ class _NumbersScreenState extends State<NumbersScreen> {
       if(!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('SALE success — Ticket ${ticket['id']} • ${ticket['linesCount']} plays • ${fmtMoney(ticket['total'])}'), backgroundColor: AppTheme.green));
       await _load();
-      // Auto print
-      Navigator.pushNamed(context, '/print', arguments: ticket);
+      // إذا توجد طابعة افتراضية — اطبع مباشرة بدون انتقال للصفحة
+      final lines = (ticket['lines'] as List?)?.cast<Map<String,dynamic>>() ?? [];
+      final printed = await tryDirectPrintTicket(context, ticket, lines);
+      if(printed?.ok == true){
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Printed on the default printer'), backgroundColor: Color(0xFF0B8A3E)));
+        return;
+      }
+      if(printed != null && mounted){
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(printed.error ?? 'Print failed'), backgroundColor: Colors.red));
+      }
+      if(mounted) Navigator.pushNamed(context, '/print', arguments: ticket);
     }catch(e){
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: Colors.red));
+    }
+  }
+
+  Future<void> _clearCartConfirm() async {
+    final app = context.read<AppState>();
+    if(app.isCartEmpty) return;
+    final ok = await showDialog<bool>(context: context, builder: (c)=> AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      title: const Text('Clear Cart', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+      content: Text('Delete all items (${app.cartCount} plays • ${fmtMoney(app.cartTotal)})?', style: const TextStyle(fontSize: 12)),
+      actions: [TextButton(onPressed: ()=> Navigator.pop(c,false), child: const Text('Cancel')), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white), onPressed: ()=> Navigator.pop(c,true), child: const Text('Clear all'))],
+    ));
+    if(ok==true){
+      app.clearCart();
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cart cleared'), backgroundColor: Colors.red));
     }
   }
 
@@ -352,16 +465,22 @@ class _NumbersScreenState extends State<NumbersScreen> {
       return Container(
         color: const Color(0xFFF0F7F0),
         padding: const EdgeInsets.fromLTRB(12,8,12,8),
-        child: SizedBox(
-          width: double.infinity,
-          height: 44,
-          child: ElevatedButton.icon(
+        child: Row(children: [
+          // CLEAR — يحذف الفاتورة/كل العناصر
+          SizedBox(height: 44, child: OutlinedButton.icon(
+            onPressed: _clearCartConfirm,
+            icon: const Icon(Icons.clear_all, size: 18, color: Colors.red),
+            label: const Text('CLEAR', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: Colors.red)),
+            style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.red), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), backgroundColor: Colors.white),
+          )),
+          const SizedBox(width: 8),
+          Expanded(child: SizedBox(height: 44, child: ElevatedButton.icon(
             onPressed: _doSale,
             icon: const Icon(Icons.receipt_long, size: 18),
-            label: Text('SALE • Print Ticket  ${fmtMoney(app.cartTotal)}  (${cart.length} plays)', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
+            label: Text('SALE • ${fmtMoney(app.cartTotal)} (${cart.length})', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.green, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-          ),
-        ),
+          ))),
+        ]),
       );
     });
   }
@@ -591,25 +710,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
     );
   }
 
-  Future<String?> _askDrawChoiceForReplay() async {
-    return showDialog<String>(
-      context: context,
-      builder: (c) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: const Text('متى تريد اللعب؟', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Text('اختر فترة السحب للتذكرة المكررة:', style: TextStyle(fontSize: 11)),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(icon: const Icon(Icons.wb_sunny, size: 16, color: Color(0xFF0B8A3E)), label: const Text('صباحي  (Midday) — 14:30', style: TextStyle(fontSize: 12, color: Color(0xFF0B8A3E))), onPressed: () => Navigator.pop(c, 'MIDDAY')),
-          const SizedBox(height: 6),
-          OutlinedButton.icon(icon: const Icon(Icons.nights_stay, size: 16, color: Color(0xFF1565C0)), label: const Text('مسائي  (Evening) — 22:30', style: TextStyle(fontSize: 12, color: Color(0xFF1565C0))), onPressed: () => Navigator.pop(c, 'EVENING')),
-          const SizedBox(height: 6),
-          ElevatedButton.icon(icon: const Icon(Icons.copy_all, size: 16), label: const Text('الاثنين معا (Both) — نسختين', style: TextStyle(fontSize: 12)), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0B8A3E), foregroundColor: Colors.white), onPressed: () => Navigator.pop(c, 'BOTH')),
-        ]),
-        actions: [TextButton(onPressed: () => Navigator.pop(c, null), child: const Text('إلغاء'))],
-      ),
-    );
-  }
+  Future<String?> _askDrawChoiceForReplay() => showDrawPeriodChoice(context);
 
   Future<void> _copyByTicketNumber() async {
     final ctrl = TextEditingController();
@@ -636,7 +737,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
     final res = await app.validateTicket(code.trim());
     if(!mounted) return;
     if(res['found']==false){
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ticket not found: $code — جرّب الباركود أو الرقم التسلسلي'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ticket not found: $code — try the barcode or serial number'), backgroundColor: Colors.red));
       return;
     }
     final ticket = res['ticket'] as Map<String,dynamic>;
@@ -681,11 +782,11 @@ class _NumbersScreenState extends State<NumbersScreen> {
           Text('Number: ${(ticket['numbers'] as String).replaceAll(',', ' ')} - ${_dispBet(ticket['betType'])}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
         ],
         const SizedBox(height: 8),
-        Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: const Color(0xFFEFF7FF), borderRadius: BorderRadius.circular(8)), child: const Text('عند النسخ ستختار فترة اللعب: صباحي (Midday 14:30) أو مسائي (Evening 22:30) أو الاثنين معا.', style: TextStyle(fontSize: 9, color: Colors.black54))),
+        Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: const Color(0xFFEFF7FF), borderRadius: BorderRadius.circular(8)), child: const Text('When copying you will choose Midday (14:30), Evening (22:30), or both.', style: TextStyle(fontSize: 9, color: Colors.black54))),
       ]))),
       actions: [
         TextButton(onPressed: ()=> Navigator.pop(ctx), child: const Text('Close')),
-        ElevatedButton.icon(icon: const Icon(Icons.copy, size: 16), label: const Text('نسخ — اختر الفترة', style: TextStyle(fontSize: 11)), style: ElevatedButton.styleFrom(backgroundColor: AppTheme.green, foregroundColor: Colors.white), onPressed: () async {
+        ElevatedButton.icon(icon: const Icon(Icons.copy, size: 16), label: const Text('Copy — choose period', style: TextStyle(fontSize: 11)), style: ElevatedButton.styleFrom(backgroundColor: AppTheme.green, foregroundColor: Colors.white), onPressed: () async {
           Navigator.pop(ctx);
           final choice = await _askDrawChoiceForReplay();
           if(choice==null) return;
@@ -695,8 +796,8 @@ class _NumbersScreenState extends State<NumbersScreen> {
             final tid = tt!=null ? tt['id'] as String : code.trim();
             final count = await app.replayTicketToCartWithChoice(tid, choice);
             if(!mounted) return;
-            final label = choice=='BOTH' ? 'الاثنين معا (×2)' : choice=='MIDDAY' ? 'صباحي فقط' : 'مسائي فقط';
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم النسخ $count لعبة → $label — اضغط SALE للطباعة'), backgroundColor: AppTheme.green));
+            final label = choice=='BOTH' ? 'Both (×2)' : choice=='MIDDAY' ? 'Midday only' : 'Evening only';
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied $count play(s) → $label — tap SALE to print'), backgroundColor: AppTheme.green));
           }catch(e){
             if(!mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red));
@@ -739,8 +840,8 @@ class _NumbersScreenState extends State<NumbersScreen> {
         title: _appBarDrawField(),
         centerTitle: true,
         actions: [
-          IconButton(icon: const Icon(Icons.qr_code_scanner, size: 20), tooltip: 'Scan barcode (مسح)', onPressed: _scanAndReplay),
-          IconButton(icon: const Icon(Icons.search, size: 20), tooltip: 'Search by Ticket Number (بحث برقم التذكرة)', onPressed: _copyByTicketNumber),
+          IconButton(icon: const Icon(Icons.qr_code_scanner, size: 20), tooltip: 'Scan barcode', onPressed: _scanAndReplay),
+          IconButton(icon: const Icon(Icons.search, size: 20), tooltip: 'Search by ticket number', onPressed: _copyByTicketNumber),
           Consumer<AppState>(builder: (_, app, __) => app.isCartEmpty ? const SizedBox() : Padding(padding: const EdgeInsets.only(right: 8), child: Center(child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)), child: Text('${app.cartCount} • ${fmtMoney(app.cartTotal)}', style: const TextStyle(color: AppTheme.green, fontWeight: FontWeight.w800, fontSize: 11)))))),
           IconButton(icon: const Icon(Icons.logout, size: 18), onPressed: ()=> _logout())],
       ),

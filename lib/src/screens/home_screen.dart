@@ -22,7 +22,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _winnersToday = 0;
   double _winRate = 0;
   double _workerCommission = 0;
-  double _workerRate = 5.0;
+  double _workerRate = 20.0;
 
   @override
   void initState() { super.initState(); _load(); }
@@ -70,19 +70,9 @@ class _HomeScreenState extends State<HomeScreen> {
       final playsToday = todayTickets.length;
       final winnersToday = todayTickets.where((t)=> t['status']=='winning' || t['status']=='paid').length;
       final winRate = playsToday>0 ? (winnersToday/playsToday*100) : 0.0;
-      double workerRate = 5.0;
-      double workerCommission = 0;
-      final curUser = app.currentUser;
-      if(curUser != null){
-        final comm = curUser['commission'];
-        if(comm != null) workerRate = (comm as num).toDouble();
-        else {
-          final acc = await db.findAccount(curUser['username'], curUser['password']);
-          if(acc != null && acc['commission'] != null) workerRate = (acc['commission'] as num).toDouble();
-        }
-        final salesToday = todayTickets.fold<double>(0, (s,e)=> s + (e['total'] as num).toDouble());
-        workerCommission = salesToday * workerRate / 100;
-      }
+      final workerRate = await db.getClientCommissionRate();
+      final salesToday = todayTickets.fold<double>(0, (s,e)=> s + (e['total'] as num).toDouble());
+      final workerCommission = salesToday * workerRate / 100;
       if (mounted) setState(() { _cash = c; _balance = b; _pendingNotifs = pending; _winningRestricted = restricted; _playsToday = playsToday; _winnersToday = winnersToday; _winRate = winRate; _workerCommission = workerCommission; _workerRate = workerRate; });
     }catch(_){
       if (mounted) setState(() { _cash = c; _balance = b; });
@@ -144,7 +134,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     _smallStat('Plays Today', '$_playsToday', Icons.confirmation_number, AppTheme.green),
                     _smallStat('Winners Today', '$_winnersToday', Icons.emoji_events, Colors.orange),
                     _smallStat('Win Rate', '${_winRate.toStringAsFixed(1)}%', Icons.percent, Colors.purple),
-                    _smallStat('Commission ${_workerRate.toStringAsFixed(1)}%', '\$${_workerCommission.toStringAsFixed(2)}', Icons.account_balance_wallet, Colors.teal),
+                    _smallStat('Customer ${_workerRate.toStringAsFixed(_workerRate==_workerRate.roundToDouble()?0:1)}%', '\$${_workerCommission.toStringAsFixed(2)}', Icons.account_balance_wallet, Colors.teal),
                   ],
                 ),
                 if(isAdmin) Padding(

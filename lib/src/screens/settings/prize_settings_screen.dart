@@ -62,22 +62,29 @@ class _PrizeSettingsScreenState extends State<PrizeSettingsScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8F6),
       appBar: AppBar(backgroundColor: green, foregroundColor: Colors.white, title: const Text('Prize Settings')),
-      body: _loading ? const Center(child: CircularProgressIndicator(color: green)) : Column(children: [
-        Padding(padding: EdgeInsets.all(Responsive.horizontalPadding(context)), child: TextField(onChanged: (v)=> setState(()=> _search=v), decoration: InputDecoration(hintText: 'Search prize...', prefixIcon: const Icon(Icons.search, size: 18), filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none), isDense: true))),
-        Expanded(child: ListView.separated(padding: EdgeInsets.all(Responsive.horizontalPadding(context)), itemCount: filtered.length, separatorBuilder: (_,__)=> const SizedBox(height: 8), itemBuilder: (c,i){
-          final e = filtered[i];
-          final k = e['key'] as String; final v = e['value'] as String;
-          return Card(child: ListTile(
-            leading: const CircleAvatar(backgroundColor: Color(0xFFE6F4EA), child: Icon(Icons.emoji_events, color: green, size: 16)),
-            title: Text(k, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-            subtitle: Text(_desc(k), style: const TextStyle(fontSize: 10, color: Colors.black54)),
-            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-              Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: const Color(0xFFE6F4EA), borderRadius: BorderRadius.circular(6)), child: Text(v, style: const TextStyle(fontWeight: FontWeight.bold, color: green, fontSize: 12))),
-              IconButton(icon: const Icon(Icons.edit, size: 16, color: green), onPressed: ()=> _edit(k, v)),
-            ]),
-          ));
-        })),
-      ]),
+      body: _loading ? const Center(child: CircularProgressIndicator(color: green)) : ListView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.all(Responsive.horizontalPadding(context)),
+        children: [
+          TextField(onChanged: (v)=> setState(()=> _search=v), decoration: InputDecoration(hintText: 'Search prize...', prefixIcon: const Icon(Icons.search, size: 18), filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none), isDense: true)),
+          const SizedBox(height: 10),
+          ...filtered.map((e) {
+            final k = e['key'] as String; final v = e['value'] as String;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Card(child: ListTile(
+                leading: const CircleAvatar(backgroundColor: Color(0xFFE6F4EA), child: Icon(Icons.emoji_events, color: green, size: 16)),
+                title: Text(k, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                subtitle: Text(_desc(k), style: const TextStyle(fontSize: 10, color: Colors.black54)),
+                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: const Color(0xFFE6F4EA), borderRadius: BorderRadius.circular(6)), child: Text(v, style: const TextStyle(fontWeight: FontWeight.bold, color: green, fontSize: 12))),
+                  IconButton(icon: const Icon(Icons.edit, size: 16, color: green), onPressed: ()=> _edit(k, v)),
+                ]),
+              )),
+            );
+          }),
+        ],
+      ),
     );
   }
 }

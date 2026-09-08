@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../data/database.dart';
@@ -23,9 +24,13 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
   String? _lastPath;
   DateTime? _nextAt;
   String? _dirPath;
+  String? _visibleDir;
+  String? _customDir;
   List<FileSystemEntity> _backups = [];
   bool _backingUp = false;
   bool _restoring = false;
+  bool _hasStorageAccess = true;
+  bool _customDirWritable = true;
 
   @override
   void initState() { super.initState(); _load(); }
@@ -34,9 +39,14 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
     setState(()=> _loading=true);
     final db = context.read<AppDatabase>();
     final svc = BackupService(db);
+    final access = await svc.hasAllFilesAccess();
     final cfg = await svc.getBackupConfig();
     final dir = await svc.getBackupDirPath();
     final list = await svc.listBackups();
+    String? custom = cfg['customDir'] as String?;
+    if(custom!=null && custom.isEmpty) custom=null;
+    var customOk = true;
+    if(custom!=null) customOk = await svc.canWritePath(custom);
     if(!mounted) return;
     setState((){
       _enabled = cfg['enabled'] as bool;
@@ -45,9 +55,105 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
       _lastPath = cfg['lastPath'] as String?;
       _nextAt = cfg['nextAt'] as DateTime?;
       _dirPath = dir;
+      _visibleDir = cfg['visibleDir'] as String?;
+      _customDir = custom;
+      _hasStorageAccess = access;
+      _customDirWritable = customOk;
       _backups = list;
       _loading=false;
     });
+  }
+
+  Future<void> _requestStorageAccess() async {
+    final svc = BackupService(context.read<AppDatabase>());
+    final ok = await svc.ensureStorageAccess(prompt: true);
+    if(!ok){
+      if(mounted){
+        final go = await showDialog<bool>(context: context, builder: (c)=> AlertDialog(
+          title: const Text('صلاحية الملفات مطلوبة', style: TextStyle(fontSize:14, fontWeight: FontWeight.bold)),
+          content: const Text('على Android 11+ يجب تفعيل "السماح بالوصول لكل الملفات" لهذا التطبيق حتى يتم الحفظ في Downloads أو أي مجلد تختاره.', style: TextStyle(fontSize:12)),
+          actions: [
+            TextButton(onPressed: ()=> Navigator.pop(c,false), child: const Text('لاحقاً')),
+            ElevatedButton(onPressed: ()=> Navigator.pop(c,true), child: const Text('فتح الإعدادات')),
+          ],
+        ));
+        if(go==true) await svc.openStorageSettings();
+      }
+    }
+    await _load();
+  }
+
+  Future<void> _pickCustomDir() async {
+    try{
+      final svc = BackupService(context.read<AppDatabase>());
+      await svc.ensureStorageAccess(prompt: true);
+      final dir = await FilePicker.platform.getDirectoryPath(dialogTitle: 'اختر مجلد النسخ الافتراضي — يبقى بعد حذف التطبيق');
+      if(dir==null) return;
+      final writable = await svc.canWritePath(dir);
+      if(!writable){
+        if(mounted){
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('تعذر الكتابة في هذا المجلد. فعّل صلاحية "الوصول لكل الملفات" من إعدادات التطبيق ثم أعد الاختيار.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 6),
+          ));
+        }
+        await _requestStorageAccess();
+        return;
+      }
+      await svc.setCustomDir(dir);
+      await _load();
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم حفظ المجلد الافتراضي: $dir\nسيتم نسخ كل نسخة تلقائية/يدوية هناك أيضاً'), backgroundColor: const Color(0xFF0B8A3E), duration: const Duration(seconds:4)));
+    }catch(e){
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل اختيار المجلد: $e'), backgroundColor: Colors.red));
+    }
+  }
+
+  Future<void> _clearCustomDir() async {
+    final svc = BackupService(context.read<AppDatabase>());
+    await svc.setCustomDir(null);
+    await _load();
+    if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف المجلد المخصص — سيتم استخدام المجلدات الافتراضية فقط')));
+  }
+
+  Future<void> _saveAnywhere() async {
+    setState(()=> _backingUp=true);
+    try{
+      final svc = BackupService(context.read<AppDatabase>());
+      final bytes = await svc.readDbBytes();
+      final suggested = svc.suggestedFileName(reason: 'manual');
+      String? picked;
+      var saveUnsupported = false;
+      try {
+        // على Android يجب تمرير bytes وإلا يفشل فوراً قبل فتح النافذة
+        picked = await FilePicker.platform.saveFile(
+          dialogTitle: 'احفظ النسخة في أي مكان تريده',
+          fileName: suggested,
+          bytes: bytes,
+          type: FileType.any,
+        );
+      } catch (_) {
+        saveUnsupported = true;
+      }
+      if((picked==null || picked.isEmpty) && saveUnsupported){
+        final dir = await FilePicker.platform.getDirectoryPath(dialogTitle: 'اختر مجلد الحفظ');
+        if(dir!=null){
+          picked = p.join(dir, suggested);
+          await File(picked).writeAsBytes(bytes, flush: true);
+        }
+      }
+      if(picked==null || picked.isEmpty){
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إلغاء الاختيار'), backgroundColor: Colors.orange));
+        return;
+      }
+      try { await svc.performBackup(reason: 'manual', requestPermission: false); } catch (_) {}
+      await _load();
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم الحفظ ✅\n$picked'), backgroundColor: const Color(0xFF0B8A3E), duration: const Duration(seconds:5)));
+    }catch(e){
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل الحفظ المخصص: $e'), backgroundColor: Colors.red));
+    }finally{
+      if(mounted) setState(()=> _backingUp=false);
+    }
   }
 
   Future<void> _toggleEnabled(bool v) async {
@@ -70,10 +176,25 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
     setState(()=> _backingUp=true);
     try{
       final svc = BackupService(context.read<AppDatabase>());
-      final path = await svc.performBackup(reason: 'manual');
+      await svc.ensureStorageAccess(prompt: true);
+      final result = await svc.performBackupDetailed(reason: 'manual', requestPermission: false);
       await _load();
       if(!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم النسخ بنجاح ✅\n$path'), backgroundColor: const Color(0xFF0B8A3E), duration: const Duration(seconds: 4)));
+      final saved = (result['saved'] as List).map((e)=> e.toString()).toList();
+      final customError = result['customError'] as String?;
+      await showDialog(context: context, builder: (c)=> AlertDialog(
+        title: Text(customError==null ? 'تم النسخ بنجاح ✅' : 'تم النسخ مع تنبيه', style: TextStyle(fontSize:14, fontWeight: FontWeight.bold, color: customError==null ? const Color(0xFF0B8A3E) : Colors.deepOrange)),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('تم الحفظ في:', style: TextStyle(fontSize:12, fontWeight: FontWeight.bold)),
+          const SizedBox(height:6),
+          ...saved.map((path)=> Padding(padding: const EdgeInsets.only(bottom:6), child: SelectableText(path, style: const TextStyle(fontSize:11)))),
+          if(customError!=null) ...[
+            const SizedBox(height:8),
+            Text(customError, style: const TextStyle(fontSize:11, color: Colors.red)),
+          ],
+        ]),
+        actions: [TextButton(onPressed: ()=> Navigator.pop(c), child: const Text('حسناً'))],
+      ));
     }catch(e){
       if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل النسخ: $e'), backgroundColor: Colors.red));
     }finally{
@@ -219,11 +340,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
         if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم إنشاء المجلد: $dir'), backgroundColor: Colors.orange));
       }
       if(Platform.isWindows){
-        // استخدم explorer مع مسار مقتبس
-        final res = await Process.run('explorer', [dir]);
-        if(res.exitCode!=0){
-          throw Exception('explorer exit ${res.exitCode}: ${res.stderr}');
-        }
+        await Process.start('explorer.exe', [dir], mode: ProcessStartMode.detached);
         if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم فتح المجلد: $dir'), backgroundColor: const Color(0xFF0B8A3E)));
         return;
       } else if(Platform.isAndroid){
@@ -243,7 +360,8 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
   Future<void> _exportToVisible(String path) async {
     try{
       final svc = BackupService(context.read<AppDatabase>());
-      final destDir = await svc.getVisibleExportDir();
+      await svc.ensureStorageAccess(prompt: true);
+      final destDir = await svc.getVisibleExportDir(requestPermission: false);
       if(destDir==null) throw Exception('لا يوجد مجلد تصدير');
       final name = path.split('/').last.split('\\').last;
       final dest = File('${destDir.path}/$name');
@@ -306,6 +424,60 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                 icon: _backingUp ? const SizedBox(width:16,height:16, child: CircularProgressIndicator(strokeWidth: 2, color: green)) : const Icon(Icons.cloud_upload),
                 label: Text(_backingUp? 'جاري النسخ...' : 'نسخ الآن — Backup Now', style: const TextStyle(fontWeight: FontWeight.bold)),
               )),
+              const SizedBox(height: 8),
+              SizedBox(width: double.infinity, child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.white.withValues(alpha:0.95), foregroundColor: green, side: const BorderSide(color: Colors.white), padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                onPressed: _backingUp || _restoring ? null : _saveAnywhere,
+                icon: const Icon(Icons.save_alt, size: 18),
+                label: const Text('حفظ في مكان مخصص — اختر أي ملف/مجلد', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+              )),
+              const SizedBox(height: 6),
+              const Text('يحفظ نسخة داخلية + يفتح نافذة اختيار ملف لحفظ نسخة ثانية في أي مكان تريده (يبقى بعد حذف التطبيق/تغيير الجهاز)', style: TextStyle(color: Colors.white70, fontSize: 9), textAlign: TextAlign.center),
+            ])),
+          ),
+          if(Platform.isAndroid && !_hasStorageAccess) ...[
+            const SizedBox(height: 14),
+            Card(
+              color: const Color(0xFFFFF4E5),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: Colors.orange)),
+              child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                const Row(children: [Icon(Icons.folder_off, color: Colors.deepOrange), SizedBox(width:8), Expanded(child: Text('صلاحية الملفات غير مفعّلة', style: TextStyle(fontWeight: FontWeight.bold, fontSize:13, color: Colors.deepOrange)))]),
+                const SizedBox(height:8),
+                const Text('بدون هذه الصلاحية لا يمكن الحفظ في Download أو المجلد الذي تختاره. اضغط الزر ثم فعّل "السماح بالوصول لكل الملفات".', style: TextStyle(fontSize:11)),
+                const SizedBox(height:10),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white),
+                  onPressed: _requestStorageAccess,
+                  icon: const Icon(Icons.lock_open, size:16),
+                  label: const Text('منح صلاحية الملفات', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ])),
+            ),
+          ],
+          const SizedBox(height: 14),
+          // Custom default folder — يبقى بعد حذف التطبيق
+          Card(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.teal.withValues(alpha:0.2))),
+            child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.teal.withValues(alpha:0.12), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.folder_special, color: Colors.teal, size: 18)),
+                const SizedBox(width: 8),
+                const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('مجلد النسخ الافتراضي — يبقى بعد الحذف', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), Text('اختر أي مجلد (Downloads/ Documents/ USB)', style: TextStyle(fontSize:10, color: Colors.black54))])),
+              ]),
+              const SizedBox(height: 10),
+              Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade200)), child: SelectableText(_customDir ?? (_visibleDir==null ? 'لم يتم الاختيار — سيتم استخدام المجلد الافتراضي المرئي إن وُجد' : 'لم يتم الاختيار — الافتراضي: $_visibleDir'), style: TextStyle(fontSize: 10, fontWeight: _customDir==null? FontWeight.normal: FontWeight.bold, color: _customDir==null? Colors.black54: Colors.teal))),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 10), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), onPressed: _pickCustomDir, icon: const Icon(Icons.folder_open, size:16), label: const Text('اختيار مجلد', style: TextStyle(fontSize:11, fontWeight: FontWeight.bold)))),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(icon: const Icon(Icons.clear, size:16), label: const Text('مسح', style: TextStyle(fontSize:11)), onPressed: _customDir==null? null: _clearCustomDir, style: OutlinedButton.styleFrom(foregroundColor: Colors.red)),
+              ]),
+              if(_customDir!=null && !_customDirWritable) ...[
+                const SizedBox(height: 8),
+                Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.red.withValues(alpha:0.08), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.red.withValues(alpha:0.3))), child: const Text('هذا المجلد محفوظ لكن التطبيق لا يستطيع الكتابة فيه. فعّل صلاحية الوصول لكل الملفات ثم أعد اختيار المجلد.', style: TextStyle(fontSize:10, color: Colors.red))),
+              ],
+              const SizedBox(height: 6),
+              Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.teal.withValues(alpha:0.06), borderRadius: BorderRadius.circular(8)), child: const Text('• كل نسخة يدوية/تلقائية سيتم نسخها تلقائياً إلى هذا المجلد أيضاً — المجلد الخارجي لا يُحذف عند حذف التطبيق أو تغيير الجهاز، ويمكن نسخه للجهاز الجديد واستيراده.', style: TextStyle(fontSize:10, color: Colors.black87))),
             ])),
           ),
           const SizedBox(height: 14),
@@ -366,11 +538,19 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
               _row('النسخ القادم:', _enabled && _interval!='never' ? _fmtDt(_nextAt) : 'متوقف', Icons.timer, Colors.orange),
               const SizedBox(height: 6),
               _row('مجلد النسخ:', _dirPath?? '—', Icons.folder, Colors.green, small: true),
+              if(_visibleDir!=null && _visibleDir!=_dirPath) ...[
+                const SizedBox(height: 6),
+                _row('المجلد المرئي:', _visibleDir!, Icons.download, Colors.teal, small: true),
+              ],
+              if(_customDir!=null) ...[
+                const SizedBox(height: 6),
+                _row('المجلد المخصص:', _customDir!, Icons.folder_special, Colors.teal, small: true),
+              ],
               const SizedBox(height: 6),
               Row(children: [
-                Expanded(child: OutlinedButton.icon(icon: const Icon(Icons.folder_open, size:14), label: const Text('فتح المجلد', style: TextStyle(fontSize:11)), onPressed: _dirPath==null? null: ()=> _openFolder(_dirPath!))),
+                Expanded(child: OutlinedButton.icon(icon: const Icon(Icons.folder_open, size:14), label: const Text('فتح المجلد', style: TextStyle(fontSize:11)), onPressed: _dirPath==null? null: ()=> _openFolder(_visibleDir ?? _customDir ?? _dirPath!))),
                 const SizedBox(width:6),
-                Expanded(child: OutlinedButton.icon(icon: const Icon(Icons.copy, size:14), label: const Text('نسخ المسار', style: TextStyle(fontSize:11)), onPressed: _dirPath==null? null: ()=> _copyPath(_dirPath!))),
+                Expanded(child: OutlinedButton.icon(icon: const Icon(Icons.copy, size:14), label: const Text('نسخ المسار', style: TextStyle(fontSize:11)), onPressed: _dirPath==null? null: ()=> _copyPath(_visibleDir ?? _customDir ?? _dirPath!))),
               ]),
               if(_lastPath!=null) ...[
                 const SizedBox(height: 6),
@@ -383,7 +563,12 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                 ]),
               ],
               const SizedBox(height:6),
-              Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.06), borderRadius: BorderRadius.circular(8)), child: const Text('ملاحظة: على Android المجلد داخلي ولا يظهر في مدير الملفات — استخدم "تصدير للـ Downloads" أو "مشاركة" لحفظ نسخة مرئية في Download/YeLotteryBackups', style: TextStyle(fontSize:10, color: Colors.black54))),
+              Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.06), borderRadius: BorderRadius.circular(8)), child: Text(
+                Platform.isWindows
+                  ? 'على Windows تُحفظ النسخ في مجلد Downloads\\YeLotteryBackups (أو Documents إن تعذر Downloads) ويمكن فتحه مباشرة من الزر أعلاه.'
+                  : 'على Android تُحفظ نسخة في Download/YeLotteryBackups إن سُمح بالتخزين، وإلا في مجلد التطبيق. اختر مجلداً مخصصاً أو استخدم مشاركة للاحتفاظ بنسخة بعد حذف التطبيق.',
+                style: const TextStyle(fontSize:10, color: Colors.black54),
+              )),
             ])),
           ),
           const SizedBox(height: 14),

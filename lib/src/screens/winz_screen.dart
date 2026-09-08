@@ -7,6 +7,8 @@ import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
 import '../widgets/app_drawer.dart';
 import '../utils/format.dart';
+import '../utils/ticket_pdf.dart';
+import '../widgets/draw_period_choice.dart';
 import 'barcode_scanner_screen.dart';
 
 class WinzScreen extends StatefulWidget {
@@ -80,10 +82,8 @@ class _WinzScreenState extends State<WinzScreen> {
       final pid='${drawDt.year}-${drawDt.month.toString().padLeft(2,'0')}-${drawDt.day.toString().padLeft(2,'0')}-$type';
       return openIds.contains(pid);
     }).toList()..sort((a,b)=> (a['drawTime'] as int).compareTo(b['drawTime'] as int));
-    final List<Map<String,dynamic>> fallback=all.where((d)=> (d['drawTime'] as int) > nowMs).take(4).toList();
-    final List<Map<String,dynamic>> finalDraws=draws.isNotEmpty? draws: fallback;
     if(!mounted) return;
-    setState(()=> _draws=finalDraws.isNotEmpty? finalDraws: all.take(4).toList());
+    setState(()=> _draws=draws);
     setState(()=> _drawId=_draws.isNotEmpty? _draws.first['id'] as String : null);
     setState(()=> _loadingDraws=false);
   }
@@ -109,14 +109,14 @@ class _WinzScreenState extends State<WinzScreen> {
     final isAll = low=='all' || (low.contains('straight') && low.contains('box'));
     if(low.contains('combo')){
       final c=_combo(_digits.split(''));
-      if(c<=1) return 'Combo غير صالح';
+      if(c<=1) return 'Invalid Combo';
       final total = amt * c;
-      return 'المبلغ المطلوب: \$${total.toStringAsFixed(2)}';
+      return 'Amount due: \$${total.toStringAsFixed(2)}';
     }
     if(isAll){
-      return 'المبلغ المطلوب: \$${(amt*2).toStringAsFixed(2)}';
+      return 'Amount due: \$${(amt*2).toStringAsFixed(2)}';
     }
-    return 'المبلغ المطلوب: \$${amt.toStringAsFixed(2)}';
+    return 'Amount due: \$${amt.toStringAsFixed(2)}';
   }
 
   Future<void> _addToCart() async {
@@ -129,7 +129,7 @@ class _WinzScreenState extends State<WinzScreen> {
     final isBox = low=='box';
     final allSame = _digits.split('').toSet().length==1;
     if(allSame && (isBox || isAll || isCombo)){
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('الأرقام المتطابقة مثل $_digits مسموحة فقط في Straight'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Repeated digits like $_digits are allowed in Straight only'), backgroundColor: Colors.red));
       return;
     }
     if(!isCombo && !isAll && !isBox){
@@ -164,29 +164,20 @@ class _WinzScreenState extends State<WinzScreen> {
       if(!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('SALE Ticket ${ticket['id']} • ${fmtMoney(ticket['total'])}'), backgroundColor: AppTheme.orange));
       await _load();
-      Navigator.pushNamed(context, '/print', arguments: ticket);
+      final lines = (ticket['lines'] as List?)?.cast<Map<String,dynamic>>() ?? [];
+      final printed = await tryDirectPrintTicket(context, ticket, lines);
+      if(printed?.ok == true){
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Printed on the default printer'), backgroundColor: Color(0xFF0B8A3E)));
+        return;
+      }
+      if(printed != null && mounted){
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(printed.error ?? 'Print failed'), backgroundColor: Colors.red));
+      }
+      if(mounted) Navigator.pushNamed(context, '/print', arguments: ticket);
     }catch(e){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red)); }
   }
 
-  Future<String?> _askDrawChoiceForReplay() async {
-    return showDialog<String>(
-      context: context,
-      builder: (c) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: const Text('متى تريد اللعب؟', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Text('اختر فترة السحب للتذكرة المكررة:', style: TextStyle(fontSize: 11)),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(icon: const Icon(Icons.wb_sunny, size: 16, color: AppTheme.orange), label: const Text('صباحي  (Midday) — 14:30', style: TextStyle(fontSize: 12, color: AppTheme.orange)), onPressed: () => Navigator.pop(c, 'MIDDAY')),
-          const SizedBox(height: 6),
-          OutlinedButton.icon(icon: const Icon(Icons.nights_stay, size: 16, color: AppTheme.blue), label: const Text('مسائي  (Evening) — 22:30', style: TextStyle(fontSize: 12, color: AppTheme.blue)), onPressed: () => Navigator.pop(c, 'EVENING')),
-          const SizedBox(height: 6),
-          ElevatedButton.icon(icon: const Icon(Icons.copy_all, size: 16), label: const Text('الاثنين معا (Both) — نسختين', style: TextStyle(fontSize: 12)), style: ElevatedButton.styleFrom(backgroundColor: AppTheme.orange, foregroundColor: Colors.white), onPressed: () => Navigator.pop(c, 'BOTH')),
-        ]),
-        actions: [TextButton(onPressed: () => Navigator.pop(c, null), child: const Text('إلغاء'))],
-      ),
-    );
-  }
+  Future<String?> _askDrawChoiceForReplay() => showDrawPeriodChoice(context);
 
   Future<void> _handleReplayCode(String code) async {
     final app = context.read<AppState>();
@@ -215,11 +206,11 @@ class _WinzScreenState extends State<WinzScreen> {
         ]))
         else Text('Numbers: ${(ticket['numbers'] as String).replaceAll(',', ' ')} • ${ticket['betType']}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
-        Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: const Color(0xFFFFF3E0), borderRadius: BorderRadius.circular(8)), child: const Text('عند النسخ ستختار: صباحي / مسائي / الاثنين معا', style: TextStyle(fontSize: 9, color: Colors.black54))),
+        Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: const Color(0xFFFFF3E0), borderRadius: BorderRadius.circular(8)), child: const Text('When copying you will choose Midday, Evening, or both.', style: TextStyle(fontSize: 9, color: Colors.black54))),
       ])),
       actions: [
         TextButton(onPressed: ()=> Navigator.pop(ctx), child: const Text('Close')),
-        ElevatedButton.icon(icon: const Icon(Icons.copy, size: 14), label: const Text('نسخ — اختر الفترة', style: TextStyle(fontSize: 11)), style: ElevatedButton.styleFrom(backgroundColor: AppTheme.orange, foregroundColor: Colors.white), onPressed: () async {
+        ElevatedButton.icon(icon: const Icon(Icons.copy, size: 14), label: const Text('Copy — choose period', style: TextStyle(fontSize: 11)), style: ElevatedButton.styleFrom(backgroundColor: AppTheme.orange, foregroundColor: Colors.white), onPressed: () async {
           Navigator.pop(ctx);
           final choice = await _askDrawChoiceForReplay();
           if(choice==null) return;
@@ -229,8 +220,8 @@ class _WinzScreenState extends State<WinzScreen> {
             final tid = tt!=null ? tt['id'] as String : code.trim();
             final count = await app.replayTicketToCartWithChoice(tid, choice);
             if(!mounted) return;
-            final label = choice=='BOTH' ? 'الاثنين (×2)' : choice=='MIDDAY' ? 'صباحي' : 'مسائي';
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم النسخ $count لعبة → $label — اضغط SALE'), backgroundColor: AppTheme.orange));
+            final label = choice=='BOTH' ? 'Both (×2)' : choice=='MIDDAY' ? 'Midday' : 'Evening';
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied $count play(s) → $label — tap SALE'), backgroundColor: AppTheme.orange));
           }catch(e){
             if(!mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red));
@@ -320,10 +311,29 @@ class _WinzScreenState extends State<WinzScreen> {
     );
   }
 
+  Future<void> _clearCartConfirm() async {
+    final app = context.read<AppState>();
+    if(app.isCartEmpty) return;
+    final ok = await showDialog<bool>(context: context, builder: (c)=> AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      title: const Text('Clear Cart', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+      content: Text('Delete all items (${app.cartCount} plays • ${fmtMoney(app.cartTotal)})?', style: const TextStyle(fontSize: 12)),
+      actions: [TextButton(onPressed: ()=> Navigator.pop(c,false), child: const Text('Cancel')), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white), onPressed: ()=> Navigator.pop(c,true), child: const Text('Clear all'))],
+    ));
+    if(ok==true){
+      app.clearCart();
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cart cleared'), backgroundColor: Colors.red));
+    }
+  }
+
   Widget _cartSection(){
     return Consumer<AppState>(builder: (_, app, __){
       if(app.isCartEmpty) return const SizedBox.shrink();
-      return Container(color: const Color(0xFFFFF3E0), padding: const EdgeInsets.fromLTRB(12,8,12,8), child: SizedBox(width: double.infinity, height: 44, child: ElevatedButton.icon(onPressed: _doSale, icon: const Icon(Icons.receipt_long), label: Text('SALE • Print ${fmtMoney(app.cartTotal)} (${app.cartCount} plays)', style: const TextStyle(fontWeight: FontWeight.w900)), style: ElevatedButton.styleFrom(backgroundColor: AppTheme.orange, foregroundColor: Colors.white))));
+      return Container(color: const Color(0xFFFFF3E0), padding: const EdgeInsets.fromLTRB(12,8,12,8), child: Row(children: [
+        SizedBox(height: 44, child: OutlinedButton.icon(onPressed: _clearCartConfirm, icon: const Icon(Icons.clear_all, size: 18, color: Colors.red), label: const Text('CLEAR', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.red)), style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.red), backgroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))))),
+        const SizedBox(width: 8),
+        Expanded(child: SizedBox(height: 44, child: ElevatedButton.icon(onPressed: _doSale, icon: const Icon(Icons.receipt_long), label: Text('SALE • ${fmtMoney(app.cartTotal)} (${app.cartCount})', style: const TextStyle(fontWeight: FontWeight.w900)), style: ElevatedButton.styleFrom(backgroundColor: AppTheme.orange, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)))))),
+      ]));
     });
   }
 
@@ -334,8 +344,8 @@ class _WinzScreenState extends State<WinzScreen> {
       backgroundColor: AppTheme.bg,
       resizeToAvoidBottomInset: false,
       appBar: AppBar(toolbarHeight: 60, title: _appBarDrawField(), centerTitle: true, actions: [
-        IconButton(icon: const Icon(Icons.qr_code_scanner, size: 18), tooltip: 'مسح باركود', onPressed: _scanAndReplay),
-        IconButton(icon: const Icon(Icons.search, size: 18), tooltip: 'بحث برقم التذكرة', onPressed: _copyByTicketNumber),
+        IconButton(icon: const Icon(Icons.qr_code_scanner, size: 18), tooltip: 'Scan barcode', onPressed: _scanAndReplay),
+        IconButton(icon: const Icon(Icons.search, size: 18), tooltip: 'Search by ticket number', onPressed: _copyByTicketNumber),
         Consumer<AppState>(builder: (_, app, __)=> app.isCartEmpty? const SizedBox() : Padding(padding: const EdgeInsets.only(right:6), child: Center(child: Container(padding: const EdgeInsets.symmetric(horizontal:8, vertical:4), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)), child: Text('${app.cartCount} • ${fmtMoney(app.cartTotal)}', style: const TextStyle(color: AppTheme.orange, fontWeight: FontWeight.w800, fontSize: 11)))))),
         IconButton(icon: const Icon(Icons.logout, size: 18), onPressed: ()=> _logout())]),
       drawer: const AppDrawer(currentRoute: '/winz'),

@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
 import '../widgets/app_drawer.dart';
 import '../utils/format.dart';
+import '../utils/ticket_pdf.dart';
 import 'barcode_scanner_screen.dart';
 
 class PlayScreen extends StatefulWidget {
@@ -84,7 +85,16 @@ class _PlayScreenState extends State<PlayScreen> {
       if(!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('SALE Ticket ${ticket['id']} • ${fmtMoney(ticket['total'])}'), backgroundColor: AppTheme.green));
       await _load();
-      Navigator.pushNamed(context, '/print', arguments: ticket);
+      final lines = (ticket['lines'] as List?)?.cast<Map<String,dynamic>>() ?? [];
+      final printed = await tryDirectPrintTicket(context, ticket, lines);
+      if(printed?.ok == true){
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Printed on the default printer'), backgroundColor: Color(0xFF0B8A3E)));
+        return;
+      }
+      if(printed != null && mounted){
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(printed.error ?? 'Print failed'), backgroundColor: Colors.red));
+      }
+      if(mounted) Navigator.pushNamed(context, '/print', arguments: ticket);
     }catch(e){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red)); }
   }
 
@@ -112,10 +122,28 @@ class _PlayScreenState extends State<PlayScreen> {
     return SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [digitsField, const SizedBox(width: 8), typeField, const SizedBox(width: 8), SizedBox(width: 135, child: _amountStepper())]));
   }
 
+  Future<void> _clearCartConfirm() async {
+    final app = context.read<AppState>();
+    if(app.isCartEmpty) return;
+    final ok = await showDialog<bool>(context: context, builder: (c)=> AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      title: const Text('Clear Cart', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+      content: Text('Delete all items (${app.cartCount} plays • ${fmtMoney(app.cartTotal)})?', style: const TextStyle(fontSize: 12)),
+      actions: [TextButton(onPressed: ()=> Navigator.pop(c,false), child: const Text('Cancel')), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white), onPressed: ()=> Navigator.pop(c,true), child: const Text('Clear all'))],
+    ));
+    if(ok==true){
+      app.clearCart();
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cart cleared'), backgroundColor: Colors.red));
+    }
+  }
   Widget _cartSection(){
     return Consumer<AppState>(builder: (_, app, __){
       if(app.isCartEmpty) return const SizedBox.shrink();
-      return Container(color: const Color(0xFFF0F7F0), padding: const EdgeInsets.fromLTRB(12,8,12,8), child: SizedBox(width: double.infinity, height: 44, child: ElevatedButton.icon(onPressed: _doSale, style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0B8A3E)), icon: const Icon(Icons.receipt_long), label: Text('SALE  ${fmtMoney(app.cartTotal)} (${app.cartCount} plays)'))));
+      return Container(color: const Color(0xFFF0F7F0), padding: const EdgeInsets.fromLTRB(12,8,12,8), child: Row(children: [
+        SizedBox(height: 44, child: OutlinedButton.icon(onPressed: _clearCartConfirm, icon: const Icon(Icons.clear_all, size: 18, color: Colors.red), label: const Text('CLEAR', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.red)), style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.red), backgroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))))),
+        const SizedBox(width: 8),
+        Expanded(child: SizedBox(height: 44, child: ElevatedButton.icon(onPressed: _doSale, style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0B8A3E)), icon: const Icon(Icons.receipt_long), label: Text('SALE  ${fmtMoney(app.cartTotal)} (${app.cartCount})')))),
+      ]));
     });
   }
 

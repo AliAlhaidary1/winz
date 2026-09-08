@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:drift/drift.dart' hide isNotNull;
 import 'package:drift/native.dart';
-import 'package:yelottery/src/data/database.dart';
-import 'package:yelottery/src/providers/app_state.dart';
+import 'package:winz/src/data/database.dart';
+import 'package:winz/src/providers/app_state.dart';
 
 void main() {
   group('YeLottery Comprehensive - Full Flow', () {
@@ -37,6 +37,10 @@ void main() {
 
       app = AppState(db);
       expect(await app.login('admin', 'admin123'), isTrue);
+      final today = DateTime.now();
+      final dateStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+      final later = today.add(const Duration(hours: 12)).millisecondsSinceEpoch;
+      await db.customStatement("UPDATE draw_periods SET salesOpenTime=0, salesCloseTime=$later, drawTime=$later, status='OPEN' WHERE drawDate='$dateStr'");
     });
 
     tearDown(() async {
@@ -179,6 +183,80 @@ void main() {
       final hasEvening = draws.any((d)=> (d['name'] as String).contains('Evening'));
       expect(hasMidday, isTrue);
       expect(hasEvening, isTrue);
+    });
+
+    test('Evening cart line stays Evening — not Midday', () async {
+      await app.addToCart(
+        gameId: 'g_numbers',
+        gameName: 'Numbers',
+        drawType: 'EVENING',
+        numbers: ['4', '5', '6'],
+        betType: 'Straight',
+        amount: 1.0,
+      );
+      expect(app.cart, hasLength(1));
+      final item = app.cart.single;
+      expect(item.drawType, 'EVENING');
+      expect(item.periodId, contains('EVENING'));
+      expect(item.drawName!.toLowerCase(), contains('evening'));
+      expect(item.drawName, isNot(contains('Midday')));
+      expect(item.drawId, isNot('draw_midday'));
+    });
+
+    test('Midday cart line stays Midday', () async {
+      await app.addToCart(
+        gameId: 'g_numbers',
+        gameName: 'Numbers',
+        drawType: 'MIDDAY',
+        numbers: ['7', '8', '9'],
+        betType: 'Straight',
+        amount: 1.0,
+      );
+      expect(app.cart, hasLength(1));
+      final item = app.cart.single;
+      expect(item.drawType, 'MIDDAY');
+      expect(item.periodId, contains('MIDDAY'));
+      expect(item.drawName, isNot(contains('Evening')));
+    });
+
+    test('Both cart creates Midday and Evening lines', () async {
+      await app.addBothToCart(
+        gameId: 'g_numbers',
+        gameName: 'Numbers',
+        numbers: ['1', '2', '3'],
+        betType: 'Straight',
+        amountPerDraw: 1.0,
+      );
+      expect(app.cart, hasLength(2));
+      final types = app.cart.map((e) => e.drawType).toSet();
+      expect(types, containsAll(['MIDDAY', 'EVENING']));
+      expect(app.cart.any((e) => (e.drawName ?? '').contains('Evening') || (e.periodId ?? '').contains('EVENING')), isTrue);
+      expect(app.cart.any((e) => (e.drawName ?? '').contains('Midday') || (e.periodId ?? '').contains('MIDDAY')), isTrue);
+    });
+
+    test('Closed midday cannot be played and Both is blocked', () async {
+      final now = DateTime.now();
+      final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final middayId = '$dateStr-MIDDAY';
+      final eveningId = '$dateStr-EVENING';
+      await db.ensurePeriodExists(middayId);
+      await db.ensurePeriodExists(eveningId);
+      final past = now.subtract(const Duration(minutes: 5)).millisecondsSinceEpoch;
+      final later = now.add(const Duration(hours: 8)).millisecondsSinceEpoch;
+      await db.customStatement("UPDATE draw_periods SET salesCloseTime=$past, status='SALES_CLOSED' WHERE drawType='MIDDAY'");
+      await db.customStatement("UPDATE draw_periods SET salesOpenTime=0, salesCloseTime=$later, drawTime=$later, status='OPEN' WHERE drawType='EVENING'");
+
+      await expectLater(
+        app.addToCart(gameId: 'g_numbers', gameName: 'Numbers', drawType: 'MIDDAY', numbers: ['1', '2', '3'], betType: 'Straight', amount: 1.0),
+        throwsA(isA<Exception>()),
+      );
+      await expectLater(
+        app.addBothToCart(gameId: 'g_numbers', gameName: 'Numbers', numbers: ['1', '2', '3'], betType: 'Straight', amountPerDraw: 1.0),
+        throwsA(isA<Exception>()),
+      );
+      await app.addToCart(gameId: 'g_numbers', gameName: 'Numbers', drawType: 'EVENING', numbers: ['1', '2', '3'], betType: 'Straight', amount: 1.0);
+      expect(app.cart, hasLength(1));
+      expect(app.cart.single.drawType, 'EVENING');
     });
 
     test('Print data contains required fields', () async {

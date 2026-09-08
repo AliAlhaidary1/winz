@@ -5,6 +5,7 @@ import '../providers/app_state.dart';
 import '../utils/format.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
+import '../widgets/draw_period_choice.dart';
 import 'barcode_scanner_screen.dart';
 
 class TicketsScreen extends StatefulWidget {
@@ -86,7 +87,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
 
   Future<void> _searchAndOpen(String raw) async {
     final code = raw.trim();
-    if(code.isEmpty){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('أدخل رقم التذكرة / الباركود'))); return; }
+    if(code.isEmpty){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a ticket ID, serial, or barcode'))); return; }
     final res = await context.read<AppState>().validateTicket(code);
     if(res['found']==false){
       if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ticket not found: $code'), backgroundColor: Colors.red));
@@ -97,30 +98,14 @@ class _TicketsScreenState extends State<TicketsScreen> {
   }
 
   Future<void> _copyWithChoice(String ticketId) async {
-    final choice = await showDialog<String>(
-      context: context,
-      builder: (c)=> AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: const Text('اختر فترة اللعب', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Text('هل تريد نسخ التذكرة للصباحي أم المسائي أم الاثنين؟', style: TextStyle(fontSize: 11)),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(icon: const Icon(Icons.wb_sunny, size: 15, color: AppTheme.green), label: const Text('صباحي — Midday 14:30', style: TextStyle(fontSize: 11, color: AppTheme.green)), onPressed: ()=> Navigator.pop(c,'MIDDAY')),
-          const SizedBox(height: 6),
-          OutlinedButton.icon(icon: const Icon(Icons.nights_stay, size: 15, color: AppTheme.blue), label: const Text('مسائي — Evening 22:30', style: TextStyle(fontSize: 11, color: AppTheme.blue)), onPressed: ()=> Navigator.pop(c,'EVENING')),
-          const SizedBox(height: 6),
-          ElevatedButton.icon(icon: const Icon(Icons.copy_all, size: 14), label: const Text('الاثنين معا (Both)', style: TextStyle(fontSize: 11)), style: ElevatedButton.styleFrom(backgroundColor: AppTheme.green, foregroundColor: Colors.white), onPressed: ()=> Navigator.pop(c,'BOTH')),
-        ]),
-        actions: [TextButton(onPressed: ()=> Navigator.pop(c), child: const Text('إلغاء'))],
-      ),
-    );
+    final choice = await showDrawPeriodChoice(context);
     if(choice==null) return;
     try{
       final app = context.read<AppState>();
       final count = await app.replayTicketToCartWithChoice(ticketId, choice);
       if(!mounted) return;
-      final label = choice=='BOTH' ? 'الاثنين (×2)' : choice=='MIDDAY' ? 'صباحي' : 'مسائي';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم النسخ $count لعبة → $label — اضغط SALE'), backgroundColor: AppTheme.green));
+      final label = choice=='BOTH' ? 'Both (×2)' : choice=='MIDDAY' ? 'Midday' : 'Evening';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied $count play(s) → $label — tap SALE'), backgroundColor: AppTheme.green));
       Navigator.pushNamed(context,'/numbers');
     }catch(e){
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red));
@@ -174,7 +159,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
                 Expanded(child: TextField(
                   controller: _searchCtrl,
                   decoration: InputDecoration(
-                    hintText: 'ابحث برقم التذكرة / السيريال / الباركود...',
+                    hintText: 'Search ticket ID / serial / barcode...',
                     hintStyle: const TextStyle(fontSize: 11),
                     isDense: true,
                     border: const OutlineInputBorder(),
@@ -190,7 +175,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
                   onSubmitted: _searchAndOpen,
                 )),
                 const SizedBox(width: 8),
-                ElevatedButton(onPressed: ()=> _searchAndOpen(_searchCtrl.text), style: ElevatedButton.styleFrom(backgroundColor: AppTheme.green, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14)), child: const Text('بحث', style: TextStyle(fontSize: 11))),
+                ElevatedButton(onPressed: ()=> _searchAndOpen(_searchCtrl.text), style: ElevatedButton.styleFrom(backgroundColor: AppTheme.green, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14)), child: const Text('Search', style: TextStyle(fontSize: 11))),
               ]),
             ),
             Container(
@@ -284,7 +269,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
                               const SizedBox(height: 4),
                               Row(children: [
                                 Expanded(child: Text('ID ${t['id']} • ${fmtDate(t['createdAt'])} • ${t['operatorName']}', style: const TextStyle(fontSize: 10, color: AppTheme.textMuted), overflow: TextOverflow.ellipsis)),
-                                InkWell(onTap: ()=> _copyWithChoice(t['id'] as String), borderRadius: BorderRadius.circular(6), child: Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4), decoration: BoxDecoration(color: AppTheme.greenLight, borderRadius: BorderRadius.circular(6)), child: const Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.copy, size: 10, color: AppTheme.green), SizedBox(width: 3), Text('نسخ', style: TextStyle(fontSize: 9, color: AppTheme.green, fontWeight: FontWeight.bold))]))),
+                                InkWell(onTap: ()=> _copyWithChoice(t['id'] as String), borderRadius: BorderRadius.circular(6), child: Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4), decoration: BoxDecoration(color: AppTheme.greenLight, borderRadius: BorderRadius.circular(6)), child: const Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.copy, size: 10, color: AppTheme.green), SizedBox(width: 3), Text('Copy', style: TextStyle(fontSize: 9, color: AppTheme.green, fontWeight: FontWeight.bold))]))),
                               ]),
                             ])),
                           ])),

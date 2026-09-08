@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import '../data/database.dart';
 import '../providers/app_state.dart';
 import '../utils/format.dart';
+import '../widgets/draw_period_choice.dart';
 
 class TicketDetailScreen extends StatefulWidget {
   final Map<String, dynamic> ticket;
@@ -111,25 +112,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     }
   }
 
-  Future<String?> _askDrawChoice() async {
-    return showDialog<String>(
-      context: context,
-      builder: (c) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: const Text('اختر فترة اللعب', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Text('هل تريد تكرار التذكرة للسحب الصباحي أم المسائي أم الاثنين معا؟', style: TextStyle(fontSize: 12)),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(icon: const Icon(Icons.wb_sunny, size: 16, color: Color(0xFF0B8A3E)), label: const Text('صباحي  (Midday) — 14:30', style: TextStyle(fontSize: 12, color: Color(0xFF0B8A3E))), onPressed: () => Navigator.pop(c, 'MIDDAY')),
-          const SizedBox(height: 6),
-          OutlinedButton.icon(icon: const Icon(Icons.nights_stay, size: 16, color: Color(0xFF1565C0)), label: const Text('مسائي  (Evening) — 22:30', style: TextStyle(fontSize: 12, color: Color(0xFF1565C0))), onPressed: () => Navigator.pop(c, 'EVENING')),
-          const SizedBox(height: 6),
-          ElevatedButton.icon(icon: const Icon(Icons.copy_all, size: 16), label: const Text('الاثنين معا — نسختين (Both)', style: TextStyle(fontSize: 12)), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0B8A3E), foregroundColor: Colors.white), onPressed: () => Navigator.pop(c, 'BOTH')),
-        ]),
-        actions: [TextButton(onPressed: () => Navigator.pop(c, null), child: const Text('إلغاء'))],
-      ),
-    );
-  }
+  Future<String?> _askDrawChoice() => showDrawPeriodChoice(context, arabic: true);
 
   Future<void> _replay() async {
     final id = _ticket!['id'] as String;

@@ -29,6 +29,24 @@ class CartItem {
     required this.amount,
     required this.isQuickPick,
   });
+  CartItem copyWith({
+    String? drawId,
+    String? drawName,
+    String? periodId,
+    String? drawType,
+  }) => CartItem(
+    id: id,
+    gameId: gameId,
+    gameName: gameName,
+    drawId: drawId ?? this.drawId,
+    drawName: drawName ?? this.drawName,
+    periodId: periodId ?? this.periodId,
+    drawType: drawType ?? this.drawType,
+    numbers: numbers,
+    betType: betType,
+    amount: amount,
+    isQuickPick: isQuickPick,
+  );
   Map<String, dynamic> toMap() => {
     'id': id,
     'gameId': gameId,
@@ -138,11 +156,112 @@ class AppState extends ChangeNotifier {
     return '$y-$m-$d-${drawType.toUpperCase()}';
   }
 
+  String _normalizeDrawType(String? raw) {
+    final s = (raw ?? '').trim().toUpperCase();
+    if (s.isEmpty) return s;
+    // Evening first so "EVENING" is never classified as Midday.
+    if (s == 'EVENING' || s.contains('EVENING') || s.contains('EVE') || s.contains('مساء') || s.contains('مسائ')) return 'EVENING';
+    if (s == 'MORNING' || s == 'MIDDAY' || s.contains('MIDDAY') || s.contains('MORNING') || s.contains('MID') || s.contains('صباح')) return 'MIDDAY';
+    return s;
+  }
+
+  String _drawTypeFromName(String? name) {
+    final n = (name ?? '').toLowerCase();
+    if (n.contains('evening') || n.contains('مساء') || n.contains('مسائ')) return 'EVENING';
+    if (n.contains('midday') || n.contains('morning') || n.contains('صباح')) return 'MIDDAY';
+    return '';
+  }
+
+  String _drawTypeFromDraw(Map<String, dynamic> d) {
+    final fromName = _drawTypeFromName(d['name'] as String?);
+    if (fromName == 'MIDDAY' || fromName == 'EVENING') return fromName;
+    final id = (d['id'] as String? ?? '').toLowerCase();
+    if (id.contains('evening')) return 'EVENING';
+    if (id.contains('midday') || id.contains('morning')) return 'MIDDAY';
+    final dt = DateTime.fromMillisecondsSinceEpoch(d['drawTime'] as int);
+    return dt.hour >= 18 ? 'EVENING' : 'MIDDAY';
+  }
+
+  String _drawTypeFromPeriodId(String? periodId) {
+    if (periodId == null) return '';
+    final u = periodId.replaceAll('/', '-').trim().toUpperCase();
+    if (u.endsWith('EVENING')) return 'EVENING';
+    if (u.endsWith('MIDDAY') || u.endsWith('MORNING')) return 'MIDDAY';
+    return '';
+  }
+
+  String _drawTypeLabel(String drawType) => _normalizeDrawType(drawType) == 'EVENING' ? 'مسائي' : 'صباحي';
+
+  bool _periodHasResult(Map<String, dynamic> p) {
+    bool nonempty(dynamic v) => v != null && v.toString().trim().isNotEmpty;
+    return nonempty(p['result']) || nonempty(p['result3']) || nonempty(p['result4']);
+  }
+
+  bool _periodBlocked(Map<String, dynamic> p) {
+    final s = ((p['status'] as String?) ?? '').toUpperCase();
+    return s == 'CANCELLED' || s == 'POSTPONED' || s == 'SUSPENDED';
+  }
+
+  Future<(String? drawId, String drawName)> _drawMetaForPeriod(String gameId, Map<String, dynamic> period) async {
+    final periodId = period['id'] as String;
+    final periodDrawType = _normalizeDrawType(period['drawType'] as String?);
+    final date = period['drawDate'] as String? ?? '';
+    final fallbackName = '${periodDrawType == 'EVENING' ? 'Evening' : 'Midday'} $date';
+    final draws = await db.getDrawsByGame(gameId);
+    for (final d in draws) {
+      if (_drawTypeFromDraw(d) != periodDrawType) continue;
+      final dt = DateTime.fromMillisecondsSinceEpoch(d['drawTime'] as int);
+      if (_periodIdForDate(dt, periodDrawType) == periodId) {
+        return (d['id'] as String, d['name'] as String);
+      }
+    }
+    return (null, fallbackName);
+  }
+
+  bool _periodInSalesWindow(Map<String, dynamic> p) {
+    if (_periodBlocked(p) || _periodHasResult(p)) return false;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final salesOpen = p['salesOpenTime'] as int? ?? 0;
+    final salesClose = p['salesCloseTime'] as int? ?? 0;
+    return nowMs >= salesOpen && nowMs < salesClose;
+  }
+
+  /// Only a period whose sales window is open now — never a closed period or tomorrow's fallback.
+  Future<Map<String, dynamic>> _resolveNextSellablePeriod(String drawType) async {
+    final normalized = _normalizeDrawType(drawType);
+    if (normalized != 'MIDDAY' && normalized != 'EVENING') {
+      throw Exception('فترة غير معروفة: $drawType');
+    }
+    await db.seedDrawPeriods();
+    final now = DateTime.now();
+    for (int i = 0; i < 3; i++) {
+      final d = DateTime(now.year, now.month, now.day).add(Duration(days: i));
+      await db.ensurePeriodExists(_periodIdForDate(d, normalized));
+    }
+    await db.refreshPeriodStatuses();
+    final ofType = (await db.getAllPeriods()).where((p) {
+      return _normalizeDrawType(p['drawType'] as String?) == normalized;
+    }).toList()
+      ..sort((a, b) => (a['drawTime'] as int).compareTo(b['drawTime'] as int));
+
+    for (final p in ofType) {
+      if (_periodInSalesWindow(p)) return p;
+    }
+    throw Exception('السحب ${_drawTypeLabel(normalized)} مغلق أو انتهى — لا يمكن اللعب');
+  }
+
+  Future<bool> isDrawTypeSellableNow(String drawType) async {
+    try {
+      await _resolveNextSellablePeriod(drawType);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _validatePeriodOpen(String periodId) async {
     // Normalize (fixes slash/case like 2026/08/31 middy)
     periodId = periodId.replaceAll('/', '-').trim().toUpperCase();
-    // Ensure suffix is upper
-    // Auto-heal: ensure period exists and statuses are fresh (fixes 1:55 AM SCHEDULED→OPEN)
     await db.seedDrawPeriods();
     await db.refreshPeriodStatuses();
     var p = await db.getPeriodById(periodId);
@@ -150,32 +269,33 @@ class AppState extends ChangeNotifier {
       await db.ensurePeriodExists(periodId);
       p = await db.getPeriodById(periodId);
     }
-    // Try case-insensitive fallback
     if (p == null) {
       p = await db.getPeriodById(periodId.toLowerCase());
     }
     if (p == null) {
-      // Try to parse and re-ensure
       await db.ensurePeriodExists(periodId.toUpperCase());
       p = await db.getPeriodById(periodId.toUpperCase());
     }
     if (p == null) throw Exception('Period $periodId not found — schedule not generated');
+    if (_periodBlocked(p)) {
+      throw Exception('الفترة $periodId ملغاة أو موقوفة');
+    }
+    if (_periodHasResult(p)) {
+      throw Exception('تم نشر نتيجة $periodId — انسخها لفترة تالية (صباحي أو مسائي)');
+    }
     final now = DateTime.now().millisecondsSinceEpoch;
     final salesOpen = p['salesOpenTime'] as int;
     final salesClose = p['salesCloseTime'] as int;
-    var status = p['status'] as String;
-    //     Close —     SCHEDULED  DB    
+    final drawTime = (p['drawTime'] as int?) ?? salesClose;
     if (now < salesOpen) {
-      throw Exception('${p['drawType']} ${p['drawDate']} not yet open — opens ${DateTime.fromMillisecondsSinceEpoch(salesOpen)}');
+      throw Exception('السحب $periodId لم يُفتح بعد');
     }
-    if (now >= salesClose) {
-      throw Exception('Sales closed for $periodId — cutoff ${DateTime.fromMillisecondsSinceEpoch(salesClose)}');
+    if (now >= salesClose || now >= drawTime) {
+      throw Exception('السحب $periodId مغلق أو انتهى — لا يمكن اللعب');
     }
-    //  :     OPEN   
-    if (status != 'OPEN') {
-      //
+    final status = p['status'] as String;
+    if (status != 'OPEN' && now >= salesOpen && now < salesClose) {
       try { await db.updatePeriodStatus(periodId, 'OPEN'); } catch (_) {}
-      //        —  OPEN
     }
   }
 
@@ -282,17 +402,36 @@ class AppState extends ChangeNotifier {
       if (cCanon != canonical) continue;
       cartSum += c.amount;
     }
+    // FIX Combo 24-way: amount المدخل هو الإجمالي = perCombo * combos (مثلاً 1×24=24)
+    // حد المخاطر الأساسي هو per-combo (10 للـ 4 أرقام) فيجب مقارنة wagerPerCombo أو total مقابل combos×limit
+    double effectiveLimit = limit;
+    int? combosForLimit;
+    if (group == 'combo') {
+      combosForLimit = _comboCount(numbers);
+      if (combosForLimit > 1) effectiveLimit = limit * combosForLimit;
+    }
     final total = existingSum + cartSum + amount;
-    if (total > limit + 1e-9) {
-      final remaining = (limit - existingSum - cartSum).clamp(0, limit);
+    if (total > effectiveLimit + 1e-9) {
+      final remaining = (effectiveLimit - existingSum - cartSum).clamp(0, effectiveLimit);
       final isBoxGroup = group == 'box' || group == 'combo' || group == 'strbox';
       final example = isBoxGroup ? ' (حتى لو تشقلبت الأرقام مثل 1123 = 2113)' : '';
       final digitLabel = n == 3 ? '3' : '4';
       final groupLabel = group == 'straight' ? 'Straight $digitLabel' : group == 'box' ? 'Box $digitLabel' : group == 'combo' ? 'Combo $digitLabel' : 'ST/BOX $digitLabel';
+      final limitDetail = group == 'combo' && combosForLimit != null && combosForLimit > 1
+          ? '\$$limit × $combosForLimit = \$$effectiveLimit إجمالي (\$${limit.toStringAsFixed(2)} لكل تركيبة)'
+          : '\$$effectiveLimit';
+      // للتوضيح: اعرض أيضاً per-combo إذا كان combo
+      String perComboInfo = '';
+      if (group == 'combo' && combosForLimit != null && combosForLimit > 1) {
+        final perCombo = amount / combosForLimit;
+        perComboInfo = ' — المطلوب: \$${amount.toStringAsFixed(2)} إجمالي = \$${perCombo.toStringAsFixed(2)} لكل تركيبة × $combosForLimit';
+      } else {
+        perComboInfo = ' — المطلوب: \$${amount.toStringAsFixed(2)}';
+      }
       throw Exception(
-          'الرقم ${numbers.join()} ($groupLabel$example) وصل للحد الأقصى \$$limit في فترة $pidNorm — '
+          'الرقم ${numbers.join()} ($groupLabel$example) وصل للحد الأقصى $limitDetail في فترة $pidNorm — '
           'المباع حالياً: \$${existingSum.toStringAsFixed(2)} + السلة: \$${cartSum.toStringAsFixed(2)} — '
-          'المتبقي المسموح: \$${remaining.toStringAsFixed(2)} — المطلوب: \$${amount.toStringAsFixed(2)} — الإجمالي سيصبح \$${total.toStringAsFixed(2)} > \$$limit');
+          'المتبقي المسموح: \$${remaining.toStringAsFixed(2)}$perComboInfo — الإجمالي سيصبح \$${total.toStringAsFixed(2)} > \$$effectiveLimit');
     }
   }
 
@@ -373,11 +512,20 @@ class AppState extends ChangeNotifier {
     if (_currentUser == null) throw Exception('Not logged in');
     _ensureNotExpired();
     _validateCartItem(gameId: gameId, numbers: numbers, betType: betType, amount: amount, drawId: drawId);
-    // Derive periodId from drawId if not provided
     String? resolvedPeriodId = periodId;
-    String? resolvedDrawType = drawType;
-    if (resolvedPeriodId == null && drawId != null) {
-      // Try to infer periodId from draw name
+    String? resolvedDrawType = drawType != null ? _normalizeDrawType(drawType) : drawType;
+    String? resolvedDrawId = drawId;
+    String? resolvedDrawName = drawName;
+    // Explicit Midday/Evening choice wins — never keep a closed source period
+    if (resolvedDrawType == 'MIDDAY' || resolvedDrawType == 'EVENING') {
+      final target = await _resolveNextSellablePeriod(resolvedDrawType!);
+      resolvedPeriodId = target['id'] as String;
+      resolvedDrawType = _normalizeDrawType(target['drawType'] as String?);
+      final meta = await _drawMetaForPeriod(gameId, target);
+      // Never keep a Midday drawId/name when the chosen period is Evening (or vice versa).
+      resolvedDrawId = meta.$1;
+      resolvedDrawName = meta.$2;
+    } else if (resolvedPeriodId == null && drawId != null) {
       final draw = await db.getDrawById(drawId);
       if (draw != null) {
         final name = draw['name'] as String;
@@ -387,7 +535,6 @@ class AppState extends ChangeNotifier {
         resolvedPeriodId = _periodIdForDate(dt, inferredPeriod);
       }
     }
-    // Validate period is open if available + enforce per-number limit
     if (resolvedPeriodId != null) {
       await _validatePeriodOpen(resolvedPeriodId);
       await _enforcePerPeriodNumberLimit(
@@ -398,13 +545,13 @@ class AppState extends ChangeNotifier {
         amount: amount,
       );
     }
-    if (drawId != null) {
-      final draw = await db.getDrawById(drawId);
+    if (resolvedDrawId != null) {
+      final draw = await db.getDrawById(resolvedDrawId);
       if (draw != null) {
-        if (draw['status'] == 'closed') throw Exception('Draw is closed — sales blocked');
+        if (draw['status'] == 'closed' && resolvedPeriodId == null) throw Exception('Draw is closed — sales blocked');
         final drawTime = draw['drawTime'] as int;
         final now = DateTime.now().millisecondsSinceEpoch;
-        if (now >= drawTime - 5 * 60 * 1000) {
+        if (now >= drawTime - 5 * 60 * 1000 && resolvedPeriodId == null) {
           final win = draw['winningNumbers'] as String?;
           if (win == null || win.toString().isEmpty) throw Exception('Sales closed — draw cutoff (5 min before)');
         }
@@ -414,8 +561,8 @@ class AppState extends ChangeNotifier {
       id: const Uuid().v4(),
       gameId: gameId,
       gameName: gameName,
-      drawId: drawId,
-      drawName: drawName,
+      drawId: resolvedDrawId,
+      drawName: resolvedDrawName,
       periodId: resolvedPeriodId,
       drawType: resolvedDrawType,
       numbers: List.from(numbers),
@@ -441,39 +588,21 @@ class AppState extends ChangeNotifier {
     if (_currentUser == null) throw Exception('Not logged in');
     _ensureNotExpired();
     _validateCartItem(gameId: gameId, numbers: numbers, betType: betType, amount: amountPerDraw);
-    await db.seedDrawPeriods();
-    await db.refreshPeriodStatuses();
-    //       (  )
-    final openPeriods = await db.getOpenPeriods();
-    //     (SCHEDULED    )
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-    final filtered = openPeriods.where((p){
-      if(p['status']=='OPEN') return true;
-      if(p['status']=='SCHEDULED'){
-        final o=p['salesOpenTime'] as int, c=p['salesCloseTime'] as int;
-        return nowMs >= o && nowMs < c;
-      }
-      return false;
-    }).toList()..sort((a,b)=> (a['drawTime'] as int).compareTo(b['drawTime'] as int));
-    List<Map<String,dynamic>> targetPeriods;
-    if(filtered.length >= 2){
-      targetPeriods = filtered.take(2).toList();
-    } else if(filtered.length == 1){
-      //
-      final allPeriods = await db.getAllPeriods();
-      allPeriods.sort((a,b)=> (a['drawTime'] as int).compareTo(b['drawTime'] as int));
-      final nextScheduled = allPeriods.where((p)=> (p['drawTime'] as int) > nowMs).take(2).toList();
-      targetPeriods = nextScheduled.length >=2 ? nextScheduled.take(2).toList() : filtered;
-      if(targetPeriods.length <2) throw Exception('Both requires two upcoming draws — only ${filtered.length} open');
-    } else {
-      //    —  
-      final date = forDate ?? DateTime.now();
-      final middayId = _periodIdForDate(date, 'MIDDAY');
-      final eveningId = _periodIdForDate(date, 'EVENING');
-      await db.ensurePeriodExists(middayId);
-      await db.ensurePeriodExists(eveningId);
-      throw Exception('No open draws now — try again after midnight');
+    Map<String, dynamic>? midday;
+    Map<String, dynamic>? evening;
+    try { midday = await _resolveNextSellablePeriod('MIDDAY'); } catch (_) {}
+    try { evening = await _resolveNextSellablePeriod('EVENING'); } catch (_) {}
+    if (midday == null && evening == null) {
+      throw Exception('لا توجد فترة مفتوحة للبيع الآن');
     }
+    if (midday == null) {
+      throw Exception('الصباحي مغلق أو انتهى — Both غير متاح. العب المسائي فقط');
+    }
+    if (evening == null) {
+      throw Exception('المسائي مغلق أو انتهى — Both غير متاح. العب الصباحي فقط');
+    }
+    final targetPeriods = [midday, evening]
+      ..sort((a, b) => (a['drawTime'] as int).compareTo(b['drawTime'] as int));
     final firstId = targetPeriods[0]['id'] as String;
     final secondId = targetPeriods[1]['id'] as String;
     await _validatePeriodOpen(firstId);
@@ -503,14 +632,13 @@ class AppState extends ChangeNotifier {
     String? secondDrawName;
     final draws = await db.getDrawsByGame(gameId);
     for (final d in draws) {
-      final name = d['name'] as String;
       final dt = DateTime.fromMillisecondsSinceEpoch(d['drawTime'] as int);
       // Match by period id date+type
       for(final tp in targetPeriods){
         final tpDate = tp['drawDate'] as String;
         final tpType = tp['drawType'] as String;
         final dtStr = '${dt.year}-${dt.month.toString().padLeft(2,'0')}-${dt.day.toString().padLeft(2,'0')}';
-        final isMatch = dtStr == tpDate && ((tpType=='MIDDAY' && (name.contains('Midday')||name.contains('Morning'))) || (tpType=='EVENING' && name.contains('Evening')));
+        final isMatch = dtStr == tpDate && _drawTypeFromDraw(d) == _normalizeDrawType(tpType);
         if(isMatch){
           if(tp == targetPeriods[0]){ firstDrawId = d['id'] as String; firstDrawName = d['name'] as String; }
           if(tp == targetPeriods[1]){ secondDrawId = d['id'] as String; secondDrawName = d['name'] as String; }
@@ -626,17 +754,27 @@ class AppState extends ChangeNotifier {
           existingSum += (l['amount'] as num).toDouble();
         }
       } catch (_) {}
+      // Combo fix: effectiveLimit = baseLimit * combos
+      double effectiveLimit = limit;
+      int? combosForLimit;
+      if (group == 'combo') {
+        combosForLimit = _comboCount(sampleNumbers);
+        if (combosForLimit > 1) effectiveLimit = limit * combosForLimit;
+      }
       final cartTotalForKey = entry.value;
       final total = existingSum + cartTotalForKey;
-      if (total > limit + 1e-9) {
-        final remaining = (limit - existingSum).clamp(0, limit);
+      if (total > effectiveLimit + 1e-9) {
+        final remaining = (effectiveLimit - existingSum).clamp(0, effectiveLimit);
         final isBoxGroup = group == 'box' || group == 'combo' || group == 'strbox';
         final example = isBoxGroup ? ' (حتى لو تشقلبت الأرقام مثل 1123 = 2113)' : '';
         final digitLabel = n == 3 ? '3' : '4';
         final groupLabel = group == 'straight' ? 'Straight $digitLabel' : group == 'box' ? 'Box $digitLabel' : group == 'combo' ? 'Combo $digitLabel' : 'ST/BOX $digitLabel';
+        final limitDetail = group == 'combo' && combosForLimit != null && combosForLimit > 1
+            ? '\$$limit × $combosForLimit = \$$effectiveLimit إجمالي'
+            : '\$$effectiveLimit';
         throw Exception(
             'الرقم ${sampleNumbers.join()} ($groupLabel$example) سيتجاوز الحد في فترة $periodId — '
-            'المباع سابقاً: \$${existingSum.toStringAsFixed(2)} + سلة الشراء لهذا الرقم: \$${cartTotalForKey.toStringAsFixed(2)} = \$${total.toStringAsFixed(2)} > حد \$$limit — '
+            'المباع سابقاً: \$${existingSum.toStringAsFixed(2)} + سلة الشراء لهذا الرقم: \$${cartTotalForKey.toStringAsFixed(2)} = \$${total.toStringAsFixed(2)} > حد $limitDetail — '
             'المتبقي المسموح: \$${remaining.toStringAsFixed(2)}');
       }
     }
@@ -769,32 +907,12 @@ class AppState extends ChangeNotifier {
       }
       return added;
     }
-    // MIDDAY or EVENING
+    // MIDDAY or EVENING — always a fresh target period, never the source ticket's closed period
     if(drawChoice == 'MIDDAY' || drawChoice == 'EVENING' || drawChoice == 'MORNING'){
-      final normalized = drawChoice=='MORNING' ? 'MIDDAY' : drawChoice;
-      await db.seedDrawPeriods();
-      await db.refreshPeriodStatuses();
-      final openPeriods = await db.getOpenPeriods();
-      Map<String,dynamic>? targetPeriod;
-      final filtered = openPeriods.where((p)=> (p['drawType'] as String)==normalized).toList()
-        ..sort((a,b)=> (a['drawTime'] as int).compareTo(b['drawTime'] as int));
-      if(filtered.isNotEmpty){
-        targetPeriod = filtered.first;
-        await _validatePeriodOpen(targetPeriod['id'] as String);
-      } else {
-        // fallback to next scheduled period of that type
-        final all = await db.getAllPeriods();
-        all.sort((a,b)=> (a['drawTime'] as int).compareTo(b['drawTime'] as int));
-        final nowMs = DateTime.now().millisecondsSinceEpoch;
-        try{
-          targetPeriod = all.firstWhere((p)=> (p['drawType'] as String)==normalized && (p['drawTime'] as int) > nowMs);
-        }catch(_){ targetPeriod = null; }
-        if(targetPeriod==null) throw Exception('لا يوجد سحب $normalized متاح الآن');
-        await db.ensurePeriodExists(targetPeriod['id'] as String);
-        await _validatePeriodOpen(targetPeriod['id'] as String);
-      }
+      final targetPeriod = await _resolveNextSellablePeriod(drawChoice);
       final periodId = targetPeriod['id'] as String;
-      final periodDrawType = targetPeriod['drawType'] as String;
+      final periodDrawType = _normalizeDrawType(targetPeriod['drawType'] as String?);
+      await _validatePeriodOpen(periodId);
       int added = 0;
       for(final l in source){
         final numbers = (l['numbers'] as String).split(',').map((e)=> e.trim()).where((e)=> e.isNotEmpty).toList();
@@ -808,26 +926,13 @@ class AppState extends ChangeNotifier {
           betType: betType,
           amount: amount,
         );
-        // Resolve legacy drawId matching periodId
-        String? drawId;
-        String? drawName;
-        final draws = await db.getDrawsByGame(l['gameId'] as String);
-        for(final d in draws){
-          final dt = DateTime.fromMillisecondsSinceEpoch(d['drawTime'] as int);
-          final pid = _periodIdForDate(dt, periodDrawType);
-          if(pid == periodId){
-            drawId = d['id'] as String;
-            drawName = d['name'] as String;
-            break;
-          }
-        }
-        drawName ??= '$periodDrawType ${targetPeriod['drawDate']}';
+        final meta = await _drawMetaForPeriod(l['gameId'] as String, targetPeriod);
         final item = CartItem(
           id: const Uuid().v4(),
           gameId: l['gameId'] as String,
           gameName: l['gameName'] as String,
-          drawId: drawId,
-          drawName: drawName,
+          drawId: meta.$1,
+          drawName: meta.$2,
           periodId: periodId,
           drawType: periodDrawType,
           numbers: numbers,
@@ -841,74 +946,41 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return added;
     }
-    // AUTO fallback (original behavior) — pick next open for each line
+    // AUTO: keep the same draw type as the source ticket, but move it to the next sellable period
     int added = 0;
     for (final l in source) {
       final numbersRaw = (l['numbers'] as String).split(',').map((e)=> e.trim()).where((e)=> e.isNotEmpty).toList();
-      String? drawId = l['drawId'] as String?;
-      String? drawName = l['drawName'] as String?;
-      String? periodId = l['periodId'] as String?;
-      String? drawType = l['drawType'] as String?;
-      // Try to resolve to an OPEN period if current is closed / missing
-      bool needsResolve = true;
-      if(periodId != null){
-        final p = await db.getPeriodById(periodId);
-        if(p != null && p['status']=='OPEN'){
-          final now = DateTime.now().millisecondsSinceEpoch;
-          if(now < (p['salesCloseTime'] as int)) needsResolve = false;
-        }
+      String inferred = _normalizeDrawType(l['drawType'] as String?);
+      if (inferred != 'MIDDAY' && inferred != 'EVENING') {
+        inferred = _drawTypeFromPeriodId(l['periodId'] as String?);
       }
-      if(drawId != null && needsResolve){
-        final draw = await db.getDrawById(drawId);
-        if(draw != null && draw['status']!='closed'){
-          final dt = draw['drawTime'] as int;
-          final now = DateTime.now().millisecondsSinceEpoch;
-          if(now < dt) needsResolve = false;
-        }
+      if (inferred != 'MIDDAY' && inferred != 'EVENING') {
+        final name = (l['drawName'] as String?) ?? '';
+        if (name.contains('Evening') || name.contains('مسائ')) inferred = 'EVENING';
+        else if (name.contains('Midday') || name.contains('Morning') || name.contains('صباح')) inferred = 'MIDDAY';
       }
-      if(needsResolve){
-        // Prefer OPEN period logic
-        await db.seedDrawPeriods();
-        await db.refreshPeriodStatuses();
-        final open = await db.getOpenPeriods();
-        if(open.isNotEmpty){
-          final first = open.first;
-          periodId = first['id'] as String;
-          drawType = first['drawType'] as String;
-          // find drawId for this game+period
-          final draws = await db.getDrawsByGame(l['gameId']);
-          for(final d in draws){
-            final dt = DateTime.fromMillisecondsSinceEpoch(d['drawTime'] as int);
-            final pid = _periodIdForDate(dt, drawType!);
-            if(pid==periodId){ drawId = d['id'] as String; drawName = d['name'] as String; break; }
-          }
-          drawName ??= '$drawType ${first['drawDate']}';
-        } else if(drawId != null){
-          final draw = await db.getDrawById(drawId);
-          if(draw==null || draw['status']=='closed'){
-            final openDraws = await db.getDrawsByGame(l['gameId']);
-            final od = openDraws.where((d)=> d['status']=='open').toList();
-            if(od.isNotEmpty){ drawId = od.first['id']; drawName = od.first['name']; }
-          }
-        }
+      if (inferred != 'MIDDAY' && inferred != 'EVENING') {
+        inferred = 'MIDDAY';
       }
+      final target = await _resolveNextSellablePeriod(inferred);
+      final periodId = target['id'] as String;
+      final drawType = _normalizeDrawType(target['drawType'] as String?);
+      final meta = await _drawMetaForPeriod(l['gameId'] as String, target);
       _validateCartItem(gameId: l['gameId'], numbers: numbersRaw, betType: l['betType'], amount: (l['amount'] as num).toDouble());
-      if(periodId != null) await _validatePeriodOpen(periodId);
-      if(periodId != null) {
-        await _enforcePerPeriodNumberLimit(
-          periodId: periodId,
-          gameId: l['gameId'] as String,
-          numbers: numbersRaw,
-          betType: l['betType'] as String,
-          amount: (l['amount'] as num).toDouble(),
-        );
-      }
+      await _validatePeriodOpen(periodId);
+      await _enforcePerPeriodNumberLimit(
+        periodId: periodId,
+        gameId: l['gameId'] as String,
+        numbers: numbersRaw,
+        betType: l['betType'] as String,
+        amount: (l['amount'] as num).toDouble(),
+      );
       final item = CartItem(
         id: const Uuid().v4(),
         gameId: l['gameId'],
         gameName: l['gameName'],
-        drawId: drawId,
-        drawName: drawName,
+        drawId: meta.$1,
+        drawName: meta.$2,
         periodId: periodId,
         drawType: drawType,
         numbers: numbersRaw,
@@ -921,6 +993,49 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     return added;
+  }
+
+  /// Move every cart line to the next sellable Midday or Evening period.
+  Future<void> remapCartToDrawType(String drawType) async {
+    final normalized = _normalizeDrawType(drawType);
+    if (normalized != 'MIDDAY' && normalized != 'EVENING') return;
+    if (_cart.isEmpty) return;
+    final target = await _resolveNextSellablePeriod(normalized);
+    final periodId = target['id'] as String;
+    await _validatePeriodOpen(periodId);
+    final old = List<CartItem>.from(_cart);
+    _cart.clear();
+    try {
+      for (final e in old) {
+        await _enforcePerPeriodNumberLimit(
+          periodId: periodId,
+          gameId: e.gameId,
+          numbers: e.numbers,
+          betType: e.betType,
+          amount: e.amount,
+        );
+        final meta = await _drawMetaForPeriod(e.gameId, target);
+        _cart.add(CartItem(
+          id: e.id,
+          gameId: e.gameId,
+          gameName: e.gameName,
+          drawId: meta.$1,
+          drawName: meta.$2,
+          periodId: periodId,
+          drawType: normalized,
+          numbers: e.numbers,
+          betType: e.betType,
+          amount: e.amount,
+          isQuickPick: e.isQuickPick,
+        ));
+      }
+    } catch (err) {
+      _cart
+        ..clear()
+        ..addAll(old);
+      rethrow;
+    }
+    notifyListeners();
   }
 
   // Cash computed

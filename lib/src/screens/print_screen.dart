@@ -3,10 +3,11 @@ import '../utils/responsive.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:printing/printing.dart';
-import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../data/database.dart';
+import '../services/thermal_printer_service.dart';
 import '../utils/format.dart';
+import '../utils/ticket_pdf.dart';
 
 class PrintScreen extends StatefulWidget {
   final Map<String, dynamic>? ticket;
@@ -43,152 +44,6 @@ class _PrintScreenState extends State<PrintScreen> {
     });
   }
 
-  static String _displayBet(String raw){
-    final n = raw.trim().toLowerCase().replaceAll('-', '/').replaceAll('_', '/').replaceAll(' ', '');
-    if(n=='all' || n=='all/box' || n=='all/straight' || (n.contains('straight') && n.contains('box')) || n=='straightbox' || n=='str/box' || n=='strbox') return 'ST/BOX';
-    if(n=='straight') return 'ST';
-    if(n=='box') return 'BOX';
-    if(n.contains('combo')) return 'COMBO';
-    return raw;
-  }
-
-  pw.Widget _pdfTicket(Map<String, dynamic> t, List<Map<String,dynamic>> lines, String company, String footer) {
-    final isWinning = t['status'] == 'winning';
-    final isPaid = t['status'] == 'paid';
-    final prize = t['prizeAmount'] != null ? fmtMoney(t['prizeAmount']) : null;
-    final total = fmtMoney(t['total'] ?? t['amount']);
-    // فاتورة محسّنة لكبار السن: أرقام كبيرة وواضحة بدون رمادي، بدون سيريال منفصل
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.center,
-      children: [
-        pw.Text(company, style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-        pw.Text('NY LOTTERY OFFICIAL', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-        pw.SizedBox(height: 4),
-        pw.Divider(thickness: 0.7, color: PdfColors.black),
-        // بدون عدد الألعاب — فقط اسم اللعبة والإجمالي
-        pw.Text('${t['gameName']}'.toUpperCase(), style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-        pw.Text('$total', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-        pw.SizedBox(height: 2),
-        pw.Text('${t['drawName'] ?? 'Draw: -'}', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-        pw.Text('Draw Period: ${_periodFromName(t['drawName'])}', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-        pw.SizedBox(height: 8),
-        // Multi-line plays — handle Both separation
-        if(lines.isNotEmpty)
-          () {
-            final mid = lines.where((l)=> (l['periodId']?.toString().contains('MIDDAY')??false) || (l['drawName']?.toString().contains('Midday')??false)).toList();
-            final eve = lines.where((l)=> (l['periodId']?.toString().contains('EVENING')??false) || (l['drawName']?.toString().contains('Evening')??false)).toList();
-            final isBoth = mid.isNotEmpty && eve.isNotEmpty;
-            if (isBoth) {
-              pw.Widget block(String label, List<Map<String,dynamic>> lst) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                pw.Text(label, style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-                pw.SizedBox(height: 3),
-                for(final l in lst)
-                  pw.Padding(
-                    padding: const pw.EdgeInsets.only(bottom: 3),
-                    child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-                      pw.Text((l['numbers'] as String).replaceAll(',', ' '), style: pw.TextStyle(font: pw.Font.courierBold(), fontSize: 22, fontWeight: pw.FontWeight.bold, letterSpacing: 3, color: PdfColors.black)),
-                      pw.Text(_displayBet(l['betType']), style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-                      pw.Text(fmtMoney(l['amount']), style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-                    ]),
-                  ),
-              ]);
-              return pw.Column(children: [
-                  block('MIDDAY', mid),
-                  pw.SizedBox(height: 3),
-                  pw.Text('--------------------', style: pw.TextStyle(fontSize: 8, color: PdfColors.black)),
-                  pw.SizedBox(height: 3),
-                  block('EVENING', eve),
-                  pw.SizedBox(height: 6),
-                  pw.Divider(thickness: 0.6, color: PdfColors.black),
-                  pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-                    pw.Text('TOTAL', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-                    pw.Text(total, style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-                  ]),
-                  if (isWinning || isPaid)
-                    pw.Padding(padding: const pw.EdgeInsets.only(top: 6), child: pw.Text(isPaid ? 'PAID • Prize $prize' : 'WINNER • Prize $prize', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.green900))),
-                ]);
-            }
-            return pw.Column(
-              children: [
-                for(int i=0;i<lines.length;i++)
-                  pw.Padding(
-                    padding: pw.EdgeInsets.only(bottom: i==lines.length-1?0:3),
-                    child: pw.Row(
-                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                        children: [
-                          pw.Text('${i+1}.', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-                          pw.SizedBox(width: 6),
-                          pw.Text((lines[i]['numbers'] as String).replaceAll(',', ' '), style: pw.TextStyle(font: pw.Font.courierBold(), fontSize: 22, fontWeight: pw.FontWeight.bold, letterSpacing: 3, color: PdfColors.black)),
-                          pw.Spacer(),
-                          pw.Text(_displayBet(lines[i]['betType']), style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-                          pw.SizedBox(width: 8),
-                          pw.Text(fmtMoney(lines[i]['amount']), style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-                        ],
-                      ),
-                  ),
-                pw.SizedBox(height: 6),
-                pw.Divider(thickness: 0.6, color: PdfColors.black),
-                pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-                  pw.Text('TOTAL', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-                  pw.Text(total, style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-                ]),
-                if (isWinning || isPaid)
-                  pw.Padding(
-                    padding: const pw.EdgeInsets.only(top: 6),
-                    child: pw.Text(isPaid ? 'PAID • Prize $prize' : 'WINNER • Prize $prize', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.green900)),
-                  ),
-              ],
-            );
-          }()
-        else
-          pw.Column(
-              children: [
-                pw.Text((t['numbers'] as String).replaceAll(',', '  '), style: pw.TextStyle(font: pw.Font.courierBold(), fontSize: 30, fontWeight: pw.FontWeight.bold, letterSpacing: 5, color: PdfColors.black)),
-                pw.SizedBox(height: 4),
-                pw.Text('${_displayBet(t['betType'])} • ${fmtMoney(t['amount'])}', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-                if (isWinning || isPaid)
-                  pw.Padding(
-                    padding: const pw.EdgeInsets.only(top: 6),
-                    child: pw.Text(isPaid ? 'PAID • Prize $prize' : 'WINNER • Prize $prize', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.green900)),
-                  ),
-              ],
-          ),
-        pw.SizedBox(height: 8),
-        // معلومات التذكرة بدون سيريال منفصل — الباركود يربط السيريال (ID = barcode)
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text('Ticket ID / Barcode:', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-                pw.Text('${t['barcode'] ?? t['id']}', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-              ],
-            ),
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.end,
-              children: [
-                pw.Text('Date:', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-                pw.Text(fmtDate(t['createdAt']), style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-                pw.SizedBox(height: 2),
-                pw.Text('Operator:', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-                pw.Text('${t['operatorName']}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-              ],
-            ),
-          ],
-        ),
-        pw.SizedBox(height: 8),
-        pw.Center(child: pw.BarcodeWidget(barcode: pw.Barcode.qrCode(), data: t['barcode'] ?? t['id'], width: 110, height: 110)),
-        pw.SizedBox(height: 4),
-        pw.Text('${t['barcode'] ?? t['id']}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, letterSpacing: 1, color: PdfColors.black)),
-        pw.Divider(thickness: 0.6, color: PdfColors.black),
-        pw.Text('Keep ticket safe. Must be 18+ to play.', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.black), textAlign: pw.TextAlign.center),
-        pw.SizedBox(height: 3),
-        pw.Text('--- CUT HERE ---', style: pw.TextStyle(fontSize: 7, color: PdfColors.black)),
-      ],
-    );
-  }
-
   static String _periodFromName(String? name) {
     if (name == null) return '-';
     if (name.contains('Midday') || name.contains('Morning')) return 'Midday';
@@ -210,25 +65,70 @@ class _PrintScreenState extends State<PrintScreen> {
         Padding(
           padding: const EdgeInsets.only(bottom: 4),
           child: Row(children: [
-            Text((l['numbers'] as String).replaceAll(',', ' '), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 3, fontFamily: 'Courier', color: Colors.black)),
-            const Spacer(),
+            Expanded(
+              child: Text((l['numbers'] as String).replaceAll(',', ' '), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 3, fontFamily: 'Courier', color: Colors.black), maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+            const SizedBox(width: 8),
             Text(_displayBetUI(l['betType']), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black)),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Text(fmtMoney(l['amount']), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black)),
           ]),
         ),
     ]);
   }
 
-  Future<void> _printPdf(BuildContext context, Map<String, dynamic> t, List<Map<String,dynamic>> lines) async {
+  Future<pw.Document> _ticketDoc(Map<String, dynamic> t, List<Map<String,dynamic>> lines) async {
     final db = context.read<AppDatabase>();
     final cfg = await db.getAppConfig();
     final map = {for (var c in cfg) c['key'] as String: c['value'] as String};
     final company = map['company_name'] ?? 'NY Lottery POS';
     final footer = map['ticket_footer'] ?? '';
+    final printerType = normalizePrinterType(map['printer_type']);
+    final format = getTicketPageFormat(printerType);
     final doc = pw.Document();
-    doc.addPage(pw.Page(pageFormat: PdfPageFormat.roll80, build: (_) => _pdfTicket(t, lines, company, footer)));
-    await Printing.layoutPdf(onLayout: (_) async => doc.save());
+    doc.addPage(pw.Page(pageFormat: format, build: (_) => buildTicketPdfWidget(t, lines, company, footer, printerType: printerType)));
+    return doc;
+  }
+
+  Future<void> _previewPdf(BuildContext context, Map<String, dynamic> t, List<Map<String,dynamic>> lines) async {
+    final db = context.read<AppDatabase>();
+    final cfg = await db.getAppConfig();
+    final map = {for (var c in cfg) c['key'] as String: c['value'] as String};
+    final format = getTicketPageFormat(normalizePrinterType(map['printer_type']));
+    final doc = await _ticketDoc(t, lines);
+    final bytes = await doc.save();
+    if(!mounted) return;
+    await Navigator.push(this.context, MaterialPageRoute(builder: (_) => Scaffold(
+      appBar: AppBar(title: const Text('Ticket preview'), backgroundColor: const Color(0xFF0B8A3E), foregroundColor: Colors.white),
+      body: PdfPreview(
+        build: (_) async => bytes,
+        initialPageFormat: format,
+        allowPrinting: false,
+        allowSharing: true,
+        canChangePageFormat: false,
+        canChangeOrientation: false,
+        pdfFileName: 'ticket_${t['id']}.pdf',
+      ),
+    )));
+  }
+
+  Future<void> _printPdf(BuildContext context, Map<String, dynamic> t, List<Map<String,dynamic>> lines) async {
+    final db = context.read<AppDatabase>();
+    final cfg = await db.getAppConfig();
+    final map = {for (var c in cfg) c['key'] as String: c['value'] as String};
+    final printerType = normalizePrinterType(map['printer_type']);
+    final format = getTicketPageFormat(printerType);
+    final doc = await _ticketDoc(t, lines);
+    final company = map['company_name'] ?? 'NY Lottery POS';
+    final footer = map['ticket_footer'] ?? '';
+    final escPos = await buildTicketEscPos(ticket: t, lines: lines, company: company, footer: footer, printerType: printerType);
+    final result = await printPdfBytes(db: db, pdfBytes: await doc.save(), format: format, jobName: 'Ticket ${t['id']}', bluetoothBytes: escPos);
+    if(!mounted) return;
+    if(result.ok){
+      ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(content: Text('Printed on the default printer'), backgroundColor: Color(0xFF0B8A3E)));
+    } else {
+      ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(content: Text(result.error ?? 'Print failed'), backgroundColor: Colors.red));
+    }
   }
 
   Future<void> _sharePdf(BuildContext context, Map<String, dynamic> t, List<Map<String,dynamic>> lines) async {
@@ -237,8 +137,10 @@ class _PrintScreenState extends State<PrintScreen> {
     final map = {for (var c in cfg) c['key'] as String: c['value'] as String};
     final company = map['company_name'] ?? 'NY Lottery POS';
     final footer = map['ticket_footer'] ?? '';
+    final printerType = normalizePrinterType(map['printer_type']);
+    final format = getTicketPageFormat(printerType);
     final doc = pw.Document();
-    doc.addPage(pw.Page(pageFormat: PdfPageFormat.roll80, build: (_) => _pdfTicket(t, lines, company, footer)));
+    doc.addPage(pw.Page(pageFormat: format, build: (_) => buildTicketPdfWidget(t, lines, company, footer, printerType: printerType)));
     await Printing.sharePdf(bytes: await doc.save(), filename: 'ticket_${t['id']}.pdf');
   }
 
@@ -271,75 +173,16 @@ class _PrintScreenState extends State<PrintScreen> {
                     padding: EdgeInsets.all(Responsive.horizontalPadding(context)),
                     child: Column(
                       children: [
-                        const Text('Ticket Preview — 58mm Thermal (NY Official Style)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                        const Text('Ticket Preview — prints on the default printer', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
                         const Divider(),
                         Container(
                           padding: EdgeInsets.all(Responsive.horizontalPadding(context)),
                           decoration: BoxDecoration(border: Border.all(color: Colors.grey, width: 0.5), borderRadius: BorderRadius.circular(8), color: Colors.white),
-                          child: _loadingLines ? const Center(child: CircularProgressIndicator()) : Column(
+                            child: _loadingLines ? const Center(child: CircularProgressIndicator()) : Column(
                             children: [
-                              const Text('NY LOTTERY POS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, letterSpacing: 1, color: Colors.black)),
-                              const Text('NY LOTTERY OFFICIAL', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black, letterSpacing: 1)),
+                              const Text('INVOICE REPORT', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black, letterSpacing: 1)),
                               const Divider(height: 12, color: Colors.black),
-                              Text('${t['gameName']}'.toUpperCase(), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black)),
-                              Text(fmtMoney(t['total'] ?? t['amount']), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black)),
-                              const SizedBox(height: 2),
-                              Text('${t['drawName'] ?? '-'}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black)),
-                              Text('Period: $period', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black)),
-                              const SizedBox(height: 8),
-                              if(lines.isNotEmpty) Builder(builder: (ctx){
-                                // Group by period for Both display (spec §15)
-                                final midLines = lines.where((l)=> (l['periodId']?.toString().contains('MIDDAY')?? false) || (l['drawName']?.toString().contains('Midday')??false) ).toList();
-                                final eveLines = lines.where((l)=> (l['periodId']?.toString().contains('EVENING')?? false) || (l['drawName']?.toString().contains('Evening')??false) ).toList();
-                                final isBoth = midLines.isNotEmpty && eveLines.isNotEmpty;
-                                if(isBoth){
-                                  return Column(children: [
-                                      _printPeriodBlock('MIDDAY', midLines),
-                                      const SizedBox(height: 6),
-                                      const Text('--------------------', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.black)),
-                                      const SizedBox(height: 6),
-                                      _printPeriodBlock('EVENING', eveLines),
-                                      const Divider(height: 12, color: Colors.black),
-                                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black)), Text(fmtMoney(t['total'] ?? t['amount']), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.black))]),
-                                      if (t['status'] == 'winning' || t['status'] == 'paid')
-                                        Padding(padding: const EdgeInsets.only(top: 4), child: Text(t['status'] == 'paid' ? 'PAID • Prize ${fmtMoney(t['prizeAmount'] ?? 0)}' : 'WINNER • Prize ${fmtMoney(t['prizeAmount'] ?? 0)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: green))),
-                                    ]);
-                                }
-                                return Column(children: [
-                                  for(int i=0;i<lines.length;i++)
-                                    Padding(
-                                      padding: EdgeInsets.only(bottom: i==lines.length-1?0:4),
-                                      child: Row(children: [
-                                        Text('${i+1}.', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black)),
-                                        const SizedBox(width: 8),
-                                        Text((lines[i]['numbers'] as String).replaceAll(',', ' '), style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: 3, fontFamily: 'Courier', color: Colors.black)),
-                                        const Spacer(),
-                                        Text(_displayBetUI(lines[i]['betType']), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black)),
-                                        const SizedBox(width: 10),
-                                        Text(fmtMoney(lines[i]['amount']), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black)),
-                                      ]),
-                                    ),
-                                  const Divider(height: 12, color: Colors.black),
-                                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black)), Text(fmtMoney(t['total'] ?? t['amount']), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.black))]),
-                                  if (t['status'] == 'winning' || t['status'] == 'paid')
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 4),
-                                      child: Text(t['status'] == 'paid' ? 'PAID • Prize ${fmtMoney(t['prizeAmount'] ?? 0)}' : 'WINNER • Prize ${fmtMoney(t['prizeAmount'] ?? 0)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: green)),
-                                    ),
-                                ]);
-                              }) else Column(
-                                  children: [
-                                    Text((t['numbers'] as String).replaceAll(',', '  '), style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w900, letterSpacing: 5, fontFamily: 'Courier', color: Colors.black)),
-                                    const SizedBox(height: 6),
-                                    Text('${_displayBetUI(t['betType'])} • ${fmtMoney(t['amount'])}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black)),
-                                    if (t['status'] == 'winning' || t['status'] == 'paid')
-                                      Padding(
-                                        padding: const EdgeInsets.only(top: 4),
-                                        child: Text(t['status'] == 'paid' ? 'PAID • Prize ${fmtMoney(t['prizeAmount'] ?? 0)}' : 'WINNER • Prize ${fmtMoney(t['prizeAmount'] ?? 0)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: green)),
-                                      ),
-                                  ],
-                              ),
-                              const SizedBox(height: 10),
+                              // رقم الفاتورة والتاريخ مباشرة تحت SALES REPORT
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
@@ -362,7 +205,112 @@ class _PrintScreenState extends State<PrintScreen> {
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 12),
+                              const Divider(height: 12, color: Colors.black),
+                              const SizedBox(height: 4),
+                              if(lines.isNotEmpty) Builder(builder: (ctx){
+                                String classify(Map<String,dynamic> l){
+                                  final pid = (l['periodId'] ?? '').toString().toUpperCase();
+                                  if(pid.contains('MIDDAY') || pid.contains('MORNING') || pid.contains('MID_')) return 'MIDDAY';
+                                  if(pid.contains('EVENING') || pid.contains('EVE') || pid.contains('NIGHT')) return 'EVENING';
+                                  final dn = (l['drawName'] ?? '').toString().toUpperCase();
+                                  if(dn.contains('MIDDAY') || dn.contains('MORNING')) return 'MIDDAY';
+                                  if(dn.contains('EVENING')) return 'EVENING';
+                                  final dt = (l['drawType'] ?? '').toString().toUpperCase();
+                                  if(dt.contains('MIDDAY') || dt.contains('MORNING') || dt.contains('MID')) return 'MIDDAY';
+                                  if(dt.contains('EVENING') || dt.contains('EVE')) return 'EVENING';
+                                  return '';
+                                }
+                                final midLines = lines.where((l)=> classify(l)=='MIDDAY').toList();
+                                final eveLines = lines.where((l)=> classify(l)=='EVENING').toList();
+                                final otherLines = lines.where((l)=> classify(l)=='').toList();
+                                final hasMid = midLines.isNotEmpty;
+                                final hasEve = eveLines.isNotEmpty;
+                                final hasOther = otherLines.isNotEmpty;
+                                if(!hasMid && !hasEve){
+                                  // fallback: لا يوجد تصنيف -> عرض بدون ترويسة مثل السابق
+                                  return Column(children: [
+                                    for(int i=0;i<lines.length;i++)
+                                      Padding(
+                                        padding: EdgeInsets.only(bottom: i==lines.length-1?0:4),
+                                        child: Row(children: [
+                                          Expanded(
+                                            child: Text((lines[i]['numbers'] as String).replaceAll(',', ' '), style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: 3, fontFamily: 'Courier', color: Colors.black), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(_displayBetUI(lines[i]['betType']), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black)),
+                                          const SizedBox(width: 8),
+                                          Text(fmtMoney(lines[i]['amount']), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black)),
+                                        ]),
+                                      ),
+                                    const Divider(height: 12, color: Colors.black),
+                                    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black)), Text(fmtMoney(t['total'] ?? t['amount']), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.black))]),
+                                    if (t['status'] == 'winning' || t['status'] == 'paid')
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 4),
+                                        child: Text(t['status'] == 'paid' ? 'PAID • Prize ${fmtMoney(t['prizeAmount'] ?? 0)}' : 'WINNER • Prize ${fmtMoney(t['prizeAmount'] ?? 0)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: green)),
+                                      ),
+                                  ]);
+                                }
+                                // حالة Mid فقط أو Eve فقط أو Both أو مختلط
+                                return Column(children: [
+                                  if(hasMid) _printPeriodBlock('MIDDAY', midLines),
+                                  if(hasMid && hasEve) ...[
+                                    const SizedBox(height: 6),
+                                    const Text('--------------------', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.black)),
+                                    const SizedBox(height: 6),
+                                  ],
+                                  if(hasEve) _printPeriodBlock('EVENING', eveLines),
+                                  if(hasOther) ...[
+                                    if(hasMid || hasEve) ...[
+                                      const SizedBox(height: 6),
+                                      const Text('--------------------', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.black)),
+                                      const SizedBox(height: 6),
+                                    ],
+                                    for(int i=0;i<otherLines.length;i++)
+                                      Padding(
+                                        padding: EdgeInsets.only(bottom: i==otherLines.length-1?0:4),
+                                        child: Row(children: [
+                                          Expanded(
+                                            child: Text((otherLines[i]['numbers'] as String).replaceAll(',', ' '), style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: 3, fontFamily: 'Courier', color: Colors.black), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(_displayBetUI(otherLines[i]['betType']), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black)),
+                                          const SizedBox(width: 8),
+                                          Text(fmtMoney(otherLines[i]['amount']), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black)),
+                                        ]),
+                                      ),
+                                  ],
+                                  const Divider(height: 12, color: Colors.black),
+                                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black)), Text(fmtMoney(t['total'] ?? t['amount']), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.black))]),
+                                  if (t['status'] == 'winning' || t['status'] == 'paid')
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: Text(t['status'] == 'paid' ? 'PAID • Prize ${fmtMoney(t['prizeAmount'] ?? 0)}' : 'WINNER • Prize ${fmtMoney(t['prizeAmount'] ?? 0)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: green)),
+                                    ),
+                                ]);
+                              }) else Builder(builder: (_){
+                                final dn = (t['drawName'] ?? '').toString().toUpperCase();
+                                String? header;
+                                if(dn.contains('MIDDAY') || dn.contains('MORNING')) header='MIDDAY';
+                                else if(dn.contains('EVENING')) header='EVENING';
+                                return Column(
+                                  children: [
+                                    if(header!=null) ...[
+                                      Text(header, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 1, color: Colors.black)),
+                                      const SizedBox(height: 6),
+                                    ],
+                                    Text((t['numbers'] as String).replaceAll(',', '  '), style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w900, letterSpacing: 5, fontFamily: 'Courier', color: Colors.black)),
+                                    const SizedBox(height: 6),
+                                    Text('${_displayBetUI(t['betType'])} • ${fmtMoney(t['amount'])}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black)),
+                                    if (t['status'] == 'winning' || t['status'] == 'paid')
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 4),
+                                        child: Text(t['status'] == 'paid' ? 'PAID • Prize ${fmtMoney(t['prizeAmount'] ?? 0)}' : 'WINNER • Prize ${fmtMoney(t['prizeAmount'] ?? 0)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: green)),
+                                      ),
+                                  ],
+                                );
+                              }),
+                              const SizedBox(height: 10),
                               QrImageView(data: t['barcode'] ?? t['id'], size: 130),
                               Text(t['barcode'] ?? t['id'], style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1, color: Colors.black)),
                               const Divider(height: 16, color: Colors.black),
@@ -373,7 +321,7 @@ class _PrintScreenState extends State<PrintScreen> {
                         const SizedBox(height: 10),
                         Row(
                           children: [
-                            Expanded(child: OutlinedButton.icon(icon: const Icon(Icons.preview, size: 16), label: const Text('Preview'), onPressed: () => _printPdf(context, t, lines))),
+                            Expanded(child: OutlinedButton.icon(icon: const Icon(Icons.preview, size: 16), label: const Text('Preview'), onPressed: () => _previewPdf(context, t, lines))),
                             const SizedBox(width: 8),
                             Expanded(child: ElevatedButton.icon(icon: const Icon(Icons.print, size: 16), label: const Text('Print'), style: ElevatedButton.styleFrom(backgroundColor: green, foregroundColor: Colors.white), onPressed: () => _printPdf(context, t, lines))),
                           ],
@@ -384,7 +332,7 @@ class _PrintScreenState extends State<PrintScreen> {
                           child: OutlinedButton.icon(icon: const Icon(Icons.share, size: 16), label: const Text('Share PDF'), onPressed: () => _sharePdf(context, t, lines)),
                         ),
                         const SizedBox(height: 8),
-                        Text(isMulti ? '${lines.length} plays on ONE ticket • SALE invoice • ${fmtMoney(t['total'])} total' : '58mm thermal • Roll80 • QR + Barcode', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black), textAlign: TextAlign.center),
+                        Text(isMulti ? '${lines.length} plays on ONE ticket • SALE invoice • ${fmtMoney(t['total'])} total' : 'Thermal 58mm / 80mm • QR on ticket', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black), textAlign: TextAlign.center),
                       ],
                     ),
                   ),

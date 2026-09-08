@@ -258,6 +258,7 @@ class AppDatabase extends GeneratedDatabase {
           await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('backup_enabled', '1', 'local', $now)");
           await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('backup_interval', 'daily', 'local', $now)");
           await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('backup_retention', '10', 'local', $now)");
+          await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('client_commission_rate', '20', 'local', $now)");
         },
       );
 
@@ -531,6 +532,9 @@ class AppDatabase extends GeneratedDatabase {
     await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('backup_enabled', '1', 'local', $nowCfg)");
     await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('backup_interval', 'daily', 'local', $nowCfg)");
     await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('backup_retention', '10', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('client_commission_rate', '20', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('printer_type', 'thermal_58mm', 'local', $nowCfg)");
+    await customStatement("INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('printer_connection', 'bluetooth', 'local', $nowCfg)");
 
     final configs = await customSelect('SELECT COUNT(*) as c FROM app_config').getSingle();
     if ((configs.data['c'] as int) == 0) {
@@ -836,10 +840,27 @@ class AppDatabase extends GeneratedDatabase {
   }
 
   Future<Map<String, dynamic>?> getTicketByBarcode(String barcode) async {
-    final rows = await customSelect('SELECT * FROM tickets WHERE barcode = ? OR id = ? OR serialNumber = ? LIMIT 1',
-        variables: [Variable.withString(barcode), Variable.withString(barcode), Variable.withString(barcode)]).get();
-    if (rows.isEmpty) return null;
-    return rows.first.data;
+    barcode = barcode.trim();
+    if (barcode.isEmpty) return null;
+    Future<Map<String, dynamic>?> lookup(String v) async {
+      final rows = await customSelect('SELECT * FROM tickets WHERE barcode = ? OR id = ? OR serialNumber = ? LIMIT 1',
+          variables: [Variable.withString(v), Variable.withString(v), Variable.withString(v)]).get();
+      if (rows.isEmpty) return null;
+      return rows.first.data;
+    }
+    final exact = await lookup(barcode);
+    if (exact != null) return exact;
+    if (RegExp(r'^\d+$').hasMatch(barcode)) {
+      final padded6 = barcode.padLeft(6, '0');
+      final padded8 = barcode.padLeft(8, '0');
+      final stripped = barcode.replaceFirst(RegExp(r'^0+'), '');
+      for (final v in {padded6, padded8, if (stripped.isNotEmpty) stripped}) {
+        if (v == barcode) continue;
+        final hit = await lookup(v);
+        if (hit != null) return hit;
+      }
+    }
+    return null;
   }
 
   Future<void> updateTicketStatus(String id, String status, {double? prizeAmount, int? paidAt, String? paidBy}) async {
@@ -938,6 +959,26 @@ class AppDatabase extends GeneratedDatabase {
     await customStatement(
         'INSERT OR REPLACE INTO app_config (key, value, scope, updatedAt) VALUES (?, ?, ?, ?)',
         [key, value, scope, now]);
+  }
+
+  static const double defaultClientCommissionRate = 20.0;
+
+  Future<double> getClientCommissionRate() async {
+    try {
+      final rows = await customSelect("SELECT value FROM app_config WHERE key='client_commission_rate' LIMIT 1").get();
+      if (rows.isEmpty) return defaultClientCommissionRate;
+      final v = double.tryParse((rows.first.data['value'] as String?) ?? '');
+      if (v == null || v < 0) return defaultClientCommissionRate;
+      return v;
+    } catch (_) {
+      return defaultClientCommissionRate;
+    }
+  }
+
+  Future<void> setClientCommissionRate(double rate) async {
+    final v = rate < 0 ? 0.0 : rate;
+    final text = v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
+    await upsertConfig('client_commission_rate', text, 'local');
   }
 
   Future<String> nextTicketId() async {
