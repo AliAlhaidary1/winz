@@ -14,7 +14,11 @@ class AppTheme {
   static const textMuted = Color(0xFF6B7280);
 
   static ThemeData light() {
-    const cs = ColorScheme.light(primary: green, secondary: Color(0xFF1DB954), surface: Colors.white);
+    const cs = ColorScheme.light(
+      primary: green,
+      secondary: Color(0xFF1DB954),
+      surface: Colors.white,
+    );
     return ThemeData(
       colorScheme: cs,
       scaffoldBackgroundColor: bg,
@@ -24,19 +28,35 @@ class AppTheme {
         foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
-        titleTextStyle: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+        titleTextStyle: TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+          fontSize: 16,
+        ),
       ),
       cardTheme: CardThemeData(
         color: Colors.white,
         elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: cardBorder)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cardBorder),
+        ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Colors.white,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: cardBorder)),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: cardBorder)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: green, width: 1.4)),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: cardBorder),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: cardBorder),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: green, width: 1.4),
+        ),
         isDense: true,
         contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         labelStyle: TextStyle(fontSize: 12, color: textMuted),
@@ -45,13 +65,18 @@ class AppTheme {
         backgroundColor: Colors.white,
         selectedColor: green,
         labelStyle: TextStyle(fontSize: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: cardBorder)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: cardBorder),
+        ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: green,
           foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           elevation: 0,
           padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           textStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
@@ -61,7 +86,9 @@ class AppTheme {
         style: OutlinedButton.styleFrom(
           foregroundColor: green,
           side: BorderSide(color: green),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         ),
       ),
@@ -69,20 +96,39 @@ class AppTheme {
     );
   }
 
-  static BoxDecoration cardDecoration({Color? borderColor, double radius = 16}) {
+  static BoxDecoration cardDecoration({
+    Color? borderColor,
+    double radius = 16,
+  }) {
     return BoxDecoration(
       color: Colors.white,
       borderRadius: BorderRadius.circular(radius),
       border: Border.all(color: borderColor ?? cardBorder),
-      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: Offset(0, 4))],
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.04),
+          blurRadius: 12,
+          offset: Offset(0, 4),
+        ),
+      ],
     );
   }
 
   static BoxDecoration softGreenDecoration() {
     return BoxDecoration(
-      gradient: LinearGradient(colors: [green, greenDark], begin: Alignment.topLeft, end: Alignment.bottomRight),
+      gradient: LinearGradient(
+        colors: [green, greenDark],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
       borderRadius: BorderRadius.circular(16),
-      boxShadow: [BoxShadow(color: green.withValues(alpha: 0.25), blurRadius: 16, offset: Offset(0, 6))],
+      boxShadow: [
+        BoxShadow(
+          color: green.withValues(alpha: 0.25),
+          blurRadius: 16,
+          offset: Offset(0, 6),
+        ),
+      ],
     );
   }
 }

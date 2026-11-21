@@ -91,16 +91,15 @@ class _WorkersScreenState extends State<WorkersScreen> {
     final db = context.read<AppDatabase>();
     final id = 'acc_${DateTime.now().millisecondsSinceEpoch}';
     try {
-      await db.customStatement(
-        "INSERT INTO accounts (id, username, password, role, status, createdAt, commission) VALUES (?, ?, ?, 'worker', 'active', ?, ?)",
-        [
-          id,
-          userCtrl.text.trim(),
-          passCtrl.text,
-          DateTime.now().millisecondsSinceEpoch,
-          comm,
-        ],
-      );
+      await db.insertAccount({
+        'id': id,
+        'username': userCtrl.text.trim(),
+        'password': passCtrl.text,
+        'role': 'worker',
+        'status': 'active',
+        'createdAt': DateTime.now().millisecondsSinceEpoch,
+        'commission': comm,
+      });
     } catch (e) {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
@@ -150,10 +149,7 @@ class _WorkersScreenState extends State<WorkersScreen> {
     if (ok != true) return;
     final v = double.tryParse(ctrl.text) ?? 0;
     final db = context.read<AppDatabase>();
-    await db.customStatement("UPDATE accounts SET commission=? WHERE id=?", [
-      v,
-      w['id'],
-    ]);
+    await db.updateAccountCommission(w['id'] as String, v);
     await _load();
   }
 
@@ -182,10 +178,7 @@ class _WorkersScreenState extends State<WorkersScreen> {
     final db = context.read<AppDatabase>();
     // Soft delete: keep the row so operatorId references stay valid in
     // cash_ledger / balance_movements / tickets.
-    await db.customStatement(
-      "UPDATE accounts SET status='inactive' WHERE id=?",
-      [w['id']],
-    );
+    await db.deactivateAccount(w['id'] as String);
     await _load();
   }
 

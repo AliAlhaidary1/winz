@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import '../data/database.dart';
 import '../utils/timezone.dart';
 
@@ -592,10 +590,7 @@ class DrawPeriodService {
           if (periodId.startsWith(dateStr)) {
             // winningNumbers is stored as comma-joined digits.
             final comma = winningNumber.split('').join(',');
-            await db.customStatement(
-              "UPDATE draws SET winningNumbers = ?, status='closed' WHERE id = ?",
-              [comma, d['id']],
-            );
+            await db.updateDrawResult(d['id'] as String, comma);
           }
         }
         if (periodId.contains('EVENING') &&
@@ -605,10 +600,7 @@ class DrawPeriodService {
               '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
           if (periodId.startsWith(dateStr)) {
             final comma = winningNumber.split('').join(',');
-            await db.customStatement(
-              "UPDATE draws SET winningNumbers = ?, status='closed' WHERE id = ?",
-              [comma, d['id']],
-            );
+            await db.updateDrawResult(d['id'] as String, comma);
           }
         }
       }

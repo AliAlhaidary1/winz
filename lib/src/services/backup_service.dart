@@ -1,12 +1,32 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:sqlite3/sqlite3.dart' as sqlite3;
 
+import '../config/api_config.dart';
 import '../data/database.dart';
+
+/// JSON backup format identifier written into every exported file.
+const String _backupFormat = 'yelottery-json-backup';
+
+/// Tables that must be present in a valid JSON backup.
+const List<String> _requiredTables = [
+  'tickets',
+  'ticket_lines',
+  'accounts',
+  'games',
+  'draws',
+  'draw_periods',
+  'cash_ledger',
+  'balance_movements',
+  'cash_sessions',
+  'app_config',
+  'audit_logs',
+];
 
 class BackupService {
   final AppDatabase db;
@@ -160,13 +180,14 @@ class BackupService {
     return _canWriteDir(Directory(dirPath));
   }
 
-  Future<Uint8List> readDbBytes() => _readDbBytes();
+  /// Returns the current data as JSON backup bytes (used by "save anywhere").
+  Future<Uint8List> readDbBytes() => _buildBackupJsonBytes();
 
   String suggestedFileName({String reason = 'manual'}) {
     final now = DateTime.now();
     final ts =
         '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
-    return 'yelottery_backup_${ts}_$reason.sqlite';
+    return 'yelottery_backup_${ts}_$reason.json';
   }
 
   Future<bool> _canWriteDir(Directory dir) async {
@@ -258,33 +279,71 @@ class BackupService {
     return dest;
   }
 
+  /// Kept for API compatibility. There is no longer a local SQLite file;
+  /// this returns a representative path for the JSON backup location.
   Future<String> getDbPath() async {
     final doc = await getApplicationDocumentsDirectory();
-    return p.join(doc.path, 'yelottery.sqlite');
+    return p.join(doc.path, 'yelottery_backup.json');
   }
 
-  /// نسخ قاعدة البيانات كبايتات بعد checkpoint — يضمن ملف واحد متكامل (لا wal/shm منفصلين)
-  Future<Uint8List> _readDbBytes() async {
-    final dbPath = await getDbPath();
-    final src = File(dbPath);
-    if (!await src.exists())
-      throw Exception('قاعدة البيانات غير موجودة: $dbPath');
-    // إغلاق WAL في الملف الرئيسي — يضمن نسخة متسقة 100% بدون الحاجة لنسخ wal/shm
-    try {
-      await db.customStatement('PRAGMA wal_checkpoint(TRUNCATE)');
-    } catch (_) {}
-    await Future.delayed(const Duration(milliseconds: 150));
-    try {
-      return await src.readAsBytes();
-    } catch (_) {
-      final tmp = File('$dbPath.bakcopy');
-      await src.copy(tmp.path);
-      final bytes = await tmp.readAsBytes();
-      try {
-        await tmp.delete();
-      } catch (_) {}
-      return bytes;
+  // ---------- JSON export helpers ----------
+
+  /// Fetch every table through the typed AppDatabase methods.
+  Future<Map<String, dynamic>> _buildBackupMap() async {
+    final tables = <String, List<Map<String, dynamic>>>{
+      'app_config': await db.getAppConfig(),
+      'accounts': await db.getAccounts(),
+      'games': await db.getGames(),
+      'draws': await db.getAllDraws(),
+      'draw_periods': await db.getAllPeriods(),
+      'tickets': await db.getTickets(),
+      'ticket_lines': await db.getAllTicketLines(),
+      'cash_ledger': await db.getCashLedger(),
+      'balance_movements': await db.getBalanceMovements(),
+      'cash_sessions': await db.getCashSessions(),
+      'audit_logs': await db.getAuditLogs(),
+      'customers': await db.getCustomers(),
+    };
+    final plays = <Map<String, dynamic>>[];
+    for (final c in tables['customers'] ?? const <Map<String, dynamic>>[]) {
+      final id = c['id'] as String?;
+      if (id == null || id.isEmpty) continue;
+      plays.addAll(await db.getCustomerPlays(id));
     }
+    tables['customer_plays'] = plays;
+    return {
+      'format': _backupFormat,
+      'version': 1,
+      'createdAt': DateTime.now().millisecondsSinceEpoch,
+      'app': 'YeLottery',
+      'tables': tables,
+    };
+  }
+
+  Future<Uint8List> _buildBackupJsonBytes() async {
+    final map = await _buildBackupMap();
+    return utf8.encode(jsonEncode(map));
+  }
+
+  /// Decode a JSON backup file into a map.
+  Future<Map<String, dynamic>> _readBackupMap(String backupPath) async {
+    final f = File(backupPath);
+    if (!await f.exists()) throw Exception('ملف النسخة غير موجود: $backupPath');
+    final decoded = jsonDecode(await f.readAsString());
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('الملف ليس نسخة YeLottery JSON صالحة');
+    }
+    return decoded;
+  }
+
+  int _countTables(Map<String, dynamic> backup) {
+    final tables = backup['tables'];
+    if (tables is! Map<String, dynamic>) return 0;
+    var n = 0;
+    for (final value in tables.values) {
+      if (value is List) n += value.length;
+    }
+    return n;
   }
 
   /// Perform a backup now. Returns the most user-visible saved path.
@@ -307,7 +366,7 @@ class BackupService {
     if (requestPermission) {
       await ensureStorageAccess(prompt: true);
     }
-    final bytes = await _readDbBytes();
+    final bytes = await _buildBackupJsonBytes();
     final dir = await _backupDir();
     final fileName = suggestedFileName(reason: reason);
     final destPath = p.join(dir.path, fileName);
@@ -366,7 +425,7 @@ class BackupService {
         'newValue': primary,
         'timestamp': nowMs,
         'reason':
-            'Backup $reason -> ${saved.join(' | ')} (${bytes.length} bytes, all tables)',
+            'Backup $reason -> ${saved.join(' | ')} (${bytes.length} bytes, JSON all tables)',
       });
     } catch (_) {}
 
@@ -386,9 +445,10 @@ class BackupService {
     final now = DateTime.now();
     final ts =
         '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
-    return 'yelottery_backup_${ts}_${reason ?? 'manual'}.sqlite';
+    return 'yelottery_backup_${ts}_${reason ?? 'manual'}.json';
   }
 
+  /// Copy an already-written backup file to another path (UI export helper).
   Future<String> exportBackupToPath(String sourcePath, String destPath) async {
     final src = File(sourcePath);
     if (!await src.exists())
@@ -405,7 +465,7 @@ class BackupService {
     final files = dir
         .listSync()
         .whereType<File>()
-        .where((f) => f.path.endsWith('.sqlite'))
+        .where((f) => f.path.endsWith('.json'))
         .toList();
     files.sort(
       (a, b) => b.statSync().modified.compareTo(a.statSync().modified),
@@ -414,12 +474,6 @@ class BackupService {
     for (var i = retention; i < files.length; i++) {
       try {
         await files[i].delete();
-      } catch (_) {}
-      try {
-        await File('${files[i].path}-wal').delete();
-      } catch (_) {}
-      try {
-        await File('${files[i].path}-shm').delete();
       } catch (_) {}
     }
   }
@@ -469,9 +523,7 @@ class BackupService {
     Future<void> addFrom(Directory? dir) async {
       if (dir == null || !await dir.exists()) return;
       all.addAll(
-        dir.listSync().whereType<File>().where(
-          (f) => f.path.endsWith('.sqlite'),
-        ),
+        dir.listSync().whereType<File>().where((f) => f.path.endsWith('.json')),
       );
     }
 
@@ -511,90 +563,63 @@ class BackupService {
 
   // ============ RESTORE ============
 
-  /// Validate that file is a usable SQLite backup — يتحقق من كااافة الجداول بدون استثناء
+  /// Validate that the file is a usable YeLottery JSON backup — يتحقق من كااافة الجداول بدون استثناء
   Future<Map<String, dynamic>> validateBackupFile(String backupPath) async {
     final f = File(backupPath);
     if (!await f.exists()) throw Exception('ملف النسخة غير موجود: $backupPath');
     final len = await f.length();
-    if (len < 1024) throw Exception('ملف النسخة تالف أو فارغ (حجم $len بايت)');
-    // Check SQLite header
-    final raf = await f.open();
+    if (len < 16) throw Exception('ملف النسخة تالف أو فارغ (حجم $len بايت)');
+
+    Map<String, dynamic> decoded;
     try {
-      final header = Uint8List(16);
-      await raf.readInto(header);
-      final expected = 'SQLite format 3\x00';
-      final actual = String.fromCharCodes(header);
-      if (actual != expected)
-        throw Exception('الملف ليس قاعدة بيانات SQLite صالحة');
-    } finally {
-      await raf.close();
-    }
-    // Try open with sqlite3 and check integrity + all tables
-    sqlite3.Database? tmp;
-    try {
-      tmp = sqlite3.sqlite3.open(backupPath, mode: sqlite3.OpenMode.readOnly);
-      final res = tmp.select('PRAGMA integrity_check;');
-      final first = res.firstOrNull?['integrity_check'] as String? ?? 'ok';
-      if (first != 'ok') throw Exception('فحص السلامة فشل: $first');
-      // Check ALL essential tables exist — كااافة البيانات بدون استثناء
-      final tables = tmp
-          .select("SELECT name FROM sqlite_master WHERE type='table'")
-          .map((r) => r['name'] as String)
-          .toSet();
-      const required = [
-        'tickets',
-        'ticket_lines',
-        'accounts',
-        'games',
-        'draws',
-        'draw_periods',
-        'cash_ledger',
-        'balance_movements',
-        'cash_sessions',
-        'app_config',
-        'audit_logs',
-      ];
-      final missing = required.where((t) => !tables.contains(t)).toList();
-      if (missing.isNotEmpty) {
-        throw Exception(
-          'النسخة ناقصة — جداول مفقودة: ${missing.join(', ')} — قد تكون نسخة قديمة أو ملف خاطئ',
-        );
-      }
-      // A backup without the sequence keys resets ticket/serial numbering on
-      // restore and produces duplicate ticket IDs. Tolerate a completely empty
-      // (old) app_config, but otherwise require both keys to be present.
-      try {
-        final cfgKeys = tmp
-            .select('SELECT key FROM app_config')
-            .map((r) => r['key'] as String)
-            .toSet();
-        if (cfgKeys.isNotEmpty) {
-          const requiredKeys = ['ticket_seq', 'serial_seq'];
-          final missingKeys = requiredKeys
-              .where((k) => !cfgKeys.contains(k))
-              .toList();
-          if (missingKeys.isNotEmpty) {
-            throw Exception(
-              'النسخة لا تحتوي على مفاتيح التسلسل: ${missingKeys.join(', ')} — قد تنتج أرقام تذاكر مكررة عند الاستعادة',
-            );
-          }
-        }
-      } catch (e) {
-        if (e.toString().contains('مفاتيح التسلسل')) rethrow;
-        // Old/empty config tables that cannot be queried are tolerated.
-      }
+      decoded = await _readBackupMap(backupPath);
     } catch (e) {
-      if (e.toString().contains('فحص السلامة') ||
-          e.toString().contains('النسخة ناقصة') ||
-          e.toString().contains('النسخة لا تحتوي'))
+      if (e.toString().contains('ملف النسخة') ||
+          e.toString().contains('نسخة YeLottery'))
         rethrow;
-      throw Exception('تعذر فتح النسخة كـ SQLite: $e');
-    } finally {
-      tmp?.close();
+      throw Exception('الملف ليس نسخة YeLottery JSON صالحة: $e');
+    }
+    if (decoded['format'] != _backupFormat) {
+      throw Exception('الملف ليس نسخة YeLottery JSON صالحة');
+    }
+    final tables = decoded['tables'];
+    if (tables is! Map<String, dynamic>) {
+      throw Exception('الملف ليس نسخة YeLottery JSON صالحة');
+    }
+    final missing = _requiredTables
+        .where((t) => !tables.containsKey(t))
+        .toList();
+    if (missing.isNotEmpty) {
+      throw Exception(
+        'النسخة ناقصة — جداول مفقودة: ${missing.join(', ')} — قد تكون نسخة قديمة أو ملف خاطئ',
+      );
+    }
+    // A backup without the sequence keys resets ticket/serial numbering on
+    // restore and produces duplicate ticket IDs. Tolerate a completely empty
+    // (old) app_config, but otherwise require both keys to be present.
+    final cfgRows = tables['app_config'];
+    if (cfgRows is List && cfgRows.isNotEmpty) {
+      final cfgKeys = cfgRows
+          .map((r) => r is Map ? r['key'] as String? : null)
+          .whereType<String>()
+          .toSet();
+      if (cfgKeys.isNotEmpty) {
+        const requiredKeys = ['ticket_seq', 'serial_seq'];
+        final missingKeys = requiredKeys
+            .where((k) => !cfgKeys.contains(k))
+            .toList();
+        if (missingKeys.isNotEmpty) {
+          throw Exception(
+            'النسخة لا تحتوي على مفاتيح التسلسل: ${missingKeys.join(', ')} — قد تنتج أرقام تذاكر مكررة عند الاستعادة',
+          );
+        }
+      }
     }
     return {'valid': true, 'size': len};
   }
 
+  /// Current data counts. With the API-only data layer there is no local
+  /// SQLite file, so [size] reports the exported JSON payload size.
   Future<Map<String, dynamic>> getCurrentStats() async {
     int tickets = 0,
         lines = 0,
@@ -608,69 +633,37 @@ class BackupService {
         audits = 0;
     int dbSize = 0;
     try {
-      final r = await db
-          .customSelect('SELECT COUNT(*) as c FROM tickets')
-          .getSingle();
-      tickets = r.data['c'] as int;
+      tickets = (await db.getTickets()).length;
     } catch (_) {}
     try {
-      final r = await db
-          .customSelect('SELECT COUNT(*) as c FROM ticket_lines')
-          .getSingle();
-      lines = r.data['c'] as int;
+      lines = (await db.getAllTicketLines()).length;
     } catch (_) {}
     try {
-      final r = await db
-          .customSelect('SELECT COUNT(*) as c FROM accounts')
-          .getSingle();
-      accounts = r.data['c'] as int;
+      accounts = (await db.getAccounts()).length;
     } catch (_) {}
     try {
-      final r = await db
-          .customSelect('SELECT COUNT(*) as c FROM draws')
-          .getSingle();
-      draws = r.data['c'] as int;
+      draws = (await db.getAllDraws()).length;
     } catch (_) {}
     try {
-      final r = await db
-          .customSelect('SELECT COUNT(*) as c FROM draw_periods')
-          .getSingle();
-      periods = r.data['c'] as int;
+      periods = (await db.getAllPeriods()).length;
     } catch (_) {}
     try {
-      final r = await db
-          .customSelect('SELECT COUNT(*) as c FROM cash_ledger')
-          .getSingle();
-      cash = r.data['c'] as int;
+      cash = (await db.getCashLedger()).length;
     } catch (_) {}
     try {
-      final r = await db
-          .customSelect('SELECT COUNT(*) as c FROM balance_movements')
-          .getSingle();
-      balance = r.data['c'] as int;
+      balance = (await db.getBalanceMovements()).length;
     } catch (_) {}
     try {
-      final r = await db
-          .customSelect('SELECT COUNT(*) as c FROM cash_sessions')
-          .getSingle();
-      sessions = r.data['c'] as int;
+      sessions = (await db.getCashSessions()).length;
     } catch (_) {}
     try {
-      final r = await db
-          .customSelect('SELECT COUNT(*) as c FROM app_config')
-          .getSingle();
-      configs = r.data['c'] as int;
+      configs = (await db.getAppConfig()).length;
     } catch (_) {}
     try {
-      final r = await db
-          .customSelect('SELECT COUNT(*) as c FROM audit_logs')
-          .getSingle();
-      audits = r.data['c'] as int;
+      audits = (await db.getAuditLogs()).length;
     } catch (_) {}
     try {
-      final path = await getDbPath();
-      final f = File(path);
-      if (await f.exists()) dbSize = await f.length();
+      dbSize = (await _buildBackupJsonBytes()).length;
     } catch (_) {}
     return {
       'tickets': tickets,
@@ -688,83 +681,30 @@ class BackupService {
     };
   }
 
+  /// Count records directly from the JSON backup maps (no SQLite involved).
   Future<Map<String, dynamic>> getBackupStats(String backupPath) async {
-    sqlite3.Database? tmp;
-    try {
-      tmp = sqlite3.sqlite3.open(backupPath, mode: sqlite3.OpenMode.readOnly);
-      int tickets = 0,
-          lines = 0,
-          accounts = 0,
-          draws = 0,
-          periods = 0,
-          cash = 0,
-          balance = 0,
-          sessions = 0,
-          configs = 0,
-          audits = 0;
-      try {
-        tickets =
-            tmp.select('SELECT COUNT(*) as c FROM tickets').first['c'] as int;
-      } catch (_) {}
-      try {
-        lines =
-            tmp.select('SELECT COUNT(*) as c FROM ticket_lines').first['c']
-                as int;
-      } catch (_) {}
-      try {
-        accounts =
-            tmp.select('SELECT COUNT(*) as c FROM accounts').first['c'] as int;
-      } catch (_) {}
-      try {
-        draws = tmp.select('SELECT COUNT(*) as c FROM draws').first['c'] as int;
-      } catch (_) {}
-      try {
-        periods =
-            tmp.select('SELECT COUNT(*) as c FROM draw_periods').first['c']
-                as int;
-      } catch (_) {}
-      try {
-        cash =
-            tmp.select('SELECT COUNT(*) as c FROM cash_ledger').first['c']
-                as int;
-      } catch (_) {}
-      try {
-        balance =
-            tmp.select('SELECT COUNT(*) as c FROM balance_movements').first['c']
-                as int;
-      } catch (_) {}
-      try {
-        sessions =
-            tmp.select('SELECT COUNT(*) as c FROM cash_sessions').first['c']
-                as int;
-      } catch (_) {}
-      try {
-        configs =
-            tmp.select('SELECT COUNT(*) as c FROM app_config').first['c']
-                as int;
-      } catch (_) {}
-      try {
-        audits =
-            tmp.select('SELECT COUNT(*) as c FROM audit_logs').first['c']
-                as int;
-      } catch (_) {}
-      final sz = await File(backupPath).length();
-      return {
-        'tickets': tickets,
-        'lines': lines,
-        'accounts': accounts,
-        'draws': draws,
-        'periods': periods,
-        'cash': cash,
-        'balance': balance,
-        'sessions': sessions,
-        'configs': configs,
-        'audits': audits,
-        'size': sz,
-      };
-    } finally {
-      tmp?.close();
+    final backup = await _readBackupMap(backupPath);
+    final tables = backup['tables'];
+    final map = tables is Map<String, dynamic> ? tables : <String, dynamic>{};
+    int count(String key) {
+      final v = map[key];
+      return v is List ? v.length : 0;
     }
+
+    final sz = await File(backupPath).length();
+    return {
+      'tickets': count('tickets'),
+      'lines': count('ticket_lines'),
+      'accounts': count('accounts'),
+      'draws': count('draws'),
+      'periods': count('draw_periods'),
+      'cash': count('cash_ledger'),
+      'balance': count('balance_movements'),
+      'sessions': count('cash_sessions'),
+      'configs': count('app_config'),
+      'audits': count('audit_logs'),
+      'size': sz,
+    };
   }
 
   /// Prepare info for confirmation dialog — detects dumb-user case
@@ -777,22 +717,20 @@ class BackupService {
     final isSameAsLastBackup =
         lastPath != null &&
         p.equals(p.normalize(lastPath), p.normalize(backupPath));
-    // Compare file hashes by size+modified if same path check not enough
+    // Compare the current JSON export with the backup contents when the path
+    // check is not enough (no local DB file exists to byte-compare anymore).
     bool isIdenticalContent = false;
     try {
-      final curPath = await getDbPath();
-      final curFile = File(curPath);
-      final bakFile = File(backupPath);
-      if (await curFile.exists()) {
-        final curLen = await curFile.length();
-        final bakLen = await bakFile.length();
-        if (curLen == bakLen) {
-          // quick byte compare first 4KB
-          final curBytes = await curFile.openRead(0, 4096).first;
-          final bakBytes = await bakFile.openRead(0, 4096).first;
-          isIdenticalContent = _listEquals(curBytes, bakBytes);
-        }
-      }
+      final curBytes = await readDbBytes();
+      final bakBytes = await File(backupPath).readAsBytes();
+      final n = curBytes.length < bakBytes.length
+          ? curBytes.length
+          : bakBytes.length;
+      final slice = n > 4096 ? 4096 : n;
+      isIdenticalContent = _listEquals(
+        curBytes.sublist(0, slice),
+        bakBytes.sublist(0, slice),
+      );
     } catch (_) {}
     final hasCurrentData = cur['hasData'] as bool;
     return {
@@ -802,6 +740,7 @@ class BackupService {
       'isIdenticalContent': isIdenticalContent,
       'hasCurrentData': hasCurrentData,
       'backupPath': backupPath,
+      'totalRecords': _countTables(await _readBackupMap(backupPath)),
     };
   }
 
@@ -822,67 +761,61 @@ class BackupService {
     }
   }
 
-  /// Execute restore — closes DB, copies backup over current DB file — يستعيد كااافة البيانات بدون استثناء (ملف كامل)
+  /// Execute restore by POSTing the JSON backup to the Laravel API.
+  /// لا يتم استبدال ملف محلي — الخادم يعيد بناء البيانات من الـ JSON.
   /// Returns safety backup path if created.
-  /// NOTE: After calling this, the app MUST be restarted — DB handle is closed.
+  /// NOTE: After calling this, the app MUST be restarted — data is reloaded
+  /// from the server on next launch.
   Future<String?> executeRestore(
     String backupPath, {
     bool createSafety = true,
   }) async {
     await validateBackupFile(backupPath);
-    final dbPath = await getDbPath();
     String? safetyPath;
     if (createSafety) {
       try {
         safetyPath = await createSafetyBackup();
       } catch (_) {}
     }
-    // Checkpoint and close current DB
-    try {
-      await db.customStatement('PRAGMA wal_checkpoint(TRUNCATE)');
-    } catch (_) {}
-    try {
-      await db.close();
-    } catch (_) {}
-    // Small delay to let file handles release (Windows)
-    await Future.delayed(const Duration(milliseconds: 400));
-    // Delete WAL/SHM companions of current DB — لا نريد ملفات wal قديمة تفسد الاستعادة
-    try {
-      final wal = File('$dbPath-wal');
-      if (await wal.exists()) await wal.delete();
-    } catch (_) {}
-    try {
-      final shm = File('$dbPath-shm');
-      if (await shm.exists()) await shm.delete();
-    } catch (_) {}
-    // Copy backup over — نسخ البايتات مباشرة لضمان ملف متكامل بدون wal/shm منفصل
-    final src = File(backupPath);
-    final bytes = await src.readAsBytes();
-    // Ensure parent dir exists
-    final parent = Directory(p.dirname(dbPath));
-    if (!await parent.exists()) await parent.create(recursive: true);
-    // If db file exists, delete first (Windows lock workaround)
-    try {
-      final cur = File(dbPath);
-      if (await cur.exists()) await cur.delete();
-    } catch (_) {}
-    await File(dbPath).writeAsBytes(bytes, flush: true);
-    // تأكد من عدم بقاء wal/shm من النسخة (النسخة الحديثة لا تحتويهما كملفين منفصلين)
-    try {
-      final bw = File('$backupPath-wal');
-      if (await bw.exists()) {
-        /* لا تنسخ */
+    final backup = await _readBackupMap(backupPath);
+    final uri = Uri.parse('${ApiConfig.baseUrl}/restore');
+    final response = await http
+        .post(
+          uri,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'backup': backup}),
+        )
+        .timeout(const Duration(seconds: 120));
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      Map<String, dynamic>? body;
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) body = decoded;
+      } catch (_) {}
+      if (body != null) {
+        final ok = body['ok'] ?? body['success'];
+        final err = body['error'] ?? body['message'];
+        if (ok == false) {
+          throw Exception('فشل الاستيراد من الخادم: ${err ?? response.body}');
+        }
+        if (ok == null && err != null) {
+          throw Exception('فشل الاستيراد من الخادم: $err');
+        }
       }
-    } catch (_) {}
-
-    // Audit to new DB? Can't — DB was closed. We log to a marker file instead
-    try {
-      final marker = File(p.join(p.dirname(dbPath), 'restore_marker.txt'));
-      await marker.writeAsString(
-        'Restored from $backupPath at ${DateTime.now().toIso8601String()} safety=$safetyPath bytes=${bytes.length}',
-      );
-    } catch (_) {}
-
+    } else {
+      String msg = response.body;
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          msg =
+              decoded['message']?.toString() ??
+              decoded['error']?.toString() ??
+              response.body;
+        }
+      } catch (_) {}
+      throw Exception('فشل الاستيراد من الخادم (${response.statusCode}): $msg');
+    }
     return safetyPath;
   }
 
@@ -894,13 +827,5 @@ class BackupService {
   Future<void> deleteBackup(String path) async {
     final f = File(path);
     if (await f.exists()) await f.delete();
-    try {
-      final w = File('$path-wal');
-      if (await w.exists()) await w.delete();
-    } catch (_) {}
-    try {
-      final s = File('$path-shm');
-      if (await s.exists()) await s.delete();
-    } catch (_) {}
   }
 }
