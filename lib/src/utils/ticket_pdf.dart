@@ -168,6 +168,10 @@ pw.Widget buildTicketPdfWidget(
   final prize = t['prizeAmount'] != null ? fmtMoney(t['prizeAmount']) : null;
   final total = fmtMoney(t['total'] ?? t['amount']);
   final id = '${t['barcode'] ?? t['id']}';
+  final customerRaw = t['customerName'];
+  final customerName = (customerRaw is String && customerRaw.trim().isNotEmpty)
+      ? customerRaw.trim()
+      : 'Cash Customer';
   pw.Widget winner() {
     if (!isWinning && !isPaid) return pw.SizedBox.shrink();
     return pw.Padding(
@@ -381,6 +385,15 @@ pw.Widget buildTicketPdfWidget(
                   ),
                   align: pw.TextAlign.left,
                 ),
+                _fitText(
+                  'Customer: $customerName',
+                  pw.TextStyle(
+                    fontSize: s.tiny,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.black,
+                  ),
+                  align: pw.TextAlign.left,
+                ),
               ],
             ),
           ),
@@ -446,6 +459,15 @@ pw.Widget buildTicketPdfWidget(
               fontWeight: pw.FontWeight.bold,
               color: PdfColors.black,
             ),
+          ),
+          _fitText(
+            'Customer: $customerName',
+            pw.TextStyle(
+              fontSize: s.tiny,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.black,
+            ),
+            align: pw.TextAlign.left,
           ),
         ],
       );

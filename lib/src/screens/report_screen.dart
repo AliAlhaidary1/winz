@@ -6,6 +6,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../data/database.dart';
+import '../providers/app_state.dart';
 import '../utils/format.dart';
 import '../utils/responsive.dart';
 import '../utils/ticket_pdf.dart';
@@ -26,6 +27,9 @@ class _ReportScreenState extends State<ReportScreen> {
   DateTime? _from;
   DateTime? _to;
   String _preset = 'all';
+  // By default match the other account screens (cash / balance / home), which
+  // are scoped to the logged-in operator. Admin can switch to all operators.
+  bool _scopeAll = false;
 
   // computed per period
   double _salesMidday = 0, _salesEvening = 0;
@@ -69,6 +73,10 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Future<void> _load() async {
     final db = context.read<AppDatabase>();
+    final app = context.read<AppState>();
+    final opId = app.currentUser?['id'] as String?;
+    bool inScope(Map<String, dynamic> e) =>
+        _scopeAll || opId == null || e['operatorId'] == opId;
     setState(() => _loading = true);
     final tAll = await db.getTickets();
     final cAll = await db.getCashLedger();
@@ -92,10 +100,10 @@ class _ReportScreenState extends State<ReportScreen> {
 
     // Cancelled tickets are voided sales — exclude them entirely (paid tickets stay).
     final t = filterList(tAll)
-        .where((e) => e['status'] != 'cancelled')
+        .where((e) => e['status'] != 'cancelled' && inScope(e))
         .toList();
-    final c = filterList(cAll);
-    final m = filterList(mAll);
+    final c = filterList(cAll).where(inScope).toList();
+    final m = filterList(mAll).where(inScope).toList();
 
     // Balance derived from the actual ledger rows in the same date range.
     double ledgerBalance = 0, prizePaid = 0;
@@ -591,6 +599,38 @@ class _ReportScreenState extends State<ReportScreen> {
                                       ),
                                   ],
                                 ),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  const Icon(Icons.person, size: 14),
+                                  const SizedBox(width: 6),
+                                  ChoiceChip(
+                                    label: const Text(
+                                      'My data',
+                                      style: TextStyle(fontSize: 11),
+                                    ),
+                                    selected: !_scopeAll,
+                                    onSelected: (_) {
+                                      if (!_scopeAll) return;
+                                      setState(() => _scopeAll = false);
+                                      _load();
+                                    },
+                                  ),
+                                  const SizedBox(width: 6),
+                                  ChoiceChip(
+                                    label: const Text(
+                                      'All operators',
+                                      style: TextStyle(fontSize: 11),
+                                    ),
+                                    selected: _scopeAll,
+                                    onSelected: (_) {
+                                      if (_scopeAll) return;
+                                      setState(() => _scopeAll = true);
+                                      _load();
+                                    },
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 8),
                               Row(

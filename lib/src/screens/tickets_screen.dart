@@ -795,6 +795,12 @@ class _TicketsScreenState extends State<TicketsScreen> {
                         itemBuilder: (c, i) {
                           final t = _tickets[i];
                           final col = _color(t['status']);
+                          final customerRaw = t['customerName'];
+                          final customerName =
+                              (customerRaw is String &&
+                                  customerRaw.trim().isNotEmpty)
+                              ? customerRaw.trim()
+                              : 'Cash Customer';
                           return Container(
                             decoration: AppTheme.cardDecoration(
                               borderColor: col.withValues(alpha: 0.12),
@@ -870,6 +876,15 @@ class _TicketsScreenState extends State<TicketsScreen> {
                                               fontSize: 11,
                                               color: AppTheme.textMuted,
                                             ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'Customer: $customerName',
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                              color: AppTheme.textMuted,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
                                           ),
                                           const SizedBox(height: 6),
                                           Row(

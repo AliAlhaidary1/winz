@@ -67,9 +67,24 @@ class CartItem {
 
 class AppState extends ChangeNotifier {
   final AppDatabase db;
+
+  static const String defaultCustomerId = 'cust_default';
+  static const String defaultCustomerName = 'Cash Customer';
+
+  /// Walk-in sales use this customer until a registered one is selected.
+  Map<String, dynamic> _currentCustomer = {
+    'id': defaultCustomerId,
+    'name': defaultCustomerName,
+  };
+  Map<String, dynamic> get currentCustomer =>
+      Map<String, dynamic>.from(_currentCustomer);
+
   AppState(this.db) {
     //     /Close    (00:00-14:15 / 00:00-22:20)
     Future.delayed(const Duration(seconds: 5), () async {
+      try {
+        await useDefaultCustomer();
+      } catch (_) {}
       try {
         await db.seedDrawPeriods();
         await db.refreshPeriodStatuses();
@@ -108,6 +123,146 @@ class AppState extends ChangeNotifier {
     return await bs.getBackupConfig();
   }
 
+  // ============ CUSTOMERS ============
+  Future<void> useDefaultCustomer() async {
+    final c = await db.getCustomerById(defaultCustomerId);
+    _currentCustomer = c ?? {
+      'id': defaultCustomerId,
+      'name': defaultCustomerName,
+    };
+    notifyListeners();
+  }
+
+  Future<void> selectCustomer(String customerId) async {
+    final c = await db.getCustomerById(customerId);
+    if (c == null) throw Exception('Customer not found');
+    _currentCustomer = c;
+    notifyListeners();
+  }
+
+  Future<List<Map<String, dynamic>>> getCustomers() => db.getCustomers();
+
+  Future<String> addCustomer({
+    required String name,
+    String? phone,
+    String? notes,
+  }) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) throw Exception('Customer name is required');
+    final id = 'cust_${const Uuid().v4()}';
+    await db.insertCustomer({
+      'id': id,
+      'name': trimmed,
+      'phone': (phone ?? '').trim(),
+      'notes': (notes ?? '').trim(),
+      'isDefault': 0,
+      'createdAt': DateTime.now().millisecondsSinceEpoch,
+    });
+    notifyListeners();
+    return id;
+  }
+
+  Future<void> updateCustomer(
+    String id, {
+    required String name,
+    String? phone,
+    String? notes,
+  }) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) throw Exception('Customer name is required');
+    await db.updateCustomer(
+      id,
+      trimmed,
+      (phone ?? '').trim(),
+      (notes ?? '').trim(),
+    );
+    if (_currentCustomer['id'] == id) {
+      await selectCustomer(id);
+    } else {
+      notifyListeners();
+    }
+  }
+
+  Future<void> deleteCustomer(String id) async {
+    if (id == defaultCustomerId) {
+      throw Exception('Cannot delete the default customer');
+    }
+    await db.reassignCustomerTickets(
+      id,
+      defaultCustomerId,
+      defaultCustomerName,
+    );
+    await db.deleteCustomer(id);
+    if (_currentCustomer['id'] == id) {
+      await useDefaultCustomer();
+    } else {
+      notifyListeners();
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getCustomerPlays(String customerId) =>
+      db.getCustomerPlays(customerId);
+
+  /// Save every cart line as this customer's usual play.
+  Future<int> saveCartAsCustomerPlays(
+    String customerId, {
+    String? drawType,
+  }) async {
+    if (_cart.isEmpty) throw Exception('Cart is empty');
+    final customer = await db.getCustomerById(customerId);
+    if (customer == null) throw Exception('Customer not found');
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final item in _cart) {
+      await db.insertCustomerPlay({
+        'id': const Uuid().v4(),
+        'customerId': customerId,
+        'gameId': item.gameId,
+        'gameName': item.gameName,
+        'numbers': item.numbers.join(','),
+        'betType': item.betType,
+        'amount': item.amount,
+        'drawType': drawType ?? item.drawType,
+        'isQuickPick': item.isQuickPick ? 1 : 0,
+        'createdAt': now,
+      });
+    }
+    return _cart.length;
+  }
+
+  /// Add a registered customer's saved plays to the cart.
+  Future<Map<String, dynamic>> playCustomerUsual(String customerId) async {
+    final customer = await db.getCustomerById(customerId);
+    if (customer == null) throw Exception('Customer not found');
+    final plays = await db.getCustomerPlays(customerId);
+    if (plays.isEmpty) throw Exception('No saved plays for this customer');
+    final skipped = <String>[];
+    int added = 0;
+    for (final play in plays) {
+      try {
+        await addToCart(
+          gameId: play['gameId'] as String,
+          gameName: play['gameName'] as String,
+          numbers: (play['numbers'] as String)
+              .split(',')
+              .map((e) => e.trim())
+              .where((e) => e.isNotEmpty)
+              .toList(),
+          betType: play['betType'] as String,
+          amount: (play['amount'] as num).toDouble(),
+          drawType: play['drawType'] as String?,
+          isQuickPick: (play['isQuickPick'] ?? 0) == 1,
+        );
+        added++;
+      } catch (e) {
+        skipped.add(
+          '${play['numbers']}: ${e.toString().replaceAll('Exception: ', '')}',
+        );
+      }
+    }
+    await selectCustomer(customerId);
+    return {'added': added, 'skipped': skipped};
+  }
+
   Map<String, dynamic>? _currentUser;
   Map<String, dynamic>? get currentUser => _currentUser;
   bool get isLoggedIn => _currentUser != null;
@@ -133,6 +288,10 @@ class AppState extends ChangeNotifier {
     _currentUser = null;
     _loginAt = null;
     _cart.clear();
+    _currentCustomer = {
+      'id': defaultCustomerId,
+      'name': defaultCustomerName,
+    };
     notifyListeners();
   }
 
@@ -971,7 +1130,11 @@ class AppState extends ChangeNotifier {
       if (item.periodId != null) {
         await _validatePeriodOpen(item.periodId!);
       }
-      if (item.drawId != null) {
+      // Period-based sales use draw_periods as the single source of truth.
+      // The legacy draws table is only for display/back-compat and its times
+      // are not regenerated when draw settings change, so its cutoff must not
+      // block a valid sale into an open period.
+      if (item.drawId != null && item.periodId == null) {
         final draw = await db.getDrawById(item.drawId!);
         if (draw != null && draw['status'] == 'closed')
           throw Exception('Draw ${item.drawName} is closed');
@@ -1133,6 +1296,8 @@ class AppState extends ChangeNotifier {
       'paidAt': null,
       'paidBy': null,
       'isQuickPick': _cart.any((e) => e.isQuickPick) ? 1 : 0,
+      'customerId': _currentCustomer['id'],
+      'customerName': _currentCustomer['name'],
     };
 
     final lines = _cart
@@ -1767,6 +1932,8 @@ class AppState extends ChangeNotifier {
       'paidAt': null,
       'paidBy': null,
       'isQuickPick': isQuickPick ? 1 : 0,
+      'customerId': _currentCustomer['id'],
+      'customerName': _currentCustomer['name'],
     };
     await db.insertTicket(ticket);
     // also insert line for consistency

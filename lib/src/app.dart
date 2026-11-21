@@ -22,6 +22,7 @@ import 'screens/share_screen.dart';
 import 'screens/help_screen.dart';
 import 'screens/config_screen.dart';
 import 'screens/workers_screen.dart';
+import 'screens/customers_screen.dart';
 
 class YeLotteryApp extends StatelessWidget {
   final AppDatabase db;
@@ -61,6 +62,7 @@ class YeLotteryApp extends StatelessWidget {
           '/help': (_) => const HelpScreen(),
           '/config': (_) => const ConfigScreen(),
           '/workers': (_) => const WorkersScreen(),
+          '/customers': (_) => const CustomersScreen(),
         },
         onGenerateRoute: (settings) {
           if (settings.name == '/ticket_detail') {

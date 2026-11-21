@@ -325,6 +325,11 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     final isCancelled = t['status'] == 'cancelled';
     final isActive = t['status'] == 'active';
     const green = Color(0xFF0B8A3E);
+    final customerRaw = t['customerName'];
+    final customerName =
+        (customerRaw is String && customerRaw.trim().isNotEmpty)
+        ? customerRaw.trim()
+        : 'Cash Customer';
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8F6),
       appBar: AppBar(
@@ -881,6 +886,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                               _row('Draw', t['drawName'] ?? '-'),
                               _row('Date', fmtDate(t['createdAt'])),
                               _row('Operator', t['operatorName']),
+                              _row('Customer / العميل', customerName),
                               _row('Barcode', t['barcode'] ?? t['id']),
                               if (t['prizeAmount'] != null)
                                 _row(

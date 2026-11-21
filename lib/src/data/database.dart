@@ -15,7 +15,7 @@ class AppDatabase extends GeneratedDatabase {
   AppDatabase.forTesting(QueryExecutor e) : super(e);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => const [];
@@ -412,6 +412,15 @@ class AppDatabase extends GeneratedDatabase {
           "INSERT OR IGNORE INTO app_config (key, value, scope, updatedAt) VALUES ('backup_retention', '10', 'local', $now)",
         );
       }
+      if (from < 12) {
+        await _createCustomerTables(customStatement);
+        try {
+          await customStatement('ALTER TABLE tickets ADD COLUMN customerId TEXT');
+        } catch (_) {}
+        try {
+          await customStatement('ALTER TABLE tickets ADD COLUMN customerName TEXT');
+        } catch (_) {}
+      }
     },
     beforeOpen: (details) async {
       await _createAll(customStatement);
@@ -581,7 +590,39 @@ class AppDatabase extends GeneratedDatabase {
     },
   );
 
+  Future<void> _createCustomerTables(Future<void> Function(String) exec) async {
+    await exec('''
+      CREATE TABLE IF NOT EXISTS customers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        phone TEXT,
+        notes TEXT,
+        isDefault INTEGER NOT NULL DEFAULT 0,
+        createdAt INTEGER NOT NULL
+      )
+    ''');
+    await exec('''
+      CREATE TABLE IF NOT EXISTS customer_plays (
+        id TEXT PRIMARY KEY,
+        customerId TEXT NOT NULL,
+        gameId TEXT NOT NULL,
+        gameName TEXT NOT NULL,
+        numbers TEXT NOT NULL,
+        betType TEXT NOT NULL,
+        amount REAL NOT NULL,
+        drawType TEXT,
+        isQuickPick INTEGER NOT NULL DEFAULT 0,
+        createdAt INTEGER NOT NULL,
+        FOREIGN KEY (customerId) REFERENCES customers(id)
+      )
+    ''');
+    await exec(
+      'CREATE INDEX IF NOT EXISTS idx_customer_plays_customer ON customer_plays(customerId)',
+    );
+  }
+
   Future<void> _createAll(Future<void> Function(String) exec) async {
+    await _createCustomerTables(exec);
     await exec('''
       CREATE TABLE IF NOT EXISTS draw_periods (
         id TEXT PRIMARY KEY,
@@ -708,7 +749,9 @@ class AppDatabase extends GeneratedDatabase {
         paidAt INTEGER,
         paidBy TEXT,
         isQuickPick INTEGER NOT NULL DEFAULT 0,
-        drawDate INTEGER
+        drawDate INTEGER,
+        customerId TEXT,
+        customerName TEXT
       )
     ''');
     await exec('''
@@ -758,6 +801,10 @@ class AppDatabase extends GeneratedDatabase {
 
   Future<void> _seedIfEmpty() async {
     final now = DateTime.now().millisecondsSinceEpoch;
+    // One default customer covers every walk-in sale.
+    await customStatement(
+      "INSERT OR IGNORE INTO customers (id, name, phone, notes, isDefault, createdAt) VALUES ('cust_default', 'Cash Customer', '', '', 1, $now)",
+    );
     try {
       await customStatement(
         'ALTER TABLE accounts ADD COLUMN commission REAL DEFAULT 0',
@@ -879,8 +926,10 @@ class AppDatabase extends GeneratedDatabase {
         "UPDATE draws SET name = REPLACE(name, 'Morning', 'Midday') WHERE name LIKE '%Morning%'",
       );
     }
-    // Cleanup old Night draws
-    await customStatement("DELETE FROM draws WHERE name LIKE '%Night%'");
+    // Do not delete legacy draws: tickets may still reference them, and
+    // deleting them leaves those tickets permanently unsettled. Mark them
+    // closed instead so validation can settle them.
+    await customStatement("UPDATE draws SET status='closed' WHERE name LIKE '%Night%'");
     // Ensure draw_periods seeded from config
     await _seedDrawPeriods();
     // Ensure draw config defaults exist (even if configs already seeded)
@@ -1350,8 +1399,8 @@ class AppDatabase extends GeneratedDatabase {
     await customStatement(
       '''
       INSERT INTO tickets
-      (id, serialNumber, gameId, gameName, drawId, drawName, numbers, betType, amount, total, operatorId, operatorName, createdAt, status, barcode, prizeAmount, paidAt, paidBy, isQuickPick)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, serialNumber, gameId, gameName, drawId, drawName, numbers, betType, amount, total, operatorId, operatorName, createdAt, status, barcode, prizeAmount, paidAt, paidBy, isQuickPick, customerId, customerName)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''',
       [
         t['id'],
@@ -1373,6 +1422,8 @@ class AppDatabase extends GeneratedDatabase {
         t['paidAt'],
         t['paidBy'],
         t['isQuickPick'] ?? 0,
+        t['customerId'],
+        t['customerName'],
       ],
     );
   }
@@ -2083,5 +2134,89 @@ class AppDatabase extends GeneratedDatabase {
       'SELECT * FROM audit_logs ORDER BY timestamp DESC',
     ).get();
     return rows.map((r) => r.data).toList();
+  }
+
+  // ============ CUSTOMERS ============
+  Future<List<Map<String, dynamic>>> getCustomers() async {
+    final rows = await customSelect(
+      'SELECT * FROM customers ORDER BY isDefault DESC, name COLLATE NOCASE',
+    ).get();
+    return rows.map((r) => r.data).toList();
+  }
+
+  Future<Map<String, dynamic>?> getCustomerById(String id) async {
+    final rows = await customSelect(
+      'SELECT * FROM customers WHERE id = ? LIMIT 1',
+      variables: [Variable.withString(id)],
+    ).get();
+    return rows.isEmpty ? null : rows.first.data;
+  }
+
+  Future<void> insertCustomer(Map<String, dynamic> c) async {
+    await customStatement(
+      'INSERT INTO customers (id, name, phone, notes, isDefault, createdAt) VALUES (?, ?, ?, ?, ?, ?)',
+      [
+        c['id'],
+        c['name'],
+        c['phone'] ?? '',
+        c['notes'] ?? '',
+        c['isDefault'] ?? 0,
+        c['createdAt'],
+      ],
+    );
+  }
+
+  Future<void> updateCustomer(String id, String name, String phone, String notes) async {
+    await customStatement(
+      'UPDATE customers SET name = ?, phone = ?, notes = ? WHERE id = ? AND isDefault = 0',
+      [name, phone, notes, id],
+    );
+  }
+
+  Future<void> deleteCustomer(String id) async {
+    await customStatement('DELETE FROM customer_plays WHERE customerId = ?', [
+      id,
+    ]);
+    await customStatement('DELETE FROM customers WHERE id = ? AND isDefault = 0', [
+      id,
+    ]);
+  }
+
+  Future<List<Map<String, dynamic>>> getCustomerPlays(String customerId) async {
+    final rows = await customSelect(
+      'SELECT * FROM customer_plays WHERE customerId = ? ORDER BY createdAt',
+      variables: [Variable.withString(customerId)],
+    ).get();
+    return rows.map((r) => r.data).toList();
+  }
+
+  Future<void> insertCustomerPlay(Map<String, dynamic> play) async {
+    await customStatement(
+      'INSERT INTO customer_plays (id, customerId, gameId, gameName, numbers, betType, amount, drawType, isQuickPick, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        play['id'],
+        play['customerId'],
+        play['gameId'],
+        play['gameName'],
+        play['numbers'],
+        play['betType'],
+        play['amount'],
+        play['drawType'],
+        play['isQuickPick'] ?? 0,
+        play['createdAt'],
+      ],
+    );
+  }
+
+  Future<void> deleteCustomerPlay(String id) async {
+    await customStatement('DELETE FROM customer_plays WHERE id = ?', [id]);
+  }
+
+  /// Keep historical tickets valid when a customer is removed.
+  Future<void> reassignCustomerTickets(String fromId, String toId, String toName) async {
+    await customStatement(
+      'UPDATE tickets SET customerId = ?, customerName = ? WHERE customerId = ?',
+      [toId, toName, fromId],
+    );
   }
 }

@@ -213,6 +213,10 @@ Future<List<int>> buildTicketEscPos({
   final mm80 = is80mmPrinter(type);
   final g = await _generator(type);
   final width = _charsPerLine(type);
+  final customerRaw = ticket['customerName'];
+  final customerName = (customerRaw is String && customerRaw.trim().isNotEmpty)
+      ? customerRaw.trim()
+      : 'Cash Customer';
   final bytes = <int>[];
   bytes.addAll(g.reset());
   bytes.addAll(g.setGlobalCodeTable('CP1252'));
@@ -247,6 +251,12 @@ Future<List<int>> buildTicketEscPos({
   bytes.addAll(
     g.text(
       'Op: ${_ascii('${ticket['operatorName'] ?? ''}')}',
+      styles: PosStyles(bold: true, height: bodySize, width: PosTextSize.size1),
+    ),
+  );
+  bytes.addAll(
+    g.text(
+      'Customer: ${_ascii(customerName)}',
       styles: PosStyles(bold: true, height: bodySize, width: PosTextSize.size1),
     ),
   );

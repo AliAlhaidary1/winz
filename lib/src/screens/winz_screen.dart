@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../data/database.dart';
 import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_toast.dart';
 import '../widgets/app_drawer.dart';
 import '../utils/format.dart';
 import '../utils/ticket_pdf.dart';
@@ -378,23 +379,343 @@ class _WinzScreenState extends State<WinzScreen> {
     }
   }
 
+  Widget _buildCustomerSelector(BuildContext context) {
+    return Consumer<AppState>(
+      builder: (ctx, app, _) {
+        final customer = app.currentCustomer;
+        final name =
+            (customer['name'] as String?) ?? AppState.defaultCustomerName;
+        final isDefault = customer['id'] == AppState.defaultCustomerId;
+        return InkWell(
+          onTap: () => _showCustomerPicker(ctx),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppTheme.orange.withValues(alpha: 0.35),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.person_outline,
+                  size: 18,
+                  color: AppTheme.orange,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'العميل / Customer',
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: AppTheme.textMuted,
+                        ),
+                      ),
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                if (isDefault)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppTheme.orange.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Text(
+                      'Cash',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.orange,
+                      ),
+                    ),
+                  ),
+                const SizedBox(width: 6),
+                const Text(
+                  'تغيير',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.orange,
+                  ),
+                ),
+                const Icon(
+                  Icons.keyboard_arrow_down,
+                  size: 16,
+                  color: AppTheme.orange,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showCustomerPicker(BuildContext context) async {
+    final app = context.read<AppState>();
+    List<Map<String, dynamic>> customers;
+    try {
+      customers = await app.getCustomers();
+    } catch (e) {
+      if (!mounted) return;
+      showSaleToast(
+        context,
+        e.toString().replaceAll('Exception: ', ''),
+        error: true,
+      );
+      return;
+    }
+    if (!customers.any((c) => c['id'] == AppState.defaultCustomerId)) {
+      customers = [
+        {
+          'id': AppState.defaultCustomerId,
+          'name': AppState.defaultCustomerName,
+          'phone': '',
+        },
+        ...customers,
+      ];
+    }
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text(
+          'اختر العميل / Select customer',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        ),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 380, maxHeight: 380),
+          child: ListView.separated(
+            shrinkWrap: true,
+            itemCount: customers.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (c, i) {
+              final cust = customers[i];
+              final id = cust['id'] as String;
+              final name = (cust['name'] as String?) ?? '';
+              final phone = (cust['phone'] as String?)?.trim() ?? '';
+              final isCurrent = id == app.currentCustomer['id'];
+              final isDefault = id == AppState.defaultCustomerId;
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: () async {
+                          final nav = Navigator.of(c);
+                          try {
+                            if (isDefault) {
+                              await app.useDefaultCustomer();
+                            } else {
+                              await app.selectCustomer(id);
+                            }
+                          } catch (e) {
+                            nav.pop();
+                            if (!mounted) return;
+                            showSaleToast(
+                              context,
+                              e.toString().replaceAll('Exception: ', ''),
+                              error: true,
+                            );
+                            return;
+                          }
+                          nav.pop();
+                          if (!mounted) return;
+                          showSaleToast(
+                            context,
+                            'العميل: $name',
+                            color: AppTheme.orange,
+                          );
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                backgroundColor: AppTheme.orange.withValues(
+                                  alpha: 0.12,
+                                ),
+                                child: Icon(
+                                  isDefault
+                                      ? Icons.person_outline
+                                      : Icons.person,
+                                  size: 16,
+                                  color: AppTheme.orange,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      name,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    if (phone.isNotEmpty)
+                                      Text(
+                                        phone,
+                                        style: const TextStyle(fontSize: 10),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    if (isCurrent)
+                      const Icon(
+                        Icons.check_circle,
+                        color: AppTheme.orange,
+                        size: 20,
+                      )
+                    else if (!isDefault)
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          SizedBox(
+                            height: 26,
+                            child: TextButton.icon(
+                              onPressed: () async {
+                                final nav = Navigator.of(c);
+                                try {
+                                  final res = await app.playCustomerUsual(id);
+                                  final added = res['added'] as int;
+                                  final skipped = (res['skipped'] as List)
+                                      .cast<String>();
+                                  nav.pop();
+                                  if (!mounted) return;
+                                  final msg = skipped.isEmpty
+                                      ? 'Play usual: $added added — tap SALE'
+                                      : 'Play usual: $added added, ${skipped.length} skipped — tap SALE';
+                                  showSaleToast(
+                                    context,
+                                    msg,
+                                    color: AppTheme.orange,
+                                  );
+                                } catch (e) {
+                                  nav.pop();
+                                  if (!mounted) return;
+                                  showSaleToast(
+                                    context,
+                                    e.toString().replaceAll('Exception: ', ''),
+                                    error: true,
+                                  );
+                                }
+                              },
+                              icon: const Icon(
+                                Icons.play_circle_outline,
+                                size: 14,
+                              ),
+                              label: const Text(
+                                'بها-play / Play usual',
+                                style: TextStyle(fontSize: 9),
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            height: 26,
+                            child: TextButton.icon(
+                              onPressed: () async {
+                                final nav = Navigator.of(c);
+                                if (app.isCartEmpty) {
+                                  nav.pop();
+                                  if (!mounted) return;
+                                  showSaleToast(
+                                    context,
+                                    'Cart empty — add plays first',
+                                    error: true,
+                                  );
+                                  return;
+                                }
+                                try {
+                                  final count = await app
+                                      .saveCartAsCustomerPlays(id);
+                                  nav.pop();
+                                  if (!mounted) return;
+                                  showSaleToast(
+                                    context,
+                                    'حفظ الروتين: $count play(s) saved',
+                                    color: AppTheme.orange,
+                                  );
+                                } catch (e) {
+                                  nav.pop();
+                                  if (!mounted) return;
+                                  showSaleToast(
+                                    context,
+                                    e.toString().replaceAll('Exception: ', ''),
+                                    error: true,
+                                  );
+                                }
+                              },
+                              icon: const Icon(Icons.save_outlined, size: 14),
+                              label: const Text(
+                                'حفظ الروتين / Save routine',
+                                style: TextStyle(fontSize: 9),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _doSale() async {
     final app = context.read<AppState>();
     if (app.isCartEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Cart empty')));
+      showSaleToast(context, 'Cart empty', error: true);
       return;
     }
     try {
       final ticket = await app.commitSale();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'SALE Ticket ${ticket['id']} • ${fmtMoney(ticket['total'])}',
-          ),
-          backgroundColor: AppTheme.orange,
-        ),
+      showSaleToast(
+        context,
+        'SALE Ticket ${ticket['id']} • ${fmtMoney(ticket['total'])}',
+        color: AppTheme.orange,
       );
       await _load();
       final lines =
@@ -402,29 +723,22 @@ class _WinzScreenState extends State<WinzScreen> {
       final printed = await tryDirectPrintTicket(context, ticket, lines);
       if (printed?.ok == true) {
         if (mounted)
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Printed on the default printer'),
-              backgroundColor: Color(0xFF0B8A3E),
-            ),
+          showSaleToast(
+            context,
+            'Printed on the default printer',
+            color: const Color(0xFF0B8A3E),
           );
         return;
       }
       if (printed != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(printed.error ?? 'Print failed'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        showSaleToast(context, printed.error ?? 'Print failed', error: true);
       }
       if (mounted) Navigator.pushNamed(context, '/print', arguments: ticket);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
-          backgroundColor: Colors.red,
-        ),
+      showSaleToast(
+        context,
+        e.toString().replaceAll('Exception: ', ''),
+        error: true,
       );
     }
   }
@@ -1220,6 +1534,7 @@ class _WinzScreenState extends State<WinzScreen> {
                 ),
               ),
               _cartSection(),
+              _buildCustomerSelector(context),
               Builder(
                 builder: (ctx) {
                   final info = _betInfoText();
