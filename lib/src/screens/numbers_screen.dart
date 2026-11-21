@@ -74,25 +74,8 @@ class _NumbersScreenState extends State<NumbersScreen> {
     final List<Map<String,dynamic>> finalDraws = draws;
     final periods = await db.getAllPeriods();
     if (!mounted) return;
-    final cart = context.read<AppState>().cart;
-    String? modeFromCart;
-    if (cart.isNotEmpty) {
-      final types = cart.map((e) {
-        final t = (e.drawType ?? '').toUpperCase();
-        if (t == 'EVENING' || t == 'MIDDAY') return t;
-        final pid = (e.periodId ?? '').toUpperCase();
-        if (pid.endsWith('EVENING')) return 'EVENING';
-        if (pid.endsWith('MIDDAY')) return 'MIDDAY';
-        return '';
-      }).where((e) => e.isNotEmpty).toSet();
-      if (types.contains('MIDDAY') && types.contains('EVENING')) {
-        modeFromCart = 'Both';
-      } else if (types.contains('EVENING')) {
-        modeFromCart = 'Evening';
-      } else if (types.contains('MIDDAY')) {
-        modeFromCart = 'Midday';
-      }
-    }
+    // السماح بالخلط: لا نحتاج لاشتقاق الفترة من السلة (معطّل)
+    // final cart = context.read<AppState>().cart; // غير مستخدم الآن
     setState(() {
       _draws = finalDraws;
       if(_draws.isNotEmpty){
@@ -102,7 +85,9 @@ class _NumbersScreenState extends State<NumbersScreen> {
       }
       _periods = periods;
       _loadingDraws = false;
-      if (modeFromCart != null) _drawMode = modeFromCart;
+      // السماح بالخلط: لا نفرض تغيير الفترة حسب السلة عند وجود خلط يدوي
+      // نحتفظ باختيار المستخدم الحالي، فقط نطبق قيود الإغلاق
+      // if (modeFromCart != null) _drawMode = modeFromCart; // معطّل للسماح بـ Midday + Evening + Both بنفس الفاتورة
       _applySellableDrawMode();
     });
   }
@@ -266,17 +251,10 @@ class _NumbersScreenState extends State<NumbersScreen> {
               _drawMode = v;
               _syncDrawModeToPeriods();
             });
-            if(v=='Midday' || v=='Evening'){
-              final app = context.read<AppState>();
-              if(app.cart.isNotEmpty){
-                try{
-                  await app.remapCartToDrawType(v=='Evening' ? 'EVENING' : 'MIDDAY');
-                }catch(e){
-                  if(!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red));
-                }
-              }
-            }
+            // السماح بالخلط في نفس الفاتورة: لا نعيد تحويل السلة القديمة
+            // عند تغيير الفترة، تبقى العناصر السابقة كما هي (صباحي/مسائي/Both)
+            // والعناصر الجديدة فقط ستُضاف بالفترة الجديدة — هذا يحقق طلب المستخدم
+            // "العب صباحي ومسائي و Both بنفس اللعبة بنفس الفاتورة"
           },
           selectedItemBuilder: (ctx) {
             final labels = <String, String>{
@@ -515,6 +493,27 @@ class _NumbersScreenState extends State<NumbersScreen> {
                 Row(children: [
                   Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: AppTheme.greenLight, borderRadius: BorderRadius.circular(8)), child: Text(item.betType, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.green))),
                   const SizedBox(width: 6),
+                  Builder(builder: (_){
+                    final p = (item.drawType ?? item.periodId ?? item.drawName ?? '').toString().toUpperCase();
+                    final isEve = p.contains('EVENING') || p.contains('EVE');
+                    final isMid = p.contains('MIDDAY') || p.contains('MORNING') || p.contains('MID');
+                    final label = isEve ? 'EVENING' : isMid ? 'MIDDAY' : '';
+                    if(label.isEmpty) return const SizedBox.shrink();
+                    return Container(
+                      margin: const EdgeInsets.only(right: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: isEve ? const Color(0xFFF3E5F5) : const Color(0xFFFFF8E1),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: isEve ? Colors.purple.shade200 : Colors.orange.shade200),
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(isEve ? Icons.nights_stay : Icons.wb_sunny, size: 10, color: isEve ? Colors.purple : Colors.orange.shade700),
+                        const SizedBox(width: 3),
+                        Text(label, style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: isEve ? Colors.purple.shade700 : Colors.orange.shade700)),
+                      ]),
+                    );
+                  }),
                   Flexible(child: Text(subText, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800), overflow: TextOverflow.ellipsis)),
                   const Spacer(),
                   Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: AppTheme.bg, borderRadius: BorderRadius.circular(20)), child: Text('${i+1}/${cart.length}', style: const TextStyle(fontSize: 10, color: AppTheme.textMuted, fontWeight: FontWeight.bold))),
@@ -794,13 +793,31 @@ class _NumbersScreenState extends State<NumbersScreen> {
             final db = context.read<AppDatabase>();
             final tt = await db.getTicketByBarcode(code.trim());
             final tid = tt!=null ? tt['id'] as String : code.trim();
-            final count = await app.replayTicketToCartWithChoice(tid, choice);
+            final res = await app.replayTicketToCartWithChoice(tid, choice);
             if(!mounted) return;
+            final count = res['added'] as int;
+            final skipped = (res['skipped'] as List).cast<String>();
+            final trimmed = (res['trimmed'] as List).cast<String>();
             final label = choice=='BOTH' ? 'Both (×2)' : choice=='MIDDAY' ? 'Midday only' : 'Evening only';
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied $count play(s) → $label — tap SALE to print'), backgroundColor: AppTheme.green));
+            String extra = '';
+            if(skipped.isNotEmpty) extra += ' — ${skipped.length} محذوف';
+            if(trimmed.isNotEmpty) extra += ' — ${trimmed.length} مقلّل';
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied $count play(s) → $label — tap SALE to print$extra'), backgroundColor: AppTheme.green, duration: Duration(seconds: extra.isNotEmpty ? 5 : 3)));
+            if(skipped.isNotEmpty || trimmed.isNotEmpty){
+              showDialog(context: context, builder: (c)=> AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                title: const Text('تم النسخ مع تعديلات', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                content: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('تم نسخ $count → $label', style: const TextStyle(fontSize: 11)),
+                  if(skipped.isNotEmpty) ...[const SizedBox(height:8), const Text('⚠️ محذوف (Sold Out):', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.red)), ...skipped.map((s)=> Text('• $s', style: const TextStyle(fontSize: 10)))],
+                  if(trimmed.isNotEmpty) ...[const SizedBox(height:8), const Text('✂️ مقلّل للحد المتبقي:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange)), ...trimmed.map((s)=> Text('• $s', style: const TextStyle(fontSize: 10)))],
+                ])),
+                actions: [TextButton(onPressed: ()=> Navigator.pop(c), child: const Text('حسناً'))],
+              ));
+            }
           }catch(e){
             if(!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red));
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red, duration: const Duration(seconds: 5)));
           }
         }),
       ],

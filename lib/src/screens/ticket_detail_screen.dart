@@ -119,22 +119,28 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     final choice = await _askDrawChoice();
     if(choice==null) return;
     try{
-      final count = await context.read<AppState>().replayTicketToCartWithChoice(id, choice);
+      final res = await context.read<AppState>().replayTicketToCartWithChoice(id, choice);
       if(!mounted) return;
+      final count = res['added'] as int;
+      final skipped = (res['skipped'] as List).cast<String>();
+      final trimmed = (res['trimmed'] as List).cast<String>();
       final label = choice=='BOTH' ? 'كلا السحبين (مضاعف)' : choice=='MIDDAY' ? 'الصباحي فقط' : 'المسائي فقط';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم النسخ $count لعبة → $label — اذهب لـ SALE لطباعة التذكرة الجديدة'), backgroundColor: const Color(0xFF0B8A3E)));
+      String hint = '';
+      if(skipped.isNotEmpty) hint += '\n\n⚠️ محذوف (وصل للحد):\n${skipped.join('\n')}';
+      if(trimmed.isNotEmpty) hint += '\n\n✂️ تم تقليله للحد المتبقي:\n${trimmed.join('\n')}';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم النسخ $count لعبة → $label — اذهب لـ SALE لطباعة التذكرة الجديدة${skipped.isNotEmpty ? ' — ${skipped.length} محذوف' : ''}${trimmed.isNotEmpty ? ' — ${trimmed.length} مقلّل' : ''}'), backgroundColor: const Color(0xFF0B8A3E), duration: Duration(seconds: skipped.isNotEmpty||trimmed.isNotEmpty ? 5 : 3)));
       if(!mounted) return;
       showDialog(context: context, builder: (c)=> AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         title: const Text('تم النسخ — Re-play', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-        content: Text('$count لعبة نُسخت إلى السلة ($label).\nهل تريد الانتقال لشاشة البيع؟', style: const TextStyle(fontSize: 11)),
+        content: SingleChildScrollView(child: Text('$count لعبة نُسخت إلى السلة ($label).$hint\n\nهل تريد الانتقال لشاشة البيع؟', style: const TextStyle(fontSize: 11))),
         actions: [
           TextButton(onPressed: ()=> Navigator.pop(c), child: const Text('البقاء')),
           ElevatedButton(onPressed: (){ Navigator.pop(c); Navigator.pushNamed(context,'/numbers'); }, child: const Text('Numbers (3D/4D)')),
         ],
       ));
     }catch(e){
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red, duration: const Duration(seconds: 5)));
     }
   }
 

@@ -56,13 +56,32 @@ class _WinningTicketsScreenState extends State<WinningTicketsScreen> {
     if(choice==null) return;
     try{
       final app = context.read<AppState>();
-      final count = await app.replayTicketToCartWithChoice(ticket['id'] as String, choice);
+      final res = await app.replayTicketToCartWithChoice(ticket['id'] as String, choice);
       if(!mounted) return;
+      final count = res['added'] as int;
+      final skipped = (res['skipped'] as List).cast<String>();
+      final trimmed = (res['trimmed'] as List).cast<String>();
       final label = choice=='BOTH' ? 'Both (×2)' : choice=='MIDDAY' ? 'Midday' : 'Evening';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied $count play(s) → $label — go to Numbers to sell'), backgroundColor: const Color(0xFF0B8A3E)));
-      Navigator.pushNamed(context,'/numbers');
+      String extra = '';
+      if(skipped.isNotEmpty) extra += ' — ${skipped.length} deleted';
+      if(trimmed.isNotEmpty) extra += ' — ${trimmed.length} trimmed';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied $count play(s) → $label — go to Numbers to sell$extra'), backgroundColor: const Color(0xFF0B8A3E), duration: Duration(seconds: extra.isNotEmpty ? 5 : 3)));
+      if(skipped.isNotEmpty || trimmed.isNotEmpty){
+        showDialog(context: context, builder: (c)=> AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: const Text('Copied with adjustments', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Added $count → $label', style: const TextStyle(fontSize: 11)),
+            if(skipped.isNotEmpty) ...[const SizedBox(height:8), const Text('⚠️ Deleted (sold out):', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.red)), ...skipped.map((s)=> Text('• $s', style: const TextStyle(fontSize: 10)))],
+            if(trimmed.isNotEmpty) ...[const SizedBox(height:8), const Text('✂️ Trimmed to remaining:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange)), ...trimmed.map((s)=> Text('• $s', style: const TextStyle(fontSize: 10)))],
+          ])),
+          actions: [TextButton(onPressed: ()=> Navigator.pop(c), child: const Text('OK')), ElevatedButton(onPressed: (){ Navigator.pop(c); Navigator.pushNamed(context,'/numbers'); }, child: const Text('Go SALE'))],
+        ));
+      } else {
+        Navigator.pushNamed(context,'/numbers');
+      }
     }catch(e){
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red, duration: const Duration(seconds: 5)));
     }
   }
 

@@ -102,13 +102,32 @@ class _TicketsScreenState extends State<TicketsScreen> {
     if(choice==null) return;
     try{
       final app = context.read<AppState>();
-      final count = await app.replayTicketToCartWithChoice(ticketId, choice);
+      final res = await app.replayTicketToCartWithChoice(ticketId, choice);
       if(!mounted) return;
+      final count = res['added'] as int;
+      final skipped = (res['skipped'] as List).cast<String>();
+      final trimmed = (res['trimmed'] as List).cast<String>();
       final label = choice=='BOTH' ? 'Both (×2)' : choice=='MIDDAY' ? 'Midday' : 'Evening';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied $count play(s) → $label — tap SALE'), backgroundColor: AppTheme.green));
-      Navigator.pushNamed(context,'/numbers');
+      String detail = '';
+      if(skipped.isNotEmpty) detail += '\nDeleted (sold out): ${skipped.length}';
+      if(trimmed.isNotEmpty) detail += '\nTrimmed to remaining: ${trimmed.length}';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied $count play(s) → $label — tap SALE$detail'), backgroundColor: AppTheme.green, duration: Duration(seconds: detail.isNotEmpty ? 5 : 3)));
+      if(skipped.isNotEmpty || trimmed.isNotEmpty){
+        showDialog(context: context, builder: (c)=> AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: const Text('Copied with adjustments', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Added $count play(s) → $label', style: const TextStyle(fontSize: 11)),
+            if(skipped.isNotEmpty) ...[const SizedBox(height:8), const Text('⚠️ Deleted (reached limit):', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.red)), ...skipped.map((s)=> Text('• $s', style: const TextStyle(fontSize: 10)))],
+            if(trimmed.isNotEmpty) ...[const SizedBox(height:8), const Text('✂️ Trimmed:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange)), ...trimmed.map((s)=> Text('• $s', style: const TextStyle(fontSize: 10)))],
+          ])),
+          actions: [TextButton(onPressed: ()=> Navigator.pop(c), child: const Text('OK')), ElevatedButton(onPressed: (){ Navigator.pop(c); Navigator.pushNamed(context,'/numbers'); }, child: const Text('Go SALE'))],
+        ));
+      } else {
+        Navigator.pushNamed(context,'/numbers');
+      }
     }catch(e){
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red, duration: const Duration(seconds: 5)));
     }
   }
 

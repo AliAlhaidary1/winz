@@ -218,13 +218,31 @@ class _WinzScreenState extends State<WinzScreen> {
             final db = context.read<AppDatabase>();
             final tt = await db.getTicketByBarcode(code.trim());
             final tid = tt!=null ? tt['id'] as String : code.trim();
-            final count = await app.replayTicketToCartWithChoice(tid, choice);
+            final res = await app.replayTicketToCartWithChoice(tid, choice);
             if(!mounted) return;
+            final count = res['added'] as int;
+            final skipped = (res['skipped'] as List).cast<String>();
+            final trimmed = (res['trimmed'] as List).cast<String>();
             final label = choice=='BOTH' ? 'Both (×2)' : choice=='MIDDAY' ? 'Midday' : 'Evening';
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied $count play(s) → $label — tap SALE'), backgroundColor: AppTheme.orange));
+            String extra = '';
+            if(skipped.isNotEmpty) extra += ' — ${skipped.length} محذوف';
+            if(trimmed.isNotEmpty) extra += ' — ${trimmed.length} مقلّل';
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied $count play(s) → $label — tap SALE$extra'), backgroundColor: AppTheme.orange, duration: Duration(seconds: extra.isNotEmpty ? 5 : 3)));
+            if(skipped.isNotEmpty || trimmed.isNotEmpty){
+              showDialog(context: context, builder: (c)=> AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                title: const Text('تم النسخ مع تعديلات', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                content: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('تم نسخ $count → $label', style: const TextStyle(fontSize: 11)),
+                  if(skipped.isNotEmpty) ...[const SizedBox(height:8), const Text('⚠️ محذوف (Sold Out):', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.red)), ...skipped.map((s)=> Text('• $s', style: const TextStyle(fontSize: 10)))],
+                  if(trimmed.isNotEmpty) ...[const SizedBox(height:8), const Text('✂️ مقلّل للحد المتبقي:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange)), ...trimmed.map((s)=> Text('• $s', style: const TextStyle(fontSize: 10)))],
+                ])),
+                actions: [TextButton(onPressed: ()=> Navigator.pop(c), child: const Text('حسناً'))],
+              ));
+            }
           }catch(e){
             if(!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red));
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ','')), backgroundColor: Colors.red, duration: const Duration(seconds: 5)));
           }
         }),
       ],

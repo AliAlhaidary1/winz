@@ -352,6 +352,71 @@ class AppState extends ChangeNotifier {
     return fallback;
   }
 
+  // Helpers for replay partial copy — remaining calculation
+  double _floorToStep(double v, [double step = 0.5]) => (v / step).floor() * step;
+
+  double _maxInputFor(List<String> numbers, String betType) {
+    final btNorm = _normBet(betType);
+    if (_isComboBet(btNorm)) {
+      final combos = _comboCount(numbers);
+      return combos * 10.0;
+    }
+    if (_isStraightBoxBet(btNorm)) {
+      return numbers.length == 3 ? 50.0 : 25.0;
+    }
+    if (btNorm == 'box') return 50.0;
+    return numbers.length == 3 ? 100.0 : 10.0; // straight
+  }
+
+  Future<({double remaining, double effectiveLimit, double limit, int? combos, double existingSum, double cartSum})> _remainingFor({
+    required String periodId,
+    required String gameId,
+    required List<String> numbers,
+    required String betType,
+  }) async {
+    final norm = _normBet(betType);
+    final group = _betGroup(norm);
+    final n = numbers.length;
+    final limit = await _getLimitFor(group, n);
+    if (limit <= 0) return (remaining: double.infinity, effectiveLimit: double.infinity, limit: limit, combos: null, existingSum: 0.0, cartSum: 0.0);
+    final canonical = _canonicalKey(numbers, group);
+    final pidNorm = periodId.replaceAll('/', '-').trim().toUpperCase();
+    double existingSum = 0;
+    double cartSum = 0;
+    try {
+      final lines = await db.getTicketLinesByPeriod(pidNorm);
+      for (final l in lines) {
+        if ((l['periodStatus'] as String?) == 'cancelled') continue;
+        if ((l['gameId'] as String) != gameId) continue;
+        final lNorm = _normBet((l['betType'] as String?) ?? 'Straight');
+        final lGroup = _betGroup(lNorm);
+        if (lGroup != group) continue;
+        final lNums = (l['numbers'] as String).split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+        if (lNums.length != n) continue;
+        if (_canonicalKey(lNums, lGroup) != canonical) continue;
+        existingSum += (l['amount'] as num).toDouble();
+      }
+    } catch (_) {}
+    for (final c in _cart) {
+      if (c.periodId == null) continue;
+      if (c.periodId!.replaceAll('/', '-').trim().toUpperCase() != pidNorm) continue;
+      if (c.gameId != gameId) continue;
+      final cGroup = _betGroup(_normBet(c.betType));
+      if (cGroup != group) continue;
+      if (c.numbers.length != n) continue;
+      if (_canonicalKey(c.numbers, cGroup) != canonical) continue;
+      cartSum += c.amount;
+    }
+    double effectiveLimit = limit;
+    int? combosForLimit;
+    if (group == 'combo') {
+      combosForLimit = _comboCount(numbers);
+      if (combosForLimit > 1) effectiveLimit = limit * combosForLimit;
+    }
+    final remaining = (effectiveLimit - existingSum - cartSum).clamp(0, effectiveLimit).toDouble();
+    return (remaining: remaining, effectiveLimit: effectiveLimit, limit: limit, combos: combosForLimit, existingSum: existingSum, cartSum: cartSum);
+  }
+
   // Sum already sold + current cart for same (periodId, gameId, group, canonical)
   Future<void> _enforcePerPeriodNumberLimit({
     required String periodId,
@@ -870,13 +935,15 @@ class AppState extends ChangeNotifier {
     return result;
   }
 
-  // Replay: copy whole ticket into cart for new sale
-  Future<int> replayTicketToCart(String ticketId) async {
+  // Replay: copy whole ticket into cart for new sale — returns detailed result (partial copy with trim/skip)
+  Future<Map<String, dynamic>> replayTicketToCart(String ticketId) async {
     return replayTicketToCartWithChoice(ticketId, 'AUTO');
   }
 
   /// Replay with explicit draw choice: MIDDAY (صباحي), EVENING (مسائي), BOTH (الاثنين), AUTO (auto-detect open)
-  Future<int> replayTicketToCartWithChoice(String ticketId, String drawChoice) async {
+  /// Now supports partial copy: sold-out numbers are skipped, over-limit amounts are trimmed to remaining.
+  /// Returns {added, skipped, trimmed, skippedCount, trimmedCount}
+  Future<Map<String, dynamic>> replayTicketToCartWithChoice(String ticketId, String drawChoice) async {
     ticketId = ticketId.trim();
     drawChoice = drawChoice.trim().toUpperCase();
     final lines = await db.getTicketLines(ticketId);
@@ -888,63 +955,139 @@ class AppState extends ChangeNotifier {
     } else {
       source = lines;
     }
-    // BOTH: replicate each line for both draws
+
+    List<String> skipped = [];
+    List<String> trimmed = [];
+
+    // Helper to try add one line to one period with trim/skip logic
+    Future<bool> tryAddOne({
+      required Map<String, dynamic> period,
+      required String gameId,
+      required String gameName,
+      required List<String> numbers,
+      required String betType,
+      required double requested,
+      required bool isQuickPick,
+    }) async {
+      final periodId = period['id'] as String;
+      final periodDrawType = _normalizeDrawType(period['drawType'] as String?);
+      await _validatePeriodOpen(periodId);
+      // Fundamental validation (allSame, digits, etc) — if invalid, skip
+      try {
+        _validateCartItem(gameId: gameId, numbers: numbers, betType: betType, amount: requested);
+      } catch (e) {
+        skipped.add('${numbers.join()} ($betType) — غير صالح: ${e.toString().replaceAll('Exception: ', '')}');
+        return false;
+      }
+      final info = await _remainingFor(periodId: periodId, gameId: gameId, numbers: numbers, betType: betType);
+      final remaining = info.remaining;
+      final vMax = _maxInputFor(numbers, betType);
+      // لا يوجد متبقي كافي لأقل مبلغ
+      if (remaining < 0.5 - 1e-9) {
+        skipped.add('${numbers.join()} ($betType) — Sold Out في $periodId (الحد \$${info.effectiveLimit.toStringAsFixed(2)} ممتلئ)');
+        return false;
+      }
+      double amountToUse;
+      if (requested <= remaining + 1e-9 && requested <= vMax + 1e-9) {
+        amountToUse = requested;
+      } else {
+        // يحتاج تقليل — نحسب المسموح = min(remaining, vMax) مقرب لأسفل لخطوة 0.50
+        double allowed = remaining < vMax ? remaining : vMax;
+        double floored = _floorToStep(allowed, 0.5);
+        if (floored < 0.5 - 1e-9) {
+          skipped.add('${numbers.join()} ($betType) — المتبقي \$${remaining.toStringAsFixed(2)} أقل من الحد الأدنى \$0.50 في $periodId');
+          return false;
+        }
+        // تأكد أن floored يمر تحقق _validate (مثل combo بتركيبات)
+        try {
+          _validateCartItem(gameId: gameId, numbers: numbers, betType: betType, amount: floored);
+        } catch (e) {
+          skipped.add('${numbers.join()} ($betType) — لا يمكن تقليله: ${e.toString().replaceAll('Exception: ', '')}');
+          return false;
+        }
+        // تحقق نهائي أن floored لا يتجاوز remaining فعلياً (مع cart الحالي)
+        final check = await _remainingFor(periodId: periodId, gameId: gameId, numbers: numbers, betType: betType);
+        if (floored > check.remaining + 1e-9) {
+          floored = _floorToStep(check.remaining, 0.5);
+          if (floored < 0.5 - 1e-9) {
+            skipped.add('${numbers.join()} ($betType) — Sold Out');
+            return false;
+          }
+        }
+        amountToUse = floored;
+        if ((amountToUse - requested).abs() > 1e-9) {
+          trimmed.add('${numbers.join()} ($betType) في $periodId: \$${requested.toStringAsFixed(2)} → \$${amountToUse.toStringAsFixed(2)} (المتبقي \$${remaining.toStringAsFixed(2)})');
+        }
+      }
+      final meta = await _drawMetaForPeriod(gameId, period);
+      _cart.add(CartItem(
+        id: const Uuid().v4(),
+        gameId: gameId,
+        gameName: gameName,
+        drawId: meta.$1,
+        drawName: meta.$2,
+        periodId: periodId,
+        drawType: periodDrawType,
+        numbers: numbers,
+        betType: betType,
+        amount: amountToUse,
+        isQuickPick: isQuickPick,
+      ));
+      return true;
+    }
+
+    // BOTH: replicate each line for both draws (with per-period trim/skip)
     if(drawChoice == 'BOTH'){
+      Map<String, dynamic>? midday;
+      Map<String, dynamic>? evening;
+      try { midday = await _resolveNextSellablePeriod('MIDDAY'); } catch (_) {}
+      try { evening = await _resolveNextSellablePeriod('EVENING'); } catch (_) {}
+      if (midday == null && evening == null) throw Exception('لا توجد فترة مفتوحة للبيع الآن');
+      if (midday == null) throw Exception('الصباحي مغلق أو انتهى — Both غير متاح. العب المسائي فقط');
+      if (evening == null) throw Exception('المسائي مغلق أو انتهى — Both غير متاح. العب الصباحي فقط');
+      final targets = [midday, evening]..sort((a, b) => (a['drawTime'] as int).compareTo(b['drawTime'] as int));
       int added = 0;
       for(final l in source){
         final numbers = (l['numbers'] as String).split(',').map((e)=> e.trim()).where((e)=> e.isNotEmpty).toList();
         final betType = l['betType'] as String;
         final amountPerDraw = (l['amount'] as num).toDouble();
-        await addBothToCart(
-          gameId: l['gameId'] as String,
-          gameName: l['gameName'] as String,
-          numbers: numbers,
-          betType: betType,
-          amountPerDraw: amountPerDraw,
-          isQuickPick: (l['isQuickPick'] ?? 0) == 1,
-        );
-        added += 2;
+        for(final tp in targets){
+          final ok = await tryAddOne(
+            period: tp,
+            gameId: l['gameId'] as String,
+            gameName: l['gameName'] as String,
+            numbers: numbers,
+            betType: betType,
+            requested: amountPerDraw,
+            isQuickPick: (l['isQuickPick'] ?? 0) == 1,
+          );
+          if(ok) added++;
+        }
       }
-      return added;
+      notifyListeners();
+      if (added == 0) throw Exception('كل الأرقام في الفاتورة وصلت للحد الأقصى — لا شيء يمكن نسخه. المحذوف: ${skipped.join(' | ')}');
+      return {'added': added, 'skipped': skipped, 'trimmed': trimmed, 'skippedCount': skipped.length, 'trimmedCount': trimmed.length};
     }
     // MIDDAY or EVENING — always a fresh target period, never the source ticket's closed period
     if(drawChoice == 'MIDDAY' || drawChoice == 'EVENING' || drawChoice == 'MORNING'){
       final targetPeriod = await _resolveNextSellablePeriod(drawChoice);
-      final periodId = targetPeriod['id'] as String;
-      final periodDrawType = _normalizeDrawType(targetPeriod['drawType'] as String?);
-      await _validatePeriodOpen(periodId);
       int added = 0;
       for(final l in source){
         final numbers = (l['numbers'] as String).split(',').map((e)=> e.trim()).where((e)=> e.isNotEmpty).toList();
-        final betType = l['betType'] as String;
-        final amount = (l['amount'] as num).toDouble();
-        _validateCartItem(gameId: l['gameId'] as String, numbers: numbers, betType: betType, amount: amount);
-        await _enforcePerPeriodNumberLimit(
-          periodId: periodId,
-          gameId: l['gameId'] as String,
-          numbers: numbers,
-          betType: betType,
-          amount: amount,
-        );
-        final meta = await _drawMetaForPeriod(l['gameId'] as String, targetPeriod);
-        final item = CartItem(
-          id: const Uuid().v4(),
+        final ok = await tryAddOne(
+          period: targetPeriod,
           gameId: l['gameId'] as String,
           gameName: l['gameName'] as String,
-          drawId: meta.$1,
-          drawName: meta.$2,
-          periodId: periodId,
-          drawType: periodDrawType,
           numbers: numbers,
-          betType: betType,
-          amount: amount,
+          betType: l['betType'] as String,
+          requested: (l['amount'] as num).toDouble(),
           isQuickPick: (l['isQuickPick'] ?? 0) == 1,
         );
-        _cart.add(item);
-        added++;
+        if(ok) added++;
       }
       notifyListeners();
-      return added;
+      if (added == 0) throw Exception('كل الأرقام في الفاتورة وصلت للحد الأقصى في ${targetPeriod['id']} — لا شيء يمكن نسخه. المحذوف: ${skipped.join(' | ')}');
+      return {'added': added, 'skipped': skipped, 'trimmed': trimmed, 'skippedCount': skipped.length, 'trimmedCount': trimmed.length};
     }
     // AUTO: keep the same draw type as the source ticket, but move it to the next sellable period
     int added = 0;
@@ -963,36 +1106,20 @@ class AppState extends ChangeNotifier {
         inferred = 'MIDDAY';
       }
       final target = await _resolveNextSellablePeriod(inferred);
-      final periodId = target['id'] as String;
-      final drawType = _normalizeDrawType(target['drawType'] as String?);
-      final meta = await _drawMetaForPeriod(l['gameId'] as String, target);
-      _validateCartItem(gameId: l['gameId'], numbers: numbersRaw, betType: l['betType'], amount: (l['amount'] as num).toDouble());
-      await _validatePeriodOpen(periodId);
-      await _enforcePerPeriodNumberLimit(
-        periodId: periodId,
+      final ok = await tryAddOne(
+        period: target,
         gameId: l['gameId'] as String,
+        gameName: l['gameName'] as String,
         numbers: numbersRaw,
         betType: l['betType'] as String,
-        amount: (l['amount'] as num).toDouble(),
-      );
-      final item = CartItem(
-        id: const Uuid().v4(),
-        gameId: l['gameId'],
-        gameName: l['gameName'],
-        drawId: meta.$1,
-        drawName: meta.$2,
-        periodId: periodId,
-        drawType: drawType,
-        numbers: numbersRaw,
-        betType: l['betType'],
-        amount: (l['amount'] as num).toDouble(),
+        requested: (l['amount'] as num).toDouble(),
         isQuickPick: (l['isQuickPick'] ?? 0) == 1,
       );
-      _cart.add(item);
-      added++;
+      if(ok) added++;
     }
     notifyListeners();
-    return added;
+    if (added == 0) throw Exception('كل الأرقام في الفاتورة وصلت للحد الأقصى — لا شيء يمكن نسخه. المحذوف: ${skipped.join(' | ')}');
+    return {'added': added, 'skipped': skipped, 'trimmed': trimmed, 'skippedCount': skipped.length, 'trimmedCount': trimmed.length};
   }
 
   /// Move every cart line to the next sellable Midday or Evening period.
