@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import 'data/database.dart';
 import 'providers/app_state.dart';
 import 'theme/app_theme.dart';
@@ -43,7 +44,9 @@ class YeLotteryApp extends StatelessWidget {
         routes: {
           '/login': (_) => const LoginScreen(),
           '/play': (_) => const PlayScreen(),
-          '/admin/draw': (_) => const AdminDrawScreen(drawId: 'g_numbers'),
+          // drawId is a draw identifier, not a game id — the screen sets its
+          // own default game internally.
+          '/admin/draw': (_) => const AdminDrawScreen(drawId: ''),
           '/home': (_) => const HomeScreen(),
           '/lottery': (_) => const LotteryScreen(),
           '/numbers': (_) => const NumbersScreen(),

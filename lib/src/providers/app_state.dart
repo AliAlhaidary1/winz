@@ -1,8 +1,10 @@
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
+
 import '../data/database.dart';
 import '../services/backup_service.dart';
+import '../utils/timezone.dart';
 
 class CartItem {
   final String id; // local uuid for cart manipulation
@@ -11,7 +13,8 @@ class CartItem {
   final String? drawId;
   final String? drawName;
   final String? periodId; // e.g., 2026-09-01-MIDDAY
-  final String? drawType; // MIDDAY / EVENING / BOTH? For BOTH we split into two items
+  final String?
+  drawType; // MIDDAY / EVENING / BOTH? For BOTH we split into two items
   final List<String> numbers;
   final String betType;
   final double amount; // amount per draw participation
@@ -67,7 +70,10 @@ class AppState extends ChangeNotifier {
   AppState(this.db) {
     //     /Close    (00:00-14:15 / 00:00-22:20)
     Future.delayed(const Duration(seconds: 5), () async {
-      try { await db.seedDrawPeriods(); await db.refreshPeriodStatuses(); } catch (_) {}
+      try {
+        await db.seedDrawPeriods();
+        await db.refreshPeriodStatuses();
+      } catch (_) {}
       // auto backup on startup (after DB ready)
       try {
         final bs = BackupService(db);
@@ -76,7 +82,10 @@ class AppState extends ChangeNotifier {
     });
     // periodic refresh while app is alive
     Stream.periodic(const Duration(minutes: 1)).listen((_) async {
-      try { await db.refreshPeriodStatuses(); await db.seedDrawPeriods(); } catch (_) {}
+      try {
+        await db.refreshPeriodStatuses();
+        await db.seedDrawPeriods();
+      } catch (_) {}
     });
     // periodic auto-backup check every 15 minutes
     Stream.periodic(const Duration(minutes: 15)).listen((_) async {
@@ -135,7 +144,12 @@ class AppState extends ChangeNotifier {
   bool get isCartEmpty => _cart.isEmpty;
 
   // Helpers for bet-type normalization
-  String _normBet(String s) => s.trim().toLowerCase().replaceAll('-', '/').replaceAll('_', '/').replaceAll(' ', '');
+  String _normBet(String s) => s
+      .trim()
+      .toLowerCase()
+      .replaceAll('-', '/')
+      .replaceAll('_', '/')
+      .replaceAll(' ', '');
   bool _isComboBet(String norm) => norm.contains('combo');
   bool _isStraightBoxBet(String norm) =>
       norm == 'all' ||
@@ -160,15 +174,28 @@ class AppState extends ChangeNotifier {
     final s = (raw ?? '').trim().toUpperCase();
     if (s.isEmpty) return s;
     // Evening first so "EVENING" is never classified as Midday.
-    if (s == 'EVENING' || s.contains('EVENING') || s.contains('EVE') || s.contains('مساء') || s.contains('مسائ')) return 'EVENING';
-    if (s == 'MORNING' || s == 'MIDDAY' || s.contains('MIDDAY') || s.contains('MORNING') || s.contains('MID') || s.contains('صباح')) return 'MIDDAY';
+    if (s == 'EVENING' ||
+        s.contains('EVENING') ||
+        s.contains('EVE') ||
+        s.contains('مساء') ||
+        s.contains('مسائ'))
+      return 'EVENING';
+    if (s == 'MORNING' ||
+        s == 'MIDDAY' ||
+        s.contains('MIDDAY') ||
+        s.contains('MORNING') ||
+        s.contains('MID') ||
+        s.contains('صباح'))
+      return 'MIDDAY';
     return s;
   }
 
   String _drawTypeFromName(String? name) {
     final n = (name ?? '').toLowerCase();
-    if (n.contains('evening') || n.contains('مساء') || n.contains('مسائ')) return 'EVENING';
-    if (n.contains('midday') || n.contains('morning') || n.contains('صباح')) return 'MIDDAY';
+    if (n.contains('evening') || n.contains('مساء') || n.contains('مسائ'))
+      return 'EVENING';
+    if (n.contains('midday') || n.contains('morning') || n.contains('صباح'))
+      return 'MIDDAY';
     return '';
   }
 
@@ -190,11 +217,14 @@ class AppState extends ChangeNotifier {
     return '';
   }
 
-  String _drawTypeLabel(String drawType) => _normalizeDrawType(drawType) == 'EVENING' ? 'مسائي' : 'صباحي';
+  String _drawTypeLabel(String drawType) =>
+      _normalizeDrawType(drawType) == 'EVENING' ? 'مسائي' : 'صباحي';
 
   bool _periodHasResult(Map<String, dynamic> p) {
     bool nonempty(dynamic v) => v != null && v.toString().trim().isNotEmpty;
-    return nonempty(p['result']) || nonempty(p['result3']) || nonempty(p['result4']);
+    return nonempty(p['result']) ||
+        nonempty(p['result3']) ||
+        nonempty(p['result4']);
   }
 
   bool _periodBlocked(Map<String, dynamic> p) {
@@ -202,11 +232,15 @@ class AppState extends ChangeNotifier {
     return s == 'CANCELLED' || s == 'POSTPONED' || s == 'SUSPENDED';
   }
 
-  Future<(String? drawId, String drawName)> _drawMetaForPeriod(String gameId, Map<String, dynamic> period) async {
+  Future<(String? drawId, String drawName)> _drawMetaForPeriod(
+    String gameId,
+    Map<String, dynamic> period,
+  ) async {
     final periodId = period['id'] as String;
     final periodDrawType = _normalizeDrawType(period['drawType'] as String?);
     final date = period['drawDate'] as String? ?? '';
-    final fallbackName = '${periodDrawType == 'EVENING' ? 'Evening' : 'Midday'} $date';
+    final fallbackName =
+        '${periodDrawType == 'EVENING' ? 'Evening' : 'Midday'} $date';
     final draws = await db.getDrawsByGame(gameId);
     for (final d in draws) {
       if (_drawTypeFromDraw(d) != periodDrawType) continue;
@@ -227,7 +261,9 @@ class AppState extends ChangeNotifier {
   }
 
   /// Only a period whose sales window is open now — never a closed period or tomorrow's fallback.
-  Future<Map<String, dynamic>> _resolveNextSellablePeriod(String drawType) async {
+  Future<Map<String, dynamic>> _resolveNextSellablePeriod(
+    String drawType,
+  ) async {
     final normalized = _normalizeDrawType(drawType);
     if (normalized != 'MIDDAY' && normalized != 'EVENING') {
       throw Exception('فترة غير معروفة: $drawType');
@@ -239,15 +275,19 @@ class AppState extends ChangeNotifier {
       await db.ensurePeriodExists(_periodIdForDate(d, normalized));
     }
     await db.refreshPeriodStatuses();
-    final ofType = (await db.getAllPeriods()).where((p) {
-      return _normalizeDrawType(p['drawType'] as String?) == normalized;
-    }).toList()
-      ..sort((a, b) => (a['drawTime'] as int).compareTo(b['drawTime'] as int));
+    final ofType =
+        (await db.getAllPeriods()).where((p) {
+          return _normalizeDrawType(p['drawType'] as String?) == normalized;
+        }).toList()..sort(
+          (a, b) => (a['drawTime'] as int).compareTo(b['drawTime'] as int),
+        );
 
     for (final p in ofType) {
       if (_periodInSalesWindow(p)) return p;
     }
-    throw Exception('السحب ${_drawTypeLabel(normalized)} مغلق أو انتهى — لا يمكن اللعب');
+    throw Exception(
+      'السحب ${_drawTypeLabel(normalized)} مغلق أو انتهى — لا يمكن اللعب',
+    );
   }
 
   Future<bool> isDrawTypeSellableNow(String drawType) async {
@@ -276,12 +316,15 @@ class AppState extends ChangeNotifier {
       await db.ensurePeriodExists(periodId.toUpperCase());
       p = await db.getPeriodById(periodId.toUpperCase());
     }
-    if (p == null) throw Exception('Period $periodId not found — schedule not generated');
+    if (p == null)
+      throw Exception('Period $periodId not found — schedule not generated');
     if (_periodBlocked(p)) {
       throw Exception('الفترة $periodId ملغاة أو موقوفة');
     }
     if (_periodHasResult(p)) {
-      throw Exception('تم نشر نتيجة $periodId — انسخها لفترة تالية (صباحي أو مسائي)');
+      throw Exception(
+        'تم نشر نتيجة $periodId — انسخها لفترة تالية (صباحي أو مسائي)',
+      );
     }
     final now = DateTime.now().millisecondsSinceEpoch;
     final salesOpen = p['salesOpenTime'] as int;
@@ -295,7 +338,9 @@ class AppState extends ChangeNotifier {
     }
     final status = p['status'] as String;
     if (status != 'OPEN' && now >= salesOpen && now < salesClose) {
-      try { await db.updatePeriodStatus(periodId, 'OPEN'); } catch (_) {}
+      try {
+        await db.updatePeriodStatus(periodId, 'OPEN');
+      } catch (_) {}
     }
   }
 
@@ -321,28 +366,49 @@ class AppState extends ChangeNotifier {
     // Config keys: limit_straight_3, limit_straight_4, limit_box_3, limit_box_4, etc.
     // Defaults per user request: Straight3 = 100, Straight4 = 10, Box4 = 50, Box3 = 50
     double fallback;
-    if (group == 'straight' && nDigits == 3) fallback = 100;
-    else if (group == 'straight' && nDigits == 4) fallback = 10;
-    else if (group == 'box' && nDigits == 3) fallback = 50;
-    else if (group == 'box' && nDigits == 4) fallback = 50;
-    else if (group == 'combo' && nDigits == 3) fallback = 100;
-    else if (group == 'combo' && nDigits == 4) fallback = 10;
-    else if (group == 'strbox' && nDigits == 3) fallback = 50;
-    else if (group == 'strbox' && nDigits == 4) fallback = 50;
-    else fallback = 10;
+    if (group == 'straight' && nDigits == 3)
+      fallback = 100;
+    else if (group == 'straight' && nDigits == 4)
+      fallback = 10;
+    else if (group == 'box' && nDigits == 3)
+      fallback = 50;
+    else if (group == 'box' && nDigits == 4)
+      fallback = 50;
+    else if (group == 'combo' && nDigits == 3)
+      fallback = 100;
+    else if (group == 'combo' && nDigits == 4)
+      fallback = 10;
+    else if (group == 'strbox' && nDigits == 3)
+      fallback = 50;
+    else if (group == 'strbox' && nDigits == 4)
+      fallback = 50;
+    else
+      fallback = 10;
     try {
       final key = 'limit_${group}_${nDigits}';
-      final rows = await db.customSelect("SELECT value FROM app_config WHERE key = ? LIMIT 1",
-          variables: [Variable.withString(key)]).get();
+      final rows = await db
+          .customSelect(
+            "SELECT value FROM app_config WHERE key = ? LIMIT 1",
+            variables: [Variable.withString(key)],
+          )
+          .get();
       if (rows.isNotEmpty) {
         final v = double.tryParse(rows.first.data['value'] as String? ?? '');
         if (v != null) return v;
       }
       // legacy generic keys
-      final altKey = group == 'straight' ? 'limit_straight' : group == 'box' ? 'limit_box' : null;
+      final altKey = group == 'straight'
+          ? 'limit_straight'
+          : group == 'box'
+          ? 'limit_box'
+          : null;
       if (altKey != null) {
-        final rows2 = await db.customSelect("SELECT value FROM app_config WHERE key = ? LIMIT 1",
-            variables: [Variable.withString(altKey)]).get();
+        final rows2 = await db
+            .customSelect(
+              "SELECT value FROM app_config WHERE key = ? LIMIT 1",
+              variables: [Variable.withString(altKey)],
+            )
+            .get();
         if (rows2.isNotEmpty) {
           final v = double.tryParse(rows2.first.data['value'] as String? ?? '');
           if (v != null) return v;
@@ -353,7 +419,24 @@ class AppState extends ChangeNotifier {
   }
 
   // Helpers for replay partial copy — remaining calculation
-  double _floorToStep(double v, [double step = 0.5]) => (v / step).floor() * step;
+  double _floorToStep(double v, [double step = 0.5]) =>
+      (v / step).floor() * step;
+
+  /// A "Both" ticket holds two identical plays for two different periods.
+  /// Copying it into ONE period must not duplicate the same play twice.
+  String _replayPlayKey(Map<String, dynamic> l) =>
+      '${l['gameId']}|${l['numbers']}|${l['betType']}|${l['amount']}';
+
+  List<Map<String, dynamic>> _dedupeLinesForSinglePeriod(
+    List<Map<String, dynamic>> source,
+  ) {
+    final seen = <String>{};
+    final result = <Map<String, dynamic>>[];
+    for (final l in source) {
+      if (seen.add(_replayPlayKey(l))) result.add(l);
+    }
+    return result;
+  }
 
   double _maxInputFor(List<String> numbers, String betType) {
     final btNorm = _normBet(betType);
@@ -362,13 +445,24 @@ class AppState extends ChangeNotifier {
       return combos * 10.0;
     }
     if (_isStraightBoxBet(btNorm)) {
-      return numbers.length == 3 ? 50.0 : 25.0;
+      // Callers pass the TOTAL charge (straight half + box half).
+      return 50.0;
     }
     if (btNorm == 'box') return 50.0;
     return numbers.length == 3 ? 100.0 : 10.0; // straight
   }
 
-  Future<({double remaining, double effectiveLimit, double limit, int? combos, double existingSum, double cartSum})> _remainingFor({
+  Future<
+    ({
+      double remaining,
+      double effectiveLimit,
+      double limit,
+      int? combos,
+      double existingSum,
+      double cartSum,
+    })
+  >
+  _remainingFor({
     required String periodId,
     required String gameId,
     required List<String> numbers,
@@ -378,7 +472,15 @@ class AppState extends ChangeNotifier {
     final group = _betGroup(norm);
     final n = numbers.length;
     final limit = await _getLimitFor(group, n);
-    if (limit <= 0) return (remaining: double.infinity, effectiveLimit: double.infinity, limit: limit, combos: null, existingSum: 0.0, cartSum: 0.0);
+    if (limit <= 0)
+      return (
+        remaining: double.infinity,
+        effectiveLimit: double.infinity,
+        limit: limit,
+        combos: null,
+        existingSum: 0.0,
+        cartSum: 0.0,
+      );
     final canonical = _canonicalKey(numbers, group);
     final pidNorm = periodId.replaceAll('/', '-').trim().toUpperCase();
     double existingSum = 0;
@@ -391,7 +493,11 @@ class AppState extends ChangeNotifier {
         final lNorm = _normBet((l['betType'] as String?) ?? 'Straight');
         final lGroup = _betGroup(lNorm);
         if (lGroup != group) continue;
-        final lNums = (l['numbers'] as String).split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+        final lNums = (l['numbers'] as String)
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
         if (lNums.length != n) continue;
         if (_canonicalKey(lNums, lGroup) != canonical) continue;
         existingSum += (l['amount'] as num).toDouble();
@@ -399,7 +505,8 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
     for (final c in _cart) {
       if (c.periodId == null) continue;
-      if (c.periodId!.replaceAll('/', '-').trim().toUpperCase() != pidNorm) continue;
+      if (c.periodId!.replaceAll('/', '-').trim().toUpperCase() != pidNorm)
+        continue;
       if (c.gameId != gameId) continue;
       final cGroup = _betGroup(_normBet(c.betType));
       if (cGroup != group) continue;
@@ -413,8 +520,17 @@ class AppState extends ChangeNotifier {
       combosForLimit = _comboCount(numbers);
       if (combosForLimit > 1) effectiveLimit = limit * combosForLimit;
     }
-    final remaining = (effectiveLimit - existingSum - cartSum).clamp(0, effectiveLimit).toDouble();
-    return (remaining: remaining, effectiveLimit: effectiveLimit, limit: limit, combos: combosForLimit, existingSum: existingSum, cartSum: cartSum);
+    final remaining = (effectiveLimit - existingSum - cartSum)
+        .clamp(0, effectiveLimit)
+        .toDouble();
+    return (
+      remaining: remaining,
+      effectiveLimit: effectiveLimit,
+      limit: limit,
+      combos: combosForLimit,
+      existingSum: existingSum,
+      cartSum: cartSum,
+    );
   }
 
   // Sum already sold + current cart for same (periodId, gameId, group, canonical)
@@ -446,7 +562,11 @@ class AppState extends ChangeNotifier {
         final lNorm = _normBet(lBet);
         final lGroup = _betGroup(lNorm);
         if (lGroup != group) continue;
-        final lNums = (l['numbers'] as String).split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+        final lNums = (l['numbers'] as String)
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
         if (lNums.length != n) continue;
         final lCanon = _canonicalKey(lNums, lGroup);
         if (lCanon != canonical) continue;
@@ -477,26 +597,41 @@ class AppState extends ChangeNotifier {
     }
     final total = existingSum + cartSum + amount;
     if (total > effectiveLimit + 1e-9) {
-      final remaining = (effectiveLimit - existingSum - cartSum).clamp(0, effectiveLimit);
-      final isBoxGroup = group == 'box' || group == 'combo' || group == 'strbox';
-      final example = isBoxGroup ? ' (حتى لو تشقلبت الأرقام مثل 1123 = 2113)' : '';
+      final remaining = (effectiveLimit - existingSum - cartSum).clamp(
+        0,
+        effectiveLimit,
+      );
+      final isBoxGroup =
+          group == 'box' || group == 'combo' || group == 'strbox';
+      final example = isBoxGroup
+          ? ' (حتى لو تشقلبت الأرقام مثل 1123 = 2113)'
+          : '';
       final digitLabel = n == 3 ? '3' : '4';
-      final groupLabel = group == 'straight' ? 'Straight $digitLabel' : group == 'box' ? 'Box $digitLabel' : group == 'combo' ? 'Combo $digitLabel' : 'ST/BOX $digitLabel';
-      final limitDetail = group == 'combo' && combosForLimit != null && combosForLimit > 1
+      final groupLabel = group == 'straight'
+          ? 'Straight $digitLabel'
+          : group == 'box'
+          ? 'Box $digitLabel'
+          : group == 'combo'
+          ? 'Combo $digitLabel'
+          : 'ST/BOX $digitLabel';
+      final limitDetail =
+          group == 'combo' && combosForLimit != null && combosForLimit > 1
           ? '\$$limit × $combosForLimit = \$$effectiveLimit إجمالي (\$${limit.toStringAsFixed(2)} لكل تركيبة)'
           : '\$$effectiveLimit';
       // للتوضيح: اعرض أيضاً per-combo إذا كان combo
       String perComboInfo = '';
       if (group == 'combo' && combosForLimit != null && combosForLimit > 1) {
         final perCombo = amount / combosForLimit;
-        perComboInfo = ' — المطلوب: \$${amount.toStringAsFixed(2)} إجمالي = \$${perCombo.toStringAsFixed(2)} لكل تركيبة × $combosForLimit';
+        perComboInfo =
+            ' — المطلوب: \$${amount.toStringAsFixed(2)} إجمالي = \$${perCombo.toStringAsFixed(2)} لكل تركيبة × $combosForLimit';
       } else {
         perComboInfo = ' — المطلوب: \$${amount.toStringAsFixed(2)}';
       }
       throw Exception(
-          'الرقم ${numbers.join()} ($groupLabel$example) وصل للحد الأقصى $limitDetail في فترة $pidNorm — '
-          'المباع حالياً: \$${existingSum.toStringAsFixed(2)} + السلة: \$${cartSum.toStringAsFixed(2)} — '
-          'المتبقي المسموح: \$${remaining.toStringAsFixed(2)}$perComboInfo — الإجمالي سيصبح \$${total.toStringAsFixed(2)} > \$$effectiveLimit');
+        'الرقم ${numbers.join()} ($groupLabel$example) وصل للحد الأقصى $limitDetail في فترة $pidNorm — '
+        'المباع حالياً: \$${existingSum.toStringAsFixed(2)} + السلة: \$${cartSum.toStringAsFixed(2)} — '
+        'المتبقي المسموح: \$${remaining.toStringAsFixed(2)}$perComboInfo — الإجمالي سيصبح \$${total.toStringAsFixed(2)} > \$$effectiveLimit',
+      );
     }
   }
 
@@ -509,12 +644,15 @@ class AppState extends ChangeNotifier {
     String? drawId,
   }) {
     for (final d in numbers) {
-      if (!RegExp(r'^[0-9]$').hasMatch(d)) throw Exception('Digits must be 0-9');
+      if (!RegExp(r'^[0-9]$').hasMatch(d))
+        throw Exception('Digits must be 0-9');
     }
     if (gameId == 'g_numbers') {
-      if (numbers.length != 3 && numbers.length != 4) throw Exception('Numbers requires 3 or 4 digits');
+      if (numbers.length != 3 && numbers.length != 4)
+        throw Exception('Numbers requires 3 or 4 digits');
     } else if (gameId == 'g_winz') {
-      if (numbers.length != 4) throw Exception('Win 4 requires exactly 4 digits');
+      if (numbers.length != 4)
+        throw Exception('Win 4 requires exactly 4 digits');
     }
     final btNorm = _normBet(betType);
     final isCombo = _isComboBet(btNorm);
@@ -523,39 +661,60 @@ class AppState extends ChangeNotifier {
     // الأرقام المتطابقة (مثل 111 أو 2222) ممنوعة في Box / ST/BOX / Combo — مسموحة فقط في Straight
     final allSame = numbers.isNotEmpty && numbers.toSet().length == 1;
     if (allSame && (isBox || isStrBox || isCombo)) {
-      throw Exception('الأرقام المتطابقة مثل ${numbers.join()} مسموحة فقط في Straight — غير مسموحة في Box / ST/BOX / Combo');
+      throw Exception(
+        'الأرقام المتطابقة مثل ${numbers.join()} مسموحة فقط في Straight — غير مسموحة في Box / ST/BOX / Combo',
+      );
     }
     if (isCombo) {
       final combos = _comboCount(numbers);
-      if (combos <= 1) throw Exception('Combo not valid for repeating digits like ${numbers.join()} — need distinct permutations');
-      //       —     
+      if (combos <= 1)
+        throw Exception(
+          'Combo not valid for repeating digits like ${numbers.join()} — need distinct permutations',
+        );
+      //       —
       // : 123 (6 combos) + \$6.00 => \$1.00   \$1.00 + \$1.00 => Prize = wagerPerCombo * multiplier
       if (amount < 0.5 - 1e-9) throw Exception('Combo min \$0.50');
-      if (amount > combos * 10 + 1e-9) throw Exception('Combo max \$${(combos * 10).toStringAsFixed(2)} ($combos × \$10)');
+      if (amount > combos * 10 + 1e-9)
+        throw Exception(
+          'Combo max \$${(combos * 10).toStringAsFixed(2)} ($combos × \$10)',
+        );
       if ((amount * 100).round() % 50 != 0) {
-        throw Exception('Amount must be \$0.50 steps — e.g. \$0.50, \$1.00, \$1.50');
+        throw Exception(
+          'Amount must be \$0.50 steps — e.g. \$0.50, \$1.00, \$1.50',
+        );
       }
     } else if (isStrBox) {
       // Straight/Box (All) —      (Straight + Box)
       //    $0.50  => $0.25     (Both) = amountPerDraw × 2
-      // Per-number limit for StrBox is 50 (same as Box), so allow input up to 25 (=> total 50) but keep 10 for backward compat? Allow 50 total => input 25 max
-      final maxInput = numbers.length == 3 ? 50 : 25; // total 50
-      // Keep legacy 10 for small, but allow up to 25 for 4-digit StrBox to reach 50 total
+      // `amount` is the TOTAL charge (already doubled by the caller), and
+      // the per-number per-period limit for StrBox is $50 in total.
+      const maxTotal = 50.0;
       if (amount < 0.5 - 1e-9) throw Exception('Straight/Box (All) min \$0.50');
-      if (amount > maxInput + 1e-9) throw Exception('Amount \$0.50 - \$$maxInput for Straight/Box (All)');
+      if (amount > maxTotal + 1e-9)
+        throw Exception('Amount \$0.50 - \$$maxTotal for Straight/Box (All)');
       if ((amount * 100).round() % 50 != 0) {
-        throw Exception('Amount must be \$0.50 steps — e.g. \$0.50, \$1.00, \$1.50');
+        throw Exception(
+          'Amount must be \$0.50 steps — e.g. \$0.50, \$1.00, \$1.50',
+        );
       }
     } else if (isBox) {
       // Box صريح — حد الفترة 50$ لكل رقم (حتى مع التقليب)
       const maxBox = 50.0;
-      if (amount < 0.5 || amount > maxBox) throw Exception('Amount \$0.50 - \$${maxBox.toStringAsFixed(2)} for Box (limit per number per period \$$maxBox)');
-      if ((amount * 100).round() % 50 != 0) throw Exception('Amount must be \$0.50 steps');
+      if (amount < 0.5 || amount > maxBox)
+        throw Exception(
+          'Amount \$0.50 - \$${maxBox.toStringAsFixed(2)} for Box (limit per number per period \$$maxBox)',
+        );
+      if ((amount * 100).round() % 50 != 0)
+        throw Exception('Amount must be \$0.50 steps');
     } else {
       // Straight: limit per period per exact number = 100 for 3 digits, 10 for 4 digits
       final maxStraight = numbers.length == 3 ? 100.0 : 10.0;
-      if (amount < 0.5 || amount > maxStraight) throw Exception('Amount \$0.50 - \$${maxStraight.toStringAsFixed(2)} for Straight ${numbers.length}D (limit \$$maxStraight)');
-      if ((amount * 100).round() % 50 != 0) throw Exception('Amount must be \$0.50 steps');
+      if (amount < 0.5 || amount > maxStraight)
+        throw Exception(
+          'Amount \$0.50 - \$${maxStraight.toStringAsFixed(2)} for Straight ${numbers.length}D (limit \$$maxStraight)',
+        );
+      if ((amount * 100).round() % 50 != 0)
+        throw Exception('Amount must be \$0.50 steps');
     }
     if (drawId != null) {
       // draw open check is done at add time asynchronously; here sync part only
@@ -576,9 +735,17 @@ class AppState extends ChangeNotifier {
   }) async {
     if (_currentUser == null) throw Exception('Not logged in');
     _ensureNotExpired();
-    _validateCartItem(gameId: gameId, numbers: numbers, betType: betType, amount: amount, drawId: drawId);
+    _validateCartItem(
+      gameId: gameId,
+      numbers: numbers,
+      betType: betType,
+      amount: amount,
+      drawId: drawId,
+    );
     String? resolvedPeriodId = periodId;
-    String? resolvedDrawType = drawType != null ? _normalizeDrawType(drawType) : drawType;
+    String? resolvedDrawType = drawType != null
+        ? _normalizeDrawType(drawType)
+        : drawType;
     String? resolvedDrawId = drawId;
     String? resolvedDrawName = drawName;
     // Explicit Midday/Evening choice wins — never keep a closed source period
@@ -594,7 +761,12 @@ class AppState extends ChangeNotifier {
       final draw = await db.getDrawById(drawId);
       if (draw != null) {
         final name = draw['name'] as String;
-        String inferredPeriod = name.contains('Midday') || name.contains('Morning') ? 'MIDDAY' : name.contains('Evening') ? 'EVENING' : 'MIDDAY';
+        String inferredPeriod =
+            name.contains('Midday') || name.contains('Morning')
+            ? 'MIDDAY'
+            : name.contains('Evening')
+            ? 'EVENING'
+            : 'MIDDAY';
         resolvedDrawType = inferredPeriod;
         final dt = DateTime.fromMillisecondsSinceEpoch(draw['drawTime'] as int);
         resolvedPeriodId = _periodIdForDate(dt, inferredPeriod);
@@ -613,14 +785,20 @@ class AppState extends ChangeNotifier {
     if (resolvedDrawId != null) {
       final draw = await db.getDrawById(resolvedDrawId);
       if (draw != null) {
-        if (draw['status'] == 'closed' && resolvedPeriodId == null) throw Exception('Draw is closed — sales blocked');
+        if (draw['status'] == 'closed' && resolvedPeriodId == null)
+          throw Exception('Draw is closed — sales blocked');
         final drawTime = draw['drawTime'] as int;
         final now = DateTime.now().millisecondsSinceEpoch;
         if (now >= drawTime - 5 * 60 * 1000 && resolvedPeriodId == null) {
           final win = draw['winningNumbers'] as String?;
-          if (win == null || win.toString().isEmpty) throw Exception('Sales closed — draw cutoff (5 min before)');
+          if (win == null || win.toString().isEmpty)
+            throw Exception('Sales closed — draw cutoff (5 min before)');
         }
       }
+    }
+    // A bet with no draw and no period can never be settled or paid.
+    if (resolvedPeriodId == null && resolvedDrawId == null) {
+      throw Exception('لا توجد فترة سحب مفتوحة الآن — لا يمكن إصدار تذكرة');
     }
     final item = CartItem(
       id: const Uuid().v4(),
@@ -640,7 +818,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// Both Draws: Creates two participations for the next two OPEN periods sequentially
-  ///       →   Today +  
+  ///       →   Today +
   Future<void> addBothToCart({
     required String gameId,
     required String gameName,
@@ -652,19 +830,32 @@ class AppState extends ChangeNotifier {
   }) async {
     if (_currentUser == null) throw Exception('Not logged in');
     _ensureNotExpired();
-    _validateCartItem(gameId: gameId, numbers: numbers, betType: betType, amount: amountPerDraw);
+    _validateCartItem(
+      gameId: gameId,
+      numbers: numbers,
+      betType: betType,
+      amount: amountPerDraw,
+    );
     Map<String, dynamic>? midday;
     Map<String, dynamic>? evening;
-    try { midday = await _resolveNextSellablePeriod('MIDDAY'); } catch (_) {}
-    try { evening = await _resolveNextSellablePeriod('EVENING'); } catch (_) {}
+    try {
+      midday = await _resolveNextSellablePeriod('MIDDAY');
+    } catch (_) {}
+    try {
+      evening = await _resolveNextSellablePeriod('EVENING');
+    } catch (_) {}
     if (midday == null && evening == null) {
       throw Exception('لا توجد فترة مفتوحة للبيع الآن');
     }
     if (midday == null) {
-      throw Exception('الصباحي مغلق أو انتهى — Both غير متاح. العب المسائي فقط');
+      throw Exception(
+        'الصباحي مغلق أو انتهى — Both غير متاح. العب المسائي فقط',
+      );
     }
     if (evening == null) {
-      throw Exception('المسائي مغلق أو انتهى — Both غير متاح. العب الصباحي فقط');
+      throw Exception(
+        'المسائي مغلق أو انتهى — Both غير متاح. العب الصباحي فقط',
+      );
     }
     final targetPeriods = [midday, evening]
       ..sort((a, b) => (a['drawTime'] as int).compareTo(b['drawTime'] as int));
@@ -699,14 +890,23 @@ class AppState extends ChangeNotifier {
     for (final d in draws) {
       final dt = DateTime.fromMillisecondsSinceEpoch(d['drawTime'] as int);
       // Match by period id date+type
-      for(final tp in targetPeriods){
+      for (final tp in targetPeriods) {
         final tpDate = tp['drawDate'] as String;
         final tpType = tp['drawType'] as String;
-        final dtStr = '${dt.year}-${dt.month.toString().padLeft(2,'0')}-${dt.day.toString().padLeft(2,'0')}';
-        final isMatch = dtStr == tpDate && _drawTypeFromDraw(d) == _normalizeDrawType(tpType);
-        if(isMatch){
-          if(tp == targetPeriods[0]){ firstDrawId = d['id'] as String; firstDrawName = d['name'] as String; }
-          if(tp == targetPeriods[1]){ secondDrawId = d['id'] as String; secondDrawName = d['name'] as String; }
+        final dtStr =
+            '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+        final isMatch =
+            dtStr == tpDate &&
+            _drawTypeFromDraw(d) == _normalizeDrawType(tpType);
+        if (isMatch) {
+          if (tp == targetPeriods[0]) {
+            firstDrawId = d['id'] as String;
+            firstDrawName = d['name'] as String;
+          }
+          if (tp == targetPeriods[1]) {
+            secondDrawId = d['id'] as String;
+            secondDrawName = d['name'] as String;
+          }
         }
       }
     }
@@ -718,7 +918,9 @@ class AppState extends ChangeNotifier {
       gameId: gameId,
       gameName: gameName,
       drawId: firstDrawId,
-      drawName: firstDrawName ?? '${firstPeriod['drawType']} ${firstPeriod['drawDate']}',
+      drawName:
+          firstDrawName ??
+          '${firstPeriod['drawType']} ${firstPeriod['drawDate']}',
       periodId: firstId,
       drawType: firstPeriod['drawType'] as String,
       numbers: List.from(numbers),
@@ -731,7 +933,9 @@ class AppState extends ChangeNotifier {
       gameId: gameId,
       gameName: gameName,
       drawId: secondDrawId,
-      drawName: secondDrawName ?? '${secondPeriod['drawType']} ${secondPeriod['drawDate']}',
+      drawName:
+          secondDrawName ??
+          '${secondPeriod['drawType']} ${secondPeriod['drawDate']}',
       periodId: secondId,
       drawType: secondPeriod['drawType'] as String,
       numbers: List.from(numbers),
@@ -761,18 +965,23 @@ class AppState extends ChangeNotifier {
     if (_cart.isEmpty) throw Exception('Cart is empty — add numbers first');
     // final validation for all draws still open — period-aware + legacy
     for (final item in _cart) {
+      if (item.periodId == null && item.drawId == null) {
+        throw Exception('تذكرة بدون سحب — لا يمكن بيعها');
+      }
       if (item.periodId != null) {
         await _validatePeriodOpen(item.periodId!);
       }
       if (item.drawId != null) {
         final draw = await db.getDrawById(item.drawId!);
-        if (draw != null && draw['status'] == 'closed') throw Exception('Draw ${item.drawName} is closed');
+        if (draw != null && draw['status'] == 'closed')
+          throw Exception('Draw ${item.drawName} is closed');
         if (draw != null) {
           final drawTime = draw['drawTime'] as int;
           final now = DateTime.now().millisecondsSinceEpoch;
           if (now >= drawTime - 5 * 60 * 1000) {
             final win = draw['winningNumbers'] as String?;
-            if (win == null || win.toString().isEmpty) throw Exception('Sales closed — cutoff for ${item.drawName}');
+            if (win == null || win.toString().isEmpty)
+              throw Exception('Sales closed — cutoff for ${item.drawName}');
           }
         }
       }
@@ -787,9 +996,18 @@ class AppState extends ChangeNotifier {
       final group = _betGroup(norm);
       final canon = _canonicalKey(item.numbers, group);
       final pidNorm = item.periodId!.replaceAll('/', '-').trim().toUpperCase();
-      final key = '$pidNorm|${item.gameId}|$group|$canon|${item.numbers.length}';
+      final key =
+          '$pidNorm|${item.gameId}|$group|$canon|${item.numbers.length}';
       cartAgg[key] = (cartAgg[key] ?? 0) + item.amount;
-      aggMeta[key] = {'periodId': pidNorm, 'gameId': item.gameId, 'group': group, 'canon': canon, 'n': item.numbers.length, 'sampleNumbers': item.numbers, 'betType': item.betType};
+      aggMeta[key] = {
+        'periodId': pidNorm,
+        'gameId': item.gameId,
+        'group': group,
+        'canon': canon,
+        'n': item.numbers.length,
+        'sampleNumbers': item.numbers,
+        'betType': item.betType,
+      };
     }
     for (final entry in cartAgg.entries) {
       final meta = aggMeta[entry.key]!;
@@ -812,7 +1030,11 @@ class AppState extends ChangeNotifier {
           final lNorm = _normBet(lBet);
           final lGroup = _betGroup(lNorm);
           if (lGroup != group) continue;
-          final lNums = (l['numbers'] as String).split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+          final lNums = (l['numbers'] as String)
+              .split(',')
+              .map((e) => e.trim())
+              .where((e) => e.isNotEmpty)
+              .toList();
           if (lNums.length != n) continue;
           final lCanon = _canonicalKey(lNums, lGroup);
           if (lCanon != canon) continue;
@@ -829,18 +1051,32 @@ class AppState extends ChangeNotifier {
       final cartTotalForKey = entry.value;
       final total = existingSum + cartTotalForKey;
       if (total > effectiveLimit + 1e-9) {
-        final remaining = (effectiveLimit - existingSum).clamp(0, effectiveLimit);
-        final isBoxGroup = group == 'box' || group == 'combo' || group == 'strbox';
-        final example = isBoxGroup ? ' (حتى لو تشقلبت الأرقام مثل 1123 = 2113)' : '';
+        final remaining = (effectiveLimit - existingSum).clamp(
+          0,
+          effectiveLimit,
+        );
+        final isBoxGroup =
+            group == 'box' || group == 'combo' || group == 'strbox';
+        final example = isBoxGroup
+            ? ' (حتى لو تشقلبت الأرقام مثل 1123 = 2113)'
+            : '';
         final digitLabel = n == 3 ? '3' : '4';
-        final groupLabel = group == 'straight' ? 'Straight $digitLabel' : group == 'box' ? 'Box $digitLabel' : group == 'combo' ? 'Combo $digitLabel' : 'ST/BOX $digitLabel';
-        final limitDetail = group == 'combo' && combosForLimit != null && combosForLimit > 1
+        final groupLabel = group == 'straight'
+            ? 'Straight $digitLabel'
+            : group == 'box'
+            ? 'Box $digitLabel'
+            : group == 'combo'
+            ? 'Combo $digitLabel'
+            : 'ST/BOX $digitLabel';
+        final limitDetail =
+            group == 'combo' && combosForLimit != null && combosForLimit > 1
             ? '\$$limit × $combosForLimit = \$$effectiveLimit إجمالي'
             : '\$$effectiveLimit';
         throw Exception(
-            'الرقم ${sampleNumbers.join()} ($groupLabel$example) سيتجاوز الحد في فترة $periodId — '
-            'المباع سابقاً: \$${existingSum.toStringAsFixed(2)} + سلة الشراء لهذا الرقم: \$${cartTotalForKey.toStringAsFixed(2)} = \$${total.toStringAsFixed(2)} > حد $limitDetail — '
-            'المتبقي المسموح: \$${remaining.toStringAsFixed(2)}');
+          'الرقم ${sampleNumbers.join()} ($groupLabel$example) سيتجاوز الحد في فترة $periodId — '
+          'المباع سابقاً: \$${existingSum.toStringAsFixed(2)} + سلة الشراء لهذا الرقم: \$${cartTotalForKey.toStringAsFixed(2)} = \$${total.toStringAsFixed(2)} > حد $limitDetail — '
+          'المتبقي المسموح: \$${remaining.toStringAsFixed(2)}',
+        );
       }
     }
     final id = await db.nextTicketId();
@@ -851,17 +1087,31 @@ class AppState extends ChangeNotifier {
     // Header aggregation
     final distinctGames = _cart.map((e) => e.gameId).toSet();
     final distinctDraws = _cart.map((e) => e.drawId).toSet();
-    final headerGameId = distinctGames.length == 1 ? _cart.first.gameId : 'multi';
-    final headerGameName = distinctGames.length == 1 ? _cart.first.gameName : 'Mixed';
+    final headerGameId = distinctGames.length == 1
+        ? _cart.first.gameId
+        : 'multi';
+    final headerGameName = distinctGames.length == 1
+        ? _cart.first.gameName
+        : 'Mixed';
     // For header draw, if all same draw use it, otherwise first
-    final headerDrawId = distinctDraws.length == 1 ? _cart.first.drawId : _cart.first.drawId;
-    final headerDrawName = distinctDraws.length == 1 ? _cart.first.drawName : (_cart.first.drawName != null ? '${_cart.first.drawName} +${_cart.length-1}' : null);
+    final headerDrawId = distinctDraws.length == 1
+        ? _cart.first.drawId
+        : _cart.first.drawId;
+    final headerDrawName = distinctDraws.length == 1
+        ? _cart.first.drawName
+        : (_cart.first.drawName != null
+              ? '${_cart.first.drawName} +${_cart.length - 1}'
+              : null);
     final headerBetType = _cart.length == 1 ? _cart.first.betType : 'Multi';
     // numbers for header: if multi, store as "123 Straight | 456 Box ..."
-    final headerNumbers = _cart.map((e) => '${e.numbers.join()}(${e.betType})').join(' | ');
+    final headerNumbers = _cart
+        .map((e) => '${e.numbers.join()}(${e.betType})')
+        .join(' | ');
     // Keep numbers column for legacy display but we store summary; lines hold true data
     // For compatibility truncate if too long
-    final headerNumbersCol = headerNumbers.length > 400 ? '${_cart.first.numbers.join(',')} +${_cart.length-1} more' : _cart.map((e)=> e.numbers.join(',')).join(';');
+    final headerNumbersCol = headerNumbers.length > 400
+        ? '${_cart.first.numbers.join(',')} +${_cart.length - 1} more'
+        : _cart.map((e) => e.numbers.join(',')).join(';');
 
     final ticket = {
       'id': id,
@@ -882,48 +1132,54 @@ class AppState extends ChangeNotifier {
       'prizeAmount': null,
       'paidAt': null,
       'paidBy': null,
-      'isQuickPick': _cart.any((e)=> e.isQuickPick) ? 1 : 0,
+      'isQuickPick': _cart.any((e) => e.isQuickPick) ? 1 : 0,
     };
 
-    final lines = _cart.map((e) => {
-      'id': const Uuid().v4(),
-      'ticketId': id,
-      'gameId': e.gameId,
-      'gameName': e.gameName,
-      'drawId': e.drawId,
-      'drawName': e.drawName,
-      'periodId': e.periodId,
-      'periodStatus': 'active',
-      'winningStatus': null,
-      'prizeAmount': null,
-      'numbers': e.numbers.join(','),
-      'betType': e.betType,
-      'amount': e.amount,
-      'isQuickPick': e.isQuickPick ? 1 : 0,
-    }).toList();
+    final lines = _cart
+        .map(
+          (e) => {
+            'id': const Uuid().v4(),
+            'ticketId': id,
+            'gameId': e.gameId,
+            'gameName': e.gameName,
+            'drawId': e.drawId,
+            'drawName': e.drawName,
+            'periodId': e.periodId,
+            'periodStatus': 'active',
+            'winningStatus': null,
+            'prizeAmount': null,
+            'numbers': e.numbers.join(','),
+            'betType': e.betType,
+            'amount': e.amount,
+            'isQuickPick': e.isQuickPick ? 1 : 0,
+          },
+        )
+        .toList();
 
-    await db.insertTicketWithLines(ticket, lines);
-
-    // financial: single entry for whole sale
-    await db.insertCashLedger({
-      'id': const Uuid().v4(),
-      'type': 'sale',
-      'amount': total,
-      'direction': 'in',
-      'description': 'Sale $id — ${_cart.length} plays — $headerNumbers',
-      'operatorId': _currentUser!['id'],
-      'createdAt': now,
-      'ticketId': id,
-    });
-    await db.insertBalanceMovement({
-      'id': const Uuid().v4(),
-      'type': 'sale',
-      'amount': total,
-      'direction': 'credit',
-      'description': 'Sale $id',
-      'operatorId': _currentUser!['id'],
-      'createdAt': now,
-      'ticketId': id,
+    // Ticket + lines + both ledger entries must succeed together: a crash
+    // must not leave a printed ticket without its financial records.
+    await db.transaction(() async {
+      await db.insertTicketWithLines(ticket, lines);
+      await db.insertCashLedger({
+        'id': const Uuid().v4(),
+        'type': 'sale',
+        'amount': total,
+        'direction': 'in',
+        'description': 'Sale $id — ${_cart.length} plays — $headerNumbers',
+        'operatorId': _currentUser!['id'],
+        'createdAt': now,
+        'ticketId': id,
+      });
+      await db.insertBalanceMovement({
+        'id': const Uuid().v4(),
+        'type': 'sale',
+        'amount': total,
+        'direction': 'credit',
+        'description': 'Sale $id',
+        'operatorId': _currentUser!['id'],
+        'createdAt': now,
+        'ticketId': id,
+      });
     });
 
     _cart.clear();
@@ -943,13 +1199,18 @@ class AppState extends ChangeNotifier {
   /// Replay with explicit draw choice: MIDDAY (صباحي), EVENING (مسائي), BOTH (الاثنين), AUTO (auto-detect open)
   /// Now supports partial copy: sold-out numbers are skipped, over-limit amounts are trimmed to remaining.
   /// Returns {added, skipped, trimmed, skippedCount, trimmedCount}
-  Future<Map<String, dynamic>> replayTicketToCartWithChoice(String ticketId, String drawChoice) async {
+  Future<Map<String, dynamic>> replayTicketToCartWithChoice(
+    String ticketId,
+    String drawChoice,
+  ) async {
     ticketId = ticketId.trim();
     drawChoice = drawChoice.trim().toUpperCase();
     final lines = await db.getTicketLines(ticketId);
-    List<Map<String,dynamic>> source;
+    List<Map<String, dynamic>> source;
     if (lines.isEmpty) {
-      final t = await db.getTicketById(ticketId) ?? await db.getTicketByBarcode(ticketId);
+      final t =
+          await db.getTicketById(ticketId) ??
+          await db.getTicketByBarcode(ticketId);
       if (t == null) throw Exception('Ticket not found: $ticketId');
       source = [t];
     } else {
@@ -974,17 +1235,31 @@ class AppState extends ChangeNotifier {
       await _validatePeriodOpen(periodId);
       // Fundamental validation (allSame, digits, etc) — if invalid, skip
       try {
-        _validateCartItem(gameId: gameId, numbers: numbers, betType: betType, amount: requested);
+        _validateCartItem(
+          gameId: gameId,
+          numbers: numbers,
+          betType: betType,
+          amount: requested,
+        );
       } catch (e) {
-        skipped.add('${numbers.join()} ($betType) — غير صالح: ${e.toString().replaceAll('Exception: ', '')}');
+        skipped.add(
+          '${numbers.join()} ($betType) — غير صالح: ${e.toString().replaceAll('Exception: ', '')}',
+        );
         return false;
       }
-      final info = await _remainingFor(periodId: periodId, gameId: gameId, numbers: numbers, betType: betType);
+      final info = await _remainingFor(
+        periodId: periodId,
+        gameId: gameId,
+        numbers: numbers,
+        betType: betType,
+      );
       final remaining = info.remaining;
       final vMax = _maxInputFor(numbers, betType);
       // لا يوجد متبقي كافي لأقل مبلغ
       if (remaining < 0.5 - 1e-9) {
-        skipped.add('${numbers.join()} ($betType) — Sold Out في $periodId (الحد \$${info.effectiveLimit.toStringAsFixed(2)} ممتلئ)');
+        skipped.add(
+          '${numbers.join()} ($betType) — Sold Out في $periodId (الحد \$${info.effectiveLimit.toStringAsFixed(2)} ممتلئ)',
+        );
         return false;
       }
       double amountToUse;
@@ -995,18 +1270,32 @@ class AppState extends ChangeNotifier {
         double allowed = remaining < vMax ? remaining : vMax;
         double floored = _floorToStep(allowed, 0.5);
         if (floored < 0.5 - 1e-9) {
-          skipped.add('${numbers.join()} ($betType) — المتبقي \$${remaining.toStringAsFixed(2)} أقل من الحد الأدنى \$0.50 في $periodId');
+          skipped.add(
+            '${numbers.join()} ($betType) — المتبقي \$${remaining.toStringAsFixed(2)} أقل من الحد الأدنى \$0.50 في $periodId',
+          );
           return false;
         }
         // تأكد أن floored يمر تحقق _validate (مثل combo بتركيبات)
         try {
-          _validateCartItem(gameId: gameId, numbers: numbers, betType: betType, amount: floored);
+          _validateCartItem(
+            gameId: gameId,
+            numbers: numbers,
+            betType: betType,
+            amount: floored,
+          );
         } catch (e) {
-          skipped.add('${numbers.join()} ($betType) — لا يمكن تقليله: ${e.toString().replaceAll('Exception: ', '')}');
+          skipped.add(
+            '${numbers.join()} ($betType) — لا يمكن تقليله: ${e.toString().replaceAll('Exception: ', '')}',
+          );
           return false;
         }
         // تحقق نهائي أن floored لا يتجاوز remaining فعلياً (مع cart الحالي)
-        final check = await _remainingFor(periodId: periodId, gameId: gameId, numbers: numbers, betType: betType);
+        final check = await _remainingFor(
+          periodId: periodId,
+          gameId: gameId,
+          numbers: numbers,
+          betType: betType,
+        );
         if (floored > check.remaining + 1e-9) {
           floored = _floorToStep(check.remaining, 0.5);
           if (floored < 0.5 - 1e-9) {
@@ -1016,42 +1305,64 @@ class AppState extends ChangeNotifier {
         }
         amountToUse = floored;
         if ((amountToUse - requested).abs() > 1e-9) {
-          trimmed.add('${numbers.join()} ($betType) في $periodId: \$${requested.toStringAsFixed(2)} → \$${amountToUse.toStringAsFixed(2)} (المتبقي \$${remaining.toStringAsFixed(2)})');
+          trimmed.add(
+            '${numbers.join()} ($betType) في $periodId: \$${requested.toStringAsFixed(2)} → \$${amountToUse.toStringAsFixed(2)} (المتبقي \$${remaining.toStringAsFixed(2)})',
+          );
         }
       }
       final meta = await _drawMetaForPeriod(gameId, period);
-      _cart.add(CartItem(
-        id: const Uuid().v4(),
-        gameId: gameId,
-        gameName: gameName,
-        drawId: meta.$1,
-        drawName: meta.$2,
-        periodId: periodId,
-        drawType: periodDrawType,
-        numbers: numbers,
-        betType: betType,
-        amount: amountToUse,
-        isQuickPick: isQuickPick,
-      ));
+      _cart.add(
+        CartItem(
+          id: const Uuid().v4(),
+          gameId: gameId,
+          gameName: gameName,
+          drawId: meta.$1,
+          drawName: meta.$2,
+          periodId: periodId,
+          drawType: periodDrawType,
+          numbers: numbers,
+          betType: betType,
+          amount: amountToUse,
+          isQuickPick: isQuickPick,
+        ),
+      );
       return true;
     }
 
     // BOTH: replicate each line for both draws (with per-period trim/skip)
-    if(drawChoice == 'BOTH'){
+    if (drawChoice == 'BOTH') {
       Map<String, dynamic>? midday;
       Map<String, dynamic>? evening;
-      try { midday = await _resolveNextSellablePeriod('MIDDAY'); } catch (_) {}
-      try { evening = await _resolveNextSellablePeriod('EVENING'); } catch (_) {}
-      if (midday == null && evening == null) throw Exception('لا توجد فترة مفتوحة للبيع الآن');
-      if (midday == null) throw Exception('الصباحي مغلق أو انتهى — Both غير متاح. العب المسائي فقط');
-      if (evening == null) throw Exception('المسائي مغلق أو انتهى — Both غير متاح. العب الصباحي فقط');
-      final targets = [midday, evening]..sort((a, b) => (a['drawTime'] as int).compareTo(b['drawTime'] as int));
+      try {
+        midday = await _resolveNextSellablePeriod('MIDDAY');
+      } catch (_) {}
+      try {
+        evening = await _resolveNextSellablePeriod('EVENING');
+      } catch (_) {}
+      if (midday == null && evening == null)
+        throw Exception('لا توجد فترة مفتوحة للبيع الآن');
+      if (midday == null)
+        throw Exception(
+          'الصباحي مغلق أو انتهى — Both غير متاح. العب المسائي فقط',
+        );
+      if (evening == null)
+        throw Exception(
+          'المسائي مغلق أو انتهى — Both غير متاح. العب الصباحي فقط',
+        );
+      final targets = [
+        midday,
+        evening,
+      ]..sort((a, b) => (a['drawTime'] as int).compareTo(b['drawTime'] as int));
       int added = 0;
-      for(final l in source){
-        final numbers = (l['numbers'] as String).split(',').map((e)=> e.trim()).where((e)=> e.isNotEmpty).toList();
+      for (final l in source) {
+        final numbers = (l['numbers'] as String)
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
         final betType = l['betType'] as String;
         final amountPerDraw = (l['amount'] as num).toDouble();
-        for(final tp in targets){
+        for (final tp in targets) {
           final ok = await tryAddOne(
             period: tp,
             gameId: l['gameId'] as String,
@@ -1061,19 +1372,34 @@ class AppState extends ChangeNotifier {
             requested: amountPerDraw,
             isQuickPick: (l['isQuickPick'] ?? 0) == 1,
           );
-          if(ok) added++;
+          if (ok) added++;
         }
       }
       notifyListeners();
-      if (added == 0) throw Exception('كل الأرقام في الفاتورة وصلت للحد الأقصى — لا شيء يمكن نسخه. المحذوف: ${skipped.join(' | ')}');
-      return {'added': added, 'skipped': skipped, 'trimmed': trimmed, 'skippedCount': skipped.length, 'trimmedCount': trimmed.length};
+      if (added == 0)
+        throw Exception(
+          'كل الأرقام في الفاتورة وصلت للحد الأقصى — لا شيء يمكن نسخه. المحذوف: ${skipped.join(' | ')}',
+        );
+      return {
+        'added': added,
+        'skipped': skipped,
+        'trimmed': trimmed,
+        'skippedCount': skipped.length,
+        'trimmedCount': trimmed.length,
+      };
     }
     // MIDDAY or EVENING — always a fresh target period, never the source ticket's closed period
-    if(drawChoice == 'MIDDAY' || drawChoice == 'EVENING' || drawChoice == 'MORNING'){
+    if (drawChoice == 'MIDDAY' ||
+        drawChoice == 'EVENING' ||
+        drawChoice == 'MORNING') {
       final targetPeriod = await _resolveNextSellablePeriod(drawChoice);
       int added = 0;
-      for(final l in source){
-        final numbers = (l['numbers'] as String).split(',').map((e)=> e.trim()).where((e)=> e.isNotEmpty).toList();
+      for (final l in _dedupeLinesForSinglePeriod(source)) {
+        final numbers = (l['numbers'] as String)
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
         final ok = await tryAddOne(
           period: targetPeriod,
           gameId: l['gameId'] as String,
@@ -1083,29 +1409,49 @@ class AppState extends ChangeNotifier {
           requested: (l['amount'] as num).toDouble(),
           isQuickPick: (l['isQuickPick'] ?? 0) == 1,
         );
-        if(ok) added++;
+        if (ok) added++;
       }
       notifyListeners();
-      if (added == 0) throw Exception('كل الأرقام في الفاتورة وصلت للحد الأقصى في ${targetPeriod['id']} — لا شيء يمكن نسخه. المحذوف: ${skipped.join(' | ')}');
-      return {'added': added, 'skipped': skipped, 'trimmed': trimmed, 'skippedCount': skipped.length, 'trimmedCount': trimmed.length};
+      if (added == 0)
+        throw Exception(
+          'كل الأرقام في الفاتورة وصلت للحد الأقصى في ${targetPeriod['id']} — لا شيء يمكن نسخه. المحذوف: ${skipped.join(' | ')}',
+        );
+      return {
+        'added': added,
+        'skipped': skipped,
+        'trimmed': trimmed,
+        'skippedCount': skipped.length,
+        'trimmedCount': trimmed.length,
+      };
     }
     // AUTO: keep the same draw type as the source ticket, but move it to the next sellable period
     int added = 0;
+    final autoSeen = <String>{};
     for (final l in source) {
-      final numbersRaw = (l['numbers'] as String).split(',').map((e)=> e.trim()).where((e)=> e.isNotEmpty).toList();
+      final numbersRaw = (l['numbers'] as String)
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
       String inferred = _normalizeDrawType(l['drawType'] as String?);
       if (inferred != 'MIDDAY' && inferred != 'EVENING') {
         inferred = _drawTypeFromPeriodId(l['periodId'] as String?);
       }
       if (inferred != 'MIDDAY' && inferred != 'EVENING') {
         final name = (l['drawName'] as String?) ?? '';
-        if (name.contains('Evening') || name.contains('مسائ')) inferred = 'EVENING';
-        else if (name.contains('Midday') || name.contains('Morning') || name.contains('صباح')) inferred = 'MIDDAY';
+        if (name.contains('Evening') || name.contains('مسائ'))
+          inferred = 'EVENING';
+        else if (name.contains('Midday') ||
+            name.contains('Morning') ||
+            name.contains('صباح'))
+          inferred = 'MIDDAY';
       }
       if (inferred != 'MIDDAY' && inferred != 'EVENING') {
         inferred = 'MIDDAY';
       }
       final target = await _resolveNextSellablePeriod(inferred);
+      final dedupeKey = '${target['id']}|${_replayPlayKey(l)}';
+      if (!autoSeen.add(dedupeKey)) continue;
       final ok = await tryAddOne(
         period: target,
         gameId: l['gameId'] as String,
@@ -1115,11 +1461,20 @@ class AppState extends ChangeNotifier {
         requested: (l['amount'] as num).toDouble(),
         isQuickPick: (l['isQuickPick'] ?? 0) == 1,
       );
-      if(ok) added++;
+      if (ok) added++;
     }
     notifyListeners();
-    if (added == 0) throw Exception('كل الأرقام في الفاتورة وصلت للحد الأقصى — لا شيء يمكن نسخه. المحذوف: ${skipped.join(' | ')}');
-    return {'added': added, 'skipped': skipped, 'trimmed': trimmed, 'skippedCount': skipped.length, 'trimmedCount': trimmed.length};
+    if (added == 0)
+      throw Exception(
+        'كل الأرقام في الفاتورة وصلت للحد الأقصى — لا شيء يمكن نسخه. المحذوف: ${skipped.join(' | ')}',
+      );
+    return {
+      'added': added,
+      'skipped': skipped,
+      'trimmed': trimmed,
+      'skippedCount': skipped.length,
+      'trimmedCount': trimmed.length,
+    };
   }
 
   /// Move every cart line to the next sellable Midday or Evening period.
@@ -1142,19 +1497,21 @@ class AppState extends ChangeNotifier {
           amount: e.amount,
         );
         final meta = await _drawMetaForPeriod(e.gameId, target);
-        _cart.add(CartItem(
-          id: e.id,
-          gameId: e.gameId,
-          gameName: e.gameName,
-          drawId: meta.$1,
-          drawName: meta.$2,
-          periodId: periodId,
-          drawType: normalized,
-          numbers: e.numbers,
-          betType: e.betType,
-          amount: e.amount,
-          isQuickPick: e.isQuickPick,
-        ));
+        _cart.add(
+          CartItem(
+            id: e.id,
+            gameId: e.gameId,
+            gameName: e.gameName,
+            drawId: meta.$1,
+            drawName: meta.$2,
+            periodId: periodId,
+            drawType: normalized,
+            numbers: e.numbers,
+            betType: e.betType,
+            amount: e.amount,
+            isQuickPick: e.isQuickPick,
+          ),
+        );
       }
     } catch (err) {
       _cart
@@ -1185,12 +1542,13 @@ class AppState extends ChangeNotifier {
     final existing = await db.getOpenCashSession(_currentUser!['id']);
     if (existing != null) return;
     final id = const Uuid().v4();
+    final now = DateTime.now().millisecondsSinceEpoch;
     await db.insertCashSession({
       'id': id,
       'operatorId': _currentUser!['id'],
       'openingAmount': amount,
       'closingAmount': null,
-      'openedAt': DateTime.now().millisecondsSinceEpoch,
+      'openedAt': now,
       'closedAt': null,
       'status': 'open',
     });
@@ -1201,7 +1559,7 @@ class AppState extends ChangeNotifier {
       'direction': 'in',
       'description': 'Opening cash',
       'operatorId': _currentUser!['id'],
-      'createdAt': DateTime.now().millisecondsSinceEpoch,
+      'createdAt': now,
       'ticketId': null,
     });
     _openingCash = amount;
@@ -1213,7 +1571,11 @@ class AppState extends ChangeNotifier {
     final sess = await db.getOpenCashSession(_currentUser!['id']);
     if (sess == null) return 0;
     final cashNow = await computeCashBalance();
-    await db.closeCashSession(sess['id'], cashNow, DateTime.now().millisecondsSinceEpoch);
+    await db.closeCashSession(
+      sess['id'],
+      cashNow,
+      DateTime.now().millisecondsSinceEpoch,
+    );
     _openingCash = 0;
     notifyListeners();
     return cashNow;
@@ -1221,14 +1583,28 @@ class AppState extends ChangeNotifier {
 
   Future<double> computeCashBalance({String? operatorId}) async {
     final op = operatorId ?? _currentUser?['id'] as String?;
-    final inSum = await db.sumCash('in', operatorId: op);
-    final outSum = await db.sumCash('out', operatorId: op);
-    return inSum - outSum;
+    // Cash is per session: start from the current opening float (or the last
+    // closing balance), then add only movements made after that boundary.
+    final session = op != null ? await db.getOpenCashSession(op) : null;
+    final lastClosed = (session == null && op != null)
+        ? await db.getLastClosedCashSession(op)
+        : null;
+    final base =
+        session?['openingAmount'] as num? ??
+        lastClosed?['closingAmount'] as num? ??
+        0;
+    final since =
+        session?['openedAt'] as int? ?? lastClosed?['closedAt'] as int? ?? 0;
+    final inSum = await db.sumCashSince('in', since, operatorId: op);
+    final outSum = await db.sumCashSince('out', since, operatorId: op);
+    return base.toDouble() + inSum - outSum;
   }
 
   Future<double> computeGeneralBalance({String? operatorId}) async {
     final op = operatorId ?? _currentUser?['id'] as String?;
-    final rows = op != null ? await db.getBalanceMovementsByOperator(op) : await db.getBalanceMovements();
+    final rows = op != null
+        ? await db.getBalanceMovementsByOperator(op)
+        : await db.getBalanceMovements();
     if (op != null && rows.isEmpty) {}
     double bal = 0;
     for (final r in rows) {
@@ -1245,7 +1621,10 @@ class AppState extends ChangeNotifier {
       for (final r in global) {
         if (r['operatorId'] != op) continue;
         final amt = (r['amount'] as num).toDouble();
-        if (r['direction'] == 'credit' || r['direction'] == 'in') gbal += amt; else gbal -= amt;
+        if (r['direction'] == 'credit' || r['direction'] == 'in')
+          gbal += amt;
+        else
+          gbal -= amt;
       }
       return gbal;
     }
@@ -1263,13 +1642,17 @@ class AppState extends ChangeNotifier {
     double bal = 0;
     for (final r in rows) {
       final amt = (r['amount'] as num).toDouble();
-      if (r['direction'] == 'credit' || r['direction'] == 'in') bal += amt; else bal -= amt;
+      if (r['direction'] == 'credit' || r['direction'] == 'in')
+        bal += amt;
+      else
+        bal -= amt;
     }
     return bal;
   }
 
   void _ensureNotExpired() {
-    if (isSessionExpired) throw Exception('Session expired — please login again');
+    if (isSessionExpired)
+      throw Exception('Session expired — please login again');
   }
 
   bool get isAdmin => _currentUser?['role'] == 'admin';
@@ -1292,49 +1675,70 @@ class AppState extends ChangeNotifier {
     if (drawId != null) {
       final draw = await db.getDrawById(drawId);
       if (draw != null) {
-        if (draw['status'] == 'closed') throw Exception('Draw is closed — sales blocked');
+        if (draw['status'] == 'closed')
+          throw Exception('Draw is closed — sales blocked');
         final drawTime = draw['drawTime'] as int;
         final now = DateTime.now().millisecondsSinceEpoch;
         if (now > drawTime - 5 * 60 * 1000 && now < drawTime + 60 * 60 * 1000) {
           final win = draw['winningNumbers'] as String?;
           if (win == null || win.isEmpty) {
-            if (now >= drawTime - 5 * 60 * 1000) throw Exception('Sales closed — draw cutoff (5 min before)');
+            if (now >= drawTime - 5 * 60 * 1000)
+              throw Exception('Sales closed — draw cutoff (5 min before)');
           }
         }
         for (final d in numbers) {
-          if (!RegExp(r'^[0-9]$').hasMatch(d)) throw Exception('Digits must be 0-9');
+          if (!RegExp(r'^[0-9]$').hasMatch(d))
+            throw Exception('Digits must be 0-9');
         }
         if (gameId == 'g_numbers') {
-          if (numbers.length != 3 && numbers.length != 4) throw Exception('Numbers requires 3 or 4 digits');
+          if (numbers.length != 3 && numbers.length != 4)
+            throw Exception('Numbers requires 3 or 4 digits');
         } else if (gameId == 'g_winz') {
-          if (numbers.length != 4) throw Exception('Win 4 requires exactly 4 digits');
+          if (numbers.length != 4)
+            throw Exception('Win 4 requires exactly 4 digits');
         }
         final btNorm = _normBet(betType);
         final allSame = numbers.isNotEmpty && numbers.toSet().length == 1;
         final isBoxNorm = btNorm == 'box';
-        if (allSame && (isBoxNorm || _isStraightBoxBet(btNorm) || _isComboBet(btNorm))) {
-          throw Exception('الأرقام المتطابقة مثل ${numbers.join()} مسموحة فقط في Straight — غير مسموحة في Box / ST/BOX / Combo');
+        if (allSame &&
+            (isBoxNorm || _isStraightBoxBet(btNorm) || _isComboBet(btNorm))) {
+          throw Exception(
+            'الأرقام المتطابقة مثل ${numbers.join()} مسموحة فقط في Straight — غير مسموحة في Box / ST/BOX / Combo',
+          );
         }
         if (_isComboBet(btNorm)) {
           final combos = _comboCount(numbers);
-          if (combos <= 1) throw Exception('Combo not valid for repeating digits like ${numbers.join()}');
+          if (combos <= 1)
+            throw Exception(
+              'Combo not valid for repeating digits like ${numbers.join()}',
+            );
           if (amount < 0.5 - 1e-9) throw Exception('Combo min \$0.50');
-          if (amount > combos * 10 + 1e-9) throw Exception('Combo max \$${(combos * 10).toStringAsFixed(2)}');
+          if (amount > combos * 10 + 1e-9)
+            throw Exception('Combo max \$${(combos * 10).toStringAsFixed(2)}');
           if ((amount * 100).round() % 50 != 0) {
-            throw Exception('Amount must be \$0.50 steps — e.g. \$0.50, \$1.00, \$1.50');
+            throw Exception(
+              'Amount must be \$0.50 steps — e.g. \$0.50, \$1.00, \$1.50',
+            );
           }
         } else if (_isStraightBoxBet(btNorm)) {
-          if (amount < 0.5 - 1e-9) throw Exception('Straight/Box (All) min \$0.50');
+          if (amount < 0.5 - 1e-9)
+            throw Exception('Straight/Box (All) min \$0.50');
           final maxSB = numbers.length == 3 ? 50 : 25;
-          if (amount > maxSB + 1e-9) throw Exception('Amount \$0.50 - \$$maxSB for Straight/Box');
-          if ((amount * 100).round() % 50 != 0) throw Exception('Amount must be \$0.50 steps');
+          if (amount > maxSB + 1e-9)
+            throw Exception('Amount \$0.50 - \$$maxSB for Straight/Box');
+          if ((amount * 100).round() % 50 != 0)
+            throw Exception('Amount must be \$0.50 steps');
         } else if (isBoxNorm) {
-          if (amount < 0.5 || amount > 50) throw Exception('Amount \$0.50 - \$50.00 for Box');
-          if ((amount * 100).round() % 50 != 0) throw Exception('Amount must be \$0.50 steps');
+          if (amount < 0.5 || amount > 50)
+            throw Exception('Amount \$0.50 - \$50.00 for Box');
+          if ((amount * 100).round() % 50 != 0)
+            throw Exception('Amount must be \$0.50 steps');
         } else {
           final maxStraight = numbers.length == 3 ? 100.0 : 10.0;
-          if (amount < 0.5 || amount > maxStraight) throw Exception('Amount \$0.50 - \$$maxStraight for Straight');
-          if ((amount * 100).round() % 50 != 0) throw Exception('Amount must be \$0.50 steps');
+          if (amount < 0.5 || amount > maxStraight)
+            throw Exception('Amount \$0.50 - \$$maxStraight for Straight');
+          if ((amount * 100).round() % 50 != 0)
+            throw Exception('Amount must be \$0.50 steps');
         }
       }
     }
@@ -1408,30 +1812,103 @@ class AppState extends ChangeNotifier {
     _ensureNotExpired();
     final t = await db.getTicketById(ticketId);
     if (t == null) return false;
-    if (t['status'] == 'paid') return false;
+    if (t['status'] == 'paid' || t['status'] == 'cancelled') return false;
+
+    // Never trust a caller-supplied (possibly stale) amount. The stored
+    // amount was computed by validateTicket at the time of the last check.
+    final amount = (t['prizeAmount'] as num?)?.toDouble() ?? prize;
+    if (amount <= 0) return false;
+
     final now = DateTime.now().millisecondsSinceEpoch;
-    await db.updateTicketStatus(ticketId, 'paid', prizeAmount: prize, paidAt: now, paidBy: _currentUser!['username']);
+    // Reserve the payout atomically: a deterministic ledger id makes any
+    // second attempt (double tap, race, stale UI) fail instead of paying twice.
+    final reserved = await db.insertPayoutLedger(
+      ticketId: ticketId,
+      amount: amount,
+      operatorId: _currentUser!['id'] as String,
+      createdAt: now,
+    );
+    if (!reserved) return false;
+
+    await db.transaction(() async {
+      await db.updateTicketStatus(
+        ticketId,
+        'paid',
+        prizeAmount: amount,
+        paidAt: now,
+        paidBy: _currentUser!['username'] as String,
+      );
+      await db.insertBalanceMovement({
+        'id': const Uuid().v4(),
+        'type': 'payout',
+        'amount': amount,
+        'direction': 'debit',
+        'description': 'Payout $ticketId',
+        'operatorId': _currentUser!['id'],
+        'createdAt': now,
+        'ticketId': ticketId,
+      });
+    });
+    // Audit every cash movement out of the drawer.
+    try {
+      await db.insertAuditLog({
+        'id': 'audit_${DateTime.now().microsecondsSinceEpoch}',
+        'user': _currentUser!['username'],
+        'action': 'PRIZE_PAID',
+        'periodId': null,
+        'oldValue': t['status']?.toString(),
+        'newValue': 'paid $amount',
+        'timestamp': now,
+        'reason': 'Prize payout for ticket $ticketId',
+      });
+    } catch (_) {}
+    notifyListeners();
+    return true;
+  }
+
+  /// Reverse a payout made under a result that was later corrected.
+  /// Returns true if a payout existed and was reversed.
+  Future<bool> reversePayout(String ticketId, String reason) async {
+    final amount = await db.getPayoutAmountForTicket(ticketId);
+    if (amount <= 0) return false;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final t = await db.getTicketById(ticketId);
+    await db.releasePayoutLockForTicket(ticketId, now);
     await db.insertCashLedger({
-      'id': const Uuid().v4(),
-      'type': 'payout',
-      'amount': prize,
-      'direction': 'out',
-      'description': 'Prize payout for $ticketId',
-      'operatorId': _currentUser!['id'],
+      'id': 'reversal_${ticketId}_$now',
+      'type': 'payout_reversal',
+      'amount': amount,
+      'direction': 'in',
+      'description': 'Reversal of payout for $ticketId — $reason',
+      'operatorId': _currentUser?['id'] ?? 'system',
       'createdAt': now,
       'ticketId': ticketId,
     });
     await db.insertBalanceMovement({
-      'id': const Uuid().v4(),
-      'type': 'payout',
-      'amount': prize,
-      'direction': 'debit',
-      'description': 'Payout $ticketId',
-      'operatorId': _currentUser!['id'],
+      'id': 'reversal_${ticketId}_${now}_b',
+      'type': 'payout_reversal',
+      'amount': amount,
+      'direction': 'credit',
+      'description': 'Reversal of payout for $ticketId — $reason',
+      'operatorId': _currentUser?['id'] ?? 'system',
       'createdAt': now,
       'ticketId': ticketId,
     });
-    notifyListeners();
+    if (t != null) {
+      await db.updateTicketStatus(ticketId, 'active', prizeAmount: 0);
+    }
+    try {
+      await db.insertAuditLog({
+        'id': 'audit_${DateTime.now().microsecondsSinceEpoch}',
+        'user': _currentUser?['username'] ?? 'system',
+        'action': 'PAYOUT_REVERSED',
+        'periodId': null,
+        'oldValue': t?['status']?.toString(),
+        'newValue': 'active',
+        'timestamp': now,
+        'reason': 'Reversal for ticket $ticketId: $reason',
+      });
+    } catch (_) {}
     return true;
   }
 
@@ -1443,27 +1920,41 @@ class AppState extends ChangeNotifier {
     if (ticket == null) throw Exception('Ticket not found');
     if (ticket['status'] == 'paid') throw Exception('Already paid');
     if (ticket['status'] == 'cancelled') throw Exception('Already cancelled');
-    if (ticket['status'] == 'winning') throw Exception('Winning ticket cannot be cancelled');
+    if (ticket['status'] == 'winning')
+      throw Exception('Winning ticket cannot be cancelled');
     final lines = await db.getTicketLines(ticketId);
-    final activeLines = lines.where((l) => (l['periodStatus'] as String?) != 'cancelled' && (l['winningStatus'] as String?) != 'void').toList();
+    final activeLines = lines
+        .where(
+          (l) =>
+              (l['periodStatus'] as String?) != 'cancelled' &&
+              (l['winningStatus'] as String?) != 'void',
+        )
+        .toList();
     if (activeLines.isEmpty) throw Exception('No active plays to cancel');
     // cutoff check on first active line (all same cutoff, but check each)
     for (final l in activeLines) {
       final periodId = l['periodId'] as String?;
       if (periodId != null) {
         final p = await db.getPeriodById(periodId);
-        if (p != null && p['result'] != null && (p['result'] as String).isNotEmpty) {
-          throw Exception('Cannot cancel — result already published for $periodId');
+        if (p != null &&
+            p['result'] != null &&
+            (p['result'] as String).isNotEmpty) {
+          throw Exception(
+            'Cannot cancel — result already published for $periodId',
+          );
         }
         if (p != null) {
           final now = DateTime.now().millisecondsSinceEpoch;
-          if (now >= (p['salesCloseTime'] as int)) throw Exception('Sales closed for $periodId');
+          if (now >= (p['salesCloseTime'] as int))
+            throw Exception('Sales closed for $periodId');
         }
       }
       final drawId = l['drawId'] as String?;
       if (drawId != null && (l['periodId'] == null)) {
         final d = await db.getDrawById(drawId);
-        if (d != null && d['winningNumbers'] != null && (d['winningNumbers'] as String).toString().isNotEmpty) {
+        if (d != null &&
+            d['winningNumbers'] != null &&
+            (d['winningNumbers'] as String).toString().isNotEmpty) {
           throw Exception('Winning number already set');
         }
       }
@@ -1481,7 +1972,8 @@ class AppState extends ChangeNotifier {
       'type': 'cancel',
       'amount': totalRefund,
       'direction': 'out',
-      'description': 'Cancel ticket $ticketId — ${activeLines.length} plays voided',
+      'description':
+          'Cancel ticket $ticketId — ${activeLines.length} plays voided',
       'operatorId': _currentUser!['id'],
       'createdAt': nowMs,
       'ticketId': ticketId,
@@ -1502,20 +1994,28 @@ class AppState extends ChangeNotifier {
 
   /// Cancel a single play (line) inside an invoice before draw cutoff.
   /// Returns refund amount. Throws if not allowed (already closed / winning etc).
-  Future<double> cancelTicketLine({required String ticketId, required String lineId}) async {
+  Future<double> cancelTicketLine({
+    required String ticketId,
+    required String lineId,
+  }) async {
     if (_currentUser == null) throw Exception('Not logged in');
     _ensureNotExpired();
     final ticket = await db.getTicketById(ticketId);
     if (ticket == null) throw Exception('Ticket not found');
-    if (ticket['status'] == 'paid') throw Exception('Ticket already paid — cannot void');
-    if (ticket['status'] == 'cancelled') throw Exception('Ticket already cancelled');
+    if (ticket['status'] == 'paid')
+      throw Exception('Ticket already paid — cannot void');
+    if (ticket['status'] == 'cancelled')
+      throw Exception('Ticket already cancelled');
     // winning tickets cannot be partially voided (already decided)
-    if (ticket['status'] == 'winning') throw Exception('Winning ticket — cannot void lines after result');
+    if (ticket['status'] == 'winning')
+      throw Exception('Winning ticket — cannot void lines after result');
 
     final line = await db.getTicketLineById(lineId);
     if (line == null) throw Exception('Play not found');
-    if ((line['ticketId'] as String) != ticketId) throw Exception('Line does not belong to ticket');
-    if ((line['periodStatus'] as String?) == 'cancelled' || (line['winningStatus'] as String?) == 'void') {
+    if ((line['ticketId'] as String) != ticketId)
+      throw Exception('Line does not belong to ticket');
+    if ((line['periodStatus'] as String?) == 'cancelled' ||
+        (line['winningStatus'] as String?) == 'void') {
       throw Exception('Play already cancelled');
     }
 
@@ -1526,11 +2026,16 @@ class AppState extends ChangeNotifier {
       final p = await db.getPeriodById(periodId);
       if (p != null) {
         if (p['result'] != null && (p['result'] as String).isNotEmpty) {
-          throw Exception('Cannot void — result already published for $periodId');
+          throw Exception(
+            'Cannot void — result already published for $periodId',
+          );
         }
         final now = DateTime.now().millisecondsSinceEpoch;
         final close = p['salesCloseTime'] as int;
-        if (now >= close) throw Exception('Sales closed for $periodId — cannot void after cutoff');
+        if (now >= close)
+          throw Exception(
+            'Sales closed for $periodId — cannot void after cutoff',
+          );
         if (p['status'] == 'RESULT_PUBLISHED' || p['status'] == 'COMPLETED') {
           throw Exception('Draw $periodId already closed');
         }
@@ -1539,7 +2044,8 @@ class AppState extends ChangeNotifier {
     if (drawId != null) {
       final d = await db.getDrawById(drawId);
       if (d != null) {
-        if (d['winningNumbers'] != null && (d['winningNumbers'] as String).toString().isNotEmpty) {
+        if (d['winningNumbers'] != null &&
+            (d['winningNumbers'] as String).toString().isNotEmpty) {
           throw Exception('Cannot void — winning number already set');
         }
         final dt = d['drawTime'] as int;
@@ -1563,7 +2069,8 @@ class AppState extends ChangeNotifier {
       'type': 'cancel',
       'amount': refund,
       'direction': 'out',
-      'description': 'Void play ${line['numbers']} ${line['betType']} — ticket $ticketId',
+      'description':
+          'Void play ${line['numbers']} ${line['betType']} — ticket $ticketId',
       'operatorId': _currentUser!['id'],
       'createdAt': nowMs,
       'ticketId': ticketId,
@@ -1644,7 +2151,12 @@ class AppState extends ChangeNotifier {
     if (ticketDigits.isEmpty || winningDigits.isEmpty) return 0;
     if (ticketDigits.length != winningDigits.length) return 0;
     final n = ticketDigits.length;
-    final bt = betType.trim().toLowerCase().replaceAll('-', '/').replaceAll('_', '/').replaceAll(' ', '');
+    final bt = betType
+        .trim()
+        .toLowerCase()
+        .replaceAll('-', '/')
+        .replaceAll('_', '/')
+        .replaceAll(' ', '');
 
     final numbersStraight = _mult(cfg, 'numbers_straight', 500);
     final numbersBox3Way = _mult(cfg, 'numbers_box_3way', 160);
@@ -1701,12 +2213,23 @@ class AppState extends ChangeNotifier {
       return wagerPerCombo * numbersStraight;
     }
     // Straight/Box and All —    (  Straight   Box) — also handles ST/BOX (st/box)
-    if (bt == 'straight/box' || bt == 'straightbox' || bt == 'str/box' || bt == 'strbox' || bt == 'st/box' || bt == 'stbox' || bt == 'all' || bt == 'all/box' || bt == 'all/straight' || (bt.contains('straight') && bt.contains('box'))) {
+    if (bt == 'straight/box' ||
+        bt == 'straightbox' ||
+        bt == 'str/box' ||
+        bt == 'strbox' ||
+        bt == 'st/box' ||
+        bt == 'stbox' ||
+        bt == 'all' ||
+        bt == 'all/box' ||
+        bt == 'all/straight' ||
+        (bt.contains('straight') && bt.contains('box'))) {
       if (n == 3) {
         final t = _boxType3(ticketDigits);
         if (t == 'triple') return isExact ? amount * numbersStraight * 0.5 : 0;
         final boxPrizePerDollar = t == '3way' ? numbersBox3Way : numbersBox6Way;
-        if (isExact) return amount * 0.5 * numbersStraight + amount * 0.5 * boxPrizePerDollar;
+        if (isExact)
+          return amount * 0.5 * numbersStraight +
+              amount * 0.5 * boxPrizePerDollar;
         if (isSortedEqual) return amount * 0.5 * boxPrizePerDollar;
         return 0;
       }
@@ -1714,18 +2237,24 @@ class AppState extends ChangeNotifier {
         final t = _boxType4(ticketDigits);
         if (t == '4ofKind') return isExact ? amount * win4Straight * 0.5 : 0;
         double boxPerDollar;
-        if (t == '4way') boxPerDollar = win4Box4Way;
-        else if (t == '6way') boxPerDollar = win4Box6Way;
-        else if (t == '12way') boxPerDollar = win4Box12Way;
-        else boxPerDollar = win4Box24Way;
-        if (isExact) return amount * 0.5 * win4Straight + amount * 0.5 * boxPerDollar;
+        if (t == '4way')
+          boxPerDollar = win4Box4Way;
+        else if (t == '6way')
+          boxPerDollar = win4Box6Way;
+        else if (t == '12way')
+          boxPerDollar = win4Box12Way;
+        else
+          boxPerDollar = win4Box24Way;
+        if (isExact)
+          return amount * 0.5 * win4Straight + amount * 0.5 * boxPerDollar;
         if (isSortedEqual) return amount * 0.5 * boxPerDollar;
         return 0;
       }
     }
     if (bt == 'frontpair' || bt == 'front/pair' || bt == 'pairfront') {
       if (n != 3) return 0;
-      if (ticketDigits[0] == winningDigits[0] && ticketDigits[1] == winningDigits[1]) {
+      if (ticketDigits[0] == winningDigits[0] &&
+          ticketDigits[1] == winningDigits[1]) {
         final perDollar = _mult(cfg, 'numbers_front_pair', 50);
         return amount * perDollar;
       }
@@ -1733,15 +2262,19 @@ class AppState extends ChangeNotifier {
     }
     if (bt == 'backpair' || bt == 'back/pair' || bt == 'pairback') {
       if (n != 3) return 0;
-      if (ticketDigits[1] == winningDigits[1] && ticketDigits[2] == winningDigits[2]) {
+      if (ticketDigits[1] == winningDigits[1] &&
+          ticketDigits[2] == winningDigits[2]) {
         final perDollar = _mult(cfg, 'numbers_back_pair', 50);
         return amount * perDollar;
       }
       return 0;
     }
-    if (bt == 'winz/std' || bt == 'winzstd') return isExact ? amount * winzStd : 0;
-    if (bt == 'winz/jackpot' || bt == 'winzjackpot') return isExact ? amount * winzJack : 0;
-    if (bt == 'winz/instant' || bt == 'winzinstant') return isExact ? amount * winzInstant : 0;
+    if (bt == 'winz/std' || bt == 'winzstd')
+      return isExact ? amount * winzStd : 0;
+    if (bt == 'winz/jackpot' || bt == 'winzjackpot')
+      return isExact ? amount * winzJack : 0;
+    if (bt == 'winz/instant' || bt == 'winzinstant')
+      return isExact ? amount * winzInstant : 0;
     if (n == 3) return isExact ? amount * numbersStraight : 0;
     if (n == 4) return isExact ? amount * win4Straight : 0;
     return isExact ? amount * numbersStraight : 0;
@@ -1752,19 +2285,37 @@ class AppState extends ChangeNotifier {
   Future<Map<String, dynamic>> validateTicket(String code) async {
     code = code.trim().replaceAll(RegExp(r'[\r\n]'), '').trim();
     // Extract numeric ticket id if QR contains extra text
-    if(code.contains(' ') || code.contains(':') || code.contains('|')){
-      final parts = code.split(RegExp(r'[^A-Za-z0-9]+')).where((p)=> p.isNotEmpty).toList();
-      final numeric = parts.where((p)=> RegExp(r'^\d{4,10}$').hasMatch(p)).toList();
-      if(numeric.isNotEmpty) code = numeric.last;
-      else if(parts.isNotEmpty) code = parts.last;
+    if (code.contains(' ') || code.contains(':') || code.contains('|')) {
+      final parts = code
+          .split(RegExp(r'[^A-Za-z0-9]+'))
+          .where((p) => p.isNotEmpty)
+          .toList();
+      final numeric = parts
+          .where((p) => RegExp(r'^\d{4,10}$').hasMatch(p))
+          .toList();
+      if (numeric.isNotEmpty)
+        code = numeric.last;
+      else if (parts.isNotEmpty)
+        code = parts.last;
     }
     final t = await db.getTicketByBarcode(code);
     if (t == null) return {'found': false};
     if (t['status'] == 'cancelled') {
-      return {'found': true, 'ticket': t, 'isWinning': false, 'prize': 0, 'cancelled': true};
+      return {
+        'found': true,
+        'ticket': t,
+        'isWinning': false,
+        'prize': 0,
+        'cancelled': true,
+      };
     }
     String _toDigits(String raw) => raw.replaceAll(',', '').replaceAll(' ', '');
-    Future<String?> _resolveWinning(List<String> Function(String) digitsFromWinStr, {String? periodId, String? drawId, int? nDigits}) async {
+    Future<String?> _resolveWinning(
+      List<String> Function(String) digitsFromWinStr, {
+      String? periodId,
+      String? drawId,
+      int? nDigits,
+    }) async {
       if (periodId != null) {
         final p = await db.getPeriodById(periodId);
         if (p != null) {
@@ -1801,19 +2352,42 @@ class AppState extends ChangeNotifier {
       }
       return null;
     }
+
     // Try multi-line first
     final lines = await db.getTicketLines(t['id']);
     if (lines.isNotEmpty) {
       final configs = await db.getAppConfig();
-      final cfg = {for (var c in configs) c['key'] as String: c['value'] as String};
+      final cfg = {
+        for (var c in configs) c['key'] as String: c['value'] as String,
+      };
       double totalPrize = 0;
       bool hasPending = false;
-      final lineDetails = <Map<String,dynamic>>[];
+      final lineDetails = <Map<String, dynamic>>[];
       for (final line in lines) {
-        final ticketDigits = (line['numbers'] as String).split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+        // Voided/cancelled plays were refunded — they must never win again.
+        if ((line['periodStatus'] as String?) == 'cancelled' ||
+            (line['winningStatus'] as String?) == 'void') {
+          lineDetails.add({
+            'line': line,
+            'prize': 0,
+            'isWinning': false,
+            'void': true,
+          });
+          continue;
+        }
+        final ticketDigits = (line['numbers'] as String)
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
         final periodId = line['periodId'] as String?;
         final drawId = line['drawId'] as String?;
-        final winStr = await _resolveWinning((s)=> s.split(''), periodId: periodId, drawId: drawId, nDigits: ticketDigits.length);
+        final winStr = await _resolveWinning(
+          (s) => s.split(''),
+          periodId: periodId,
+          drawId: drawId,
+          nDigits: ticketDigits.length,
+        );
         if (winStr == null) {
           // Determine drawStatus for pending info
           String statusInfo = 'pending';
@@ -1824,93 +2398,226 @@ class AppState extends ChangeNotifier {
             final d = await db.getDrawById(drawId);
             if (d != null) statusInfo = d['status'] as String;
           }
-          hasPending = true; lineDetails.add({'line': line, 'pending': true, 'drawStatus': statusInfo}); continue;
+          hasPending = true;
+          lineDetails.add({
+            'line': line,
+            'pending': true,
+            'drawStatus': statusInfo,
+          });
+          continue;
         }
         // ticketDigits already computed above
         // winningDigits: winStr may be "472" or "4,7,2" — handle both
-        final winningDigits = _toDigits(winStr).split('').where((e)=> e.isNotEmpty).toList();
-        if (winningDigits.isEmpty) { hasPending = true; lineDetails.add({'line': line, 'pending': true}); continue; }
+        final winningDigits = _toDigits(winStr)
+            .split('')
+            .where((e) => e.isNotEmpty)
+            .toList();
+        if (winningDigits.isEmpty) {
+          hasPending = true;
+          lineDetails.add({'line': line, 'pending': true});
+          continue;
+        }
         final amount = (line['amount'] as num).toDouble();
         final betType = (line['betType'] as String?) ?? 'Straight';
-        final prize = _calculatePrize(ticketDigits: ticketDigits, winningDigits: winningDigits, betType: betType, amount: amount, cfg: cfg);
+        final prize = _calculatePrize(
+          ticketDigits: ticketDigits,
+          winningDigits: winningDigits,
+          betType: betType,
+          amount: amount,
+          cfg: cfg,
+        );
         if (prize > 0) totalPrize += prize;
-        lineDetails.add({'line': line, 'prize': prize, 'isWinning': prize>0});
+        lineDetails.add({'line': line, 'prize': prize, 'isWinning': prize > 0});
       }
-      if (hasPending && totalPrize==0) {
+      if (hasPending && totalPrize == 0) {
         // if at least one line pending and no win yet, treat as pending
         // but if any line already winning, we still report win (partial)
       }
       final isWinning = totalPrize > 0;
       if (isWinning) {
         if (t['status'] == 'paid') {
-          return {'found': true, 'ticket': t, 'lines': lines, 'lineDetails': lineDetails, 'isWinning': true, 'prize': (t['prizeAmount'] as num?)?.toDouble() ?? totalPrize, 'alreadyPaid': true, 'totalPrize': totalPrize};
+          return {
+            'found': true,
+            'ticket': t,
+            'lines': lines,
+            'lineDetails': lineDetails,
+            'isWinning': true,
+            'prize': (t['prizeAmount'] as num?)?.toDouble() ?? totalPrize,
+            'alreadyPaid': true,
+            'totalPrize': totalPrize,
+          };
         }
         if (t['status'] == 'active' || t['status'] == 'losing') {
-          await db.updateTicketStatus(t['id'] as String, 'winning', prizeAmount: totalPrize);
+          await db.updateTicketStatus(
+            t['id'] as String,
+            'winning',
+            prizeAmount: totalPrize,
+          );
           t['status'] = 'winning';
           t['prizeAmount'] = totalPrize;
         } else if (t['status'] == 'winning' && t['prizeAmount'] == null) {
-          await db.updateTicketStatus(t['id'] as String, 'winning', prizeAmount: totalPrize);
+          await db.updateTicketStatus(
+            t['id'] as String,
+            'winning',
+            prizeAmount: totalPrize,
+          );
           t['prizeAmount'] = totalPrize;
-        } else if (t['status'] == 'winning' && (t['prizeAmount'] as num?)?.toDouble() != totalPrize) {
-          await db.updateTicketStatus(t['id'] as String, 'winning', prizeAmount: totalPrize);
+        } else if (t['status'] == 'winning' &&
+            (t['prizeAmount'] as num?)?.toDouble() != totalPrize) {
+          await db.updateTicketStatus(
+            t['id'] as String,
+            'winning',
+            prizeAmount: totalPrize,
+          );
           t['prizeAmount'] = totalPrize;
         }
         final pendingFlag = hasPending ? true : false;
-        return {'found': true, 'ticket': t, 'lines': lines, 'lineDetails': lineDetails, 'isWinning': true, 'prize': totalPrize, 'alreadyPaid': false, 'pending': pendingFlag, 'totalPrize': totalPrize};
+        return {
+          'found': true,
+          'ticket': t,
+          'lines': lines,
+          'lineDetails': lineDetails,
+          'isWinning': true,
+          'prize': totalPrize,
+          'alreadyPaid': false,
+          'pending': pendingFlag,
+          'totalPrize': totalPrize,
+        };
       } else {
         if (hasPending) {
-          return {'found': true, 'ticket': t, 'lines': lines, 'lineDetails': lineDetails, 'isWinning': false, 'prize': 0, 'pending': true, 'totalPrize': 0};
+          return {
+            'found': true,
+            'ticket': t,
+            'lines': lines,
+            'lineDetails': lineDetails,
+            'isWinning': false,
+            'prize': 0,
+            'pending': true,
+            'totalPrize': 0,
+          };
         }
         if (t['status'] == 'winning') {
-          await db.updateTicketStatus(t['id'] as String, 'losing', prizeAmount: 0);
+          await db.updateTicketStatus(
+            t['id'] as String,
+            'losing',
+            prizeAmount: 0,
+          );
           t['status'] = 'losing';
           t['prizeAmount'] = 0;
         } else if (t['status'] == 'active') {
           await db.updateTicketStatus(t['id'] as String, 'losing');
           t['status'] = 'losing';
         }
-        return {'found': true, 'ticket': t, 'lines': lines, 'lineDetails': lineDetails, 'isWinning': false, 'prize': 0, 'totalPrize': 0};
+        return {
+          'found': true,
+          'ticket': t,
+          'lines': lines,
+          'lineDetails': lineDetails,
+          'isWinning': false,
+          'prize': 0,
+          'totalPrize': 0,
+        };
       }
     }
 
     // Legacy single-line ticket
     final drawId = t['drawId'] as String?;
     if (drawId == null) {
-      return {'found': true, 'ticket': t, 'isWinning': false, 'prize': 0, 'pending': true, 'reason': 'No draw assigned'};
+      return {
+        'found': true,
+        'ticket': t,
+        'isWinning': false,
+        'prize': 0,
+        'pending': true,
+        'reason': 'No draw assigned',
+      };
     }
     final draw = await db.getDrawById(drawId);
     if (draw == null) {
-      return {'found': true, 'ticket': t, 'isWinning': false, 'prize': 0, 'pending': true, 'reason': 'Draw not found'};
+      return {
+        'found': true,
+        'ticket': t,
+        'isWinning': false,
+        'prize': 0,
+        'pending': true,
+        'reason': 'Draw not found',
+      };
     }
     final winStr = draw['winningNumbers'] as String?;
     if (winStr == null || winStr.trim().isEmpty) {
-      return {'found': true, 'ticket': t, 'isWinning': false, 'prize': 0, 'pending': true, 'drawStatus': draw['status']};
+      return {
+        'found': true,
+        'ticket': t,
+        'isWinning': false,
+        'prize': 0,
+        'pending': true,
+        'drawStatus': draw['status'],
+      };
     }
-    final ticketDigits = (t['numbers'] as String).split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-    final winningDigits = winStr.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    final ticketDigits = (t['numbers'] as String)
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    final winningDigits = winStr
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
     final amount = (t['amount'] as num).toDouble();
     final betType = (t['betType'] as String?) ?? 'Straight';
     final configs = await db.getAppConfig();
-    final cfg = {for (var c in configs) c['key'] as String: c['value'] as String};
-    final prize = _calculatePrize(ticketDigits: ticketDigits, winningDigits: winningDigits, betType: betType, amount: amount, cfg: cfg);
+    final cfg = {
+      for (var c in configs) c['key'] as String: c['value'] as String,
+    };
+    final prize = _calculatePrize(
+      ticketDigits: ticketDigits,
+      winningDigits: winningDigits,
+      betType: betType,
+      amount: amount,
+      cfg: cfg,
+    );
     final isWinning = prize > 0;
     if (isWinning) {
       if (t['status'] == 'paid') {
-        return {'found': true, 'ticket': t, 'isWinning': true, 'prize': (t['prizeAmount'] as num?)?.toDouble() ?? prize, 'alreadyPaid': true};
+        return {
+          'found': true,
+          'ticket': t,
+          'isWinning': true,
+          'prize': (t['prizeAmount'] as num?)?.toDouble() ?? prize,
+          'alreadyPaid': true,
+        };
       }
       if (t['status'] == 'active' || t['status'] == 'losing') {
-        await db.updateTicketStatus(t['id'] as String, 'winning', prizeAmount: prize);
+        await db.updateTicketStatus(
+          t['id'] as String,
+          'winning',
+          prizeAmount: prize,
+        );
         t['status'] = 'winning';
         t['prizeAmount'] = prize;
       } else if (t['status'] == 'winning' && t['prizeAmount'] == null) {
-        await db.updateTicketStatus(t['id'] as String, 'winning', prizeAmount: prize);
+        await db.updateTicketStatus(
+          t['id'] as String,
+          'winning',
+          prizeAmount: prize,
+        );
         t['prizeAmount'] = prize;
       }
-      return {'found': true, 'ticket': t, 'isWinning': true, 'prize': prize, 'alreadyPaid': false};
+      return {
+        'found': true,
+        'ticket': t,
+        'isWinning': true,
+        'prize': prize,
+        'alreadyPaid': false,
+      };
     } else {
       if (t['status'] == 'winning') {
-        await db.updateTicketStatus(t['id'] as String, 'losing', prizeAmount: 0);
+        await db.updateTicketStatus(
+          t['id'] as String,
+          'losing',
+          prizeAmount: 0,
+        );
         t['status'] = 'losing';
         t['prizeAmount'] = 0;
       } else if (t['status'] == 'active') {
@@ -1934,28 +2641,71 @@ class AppState extends ChangeNotifier {
     final winStr = winningNumbers.join('');
     if (winStr.isEmpty) throw Exception('winningNumbers empty');
     for (final d in winningNumbers) {
-      if (!RegExp(r'^[0-9]$').hasMatch(d)) throw Exception('Winning digits must be 0-9');
+      if (!RegExp(r'^[0-9]$').hasMatch(d))
+        throw Exception('Winning digits must be 0-9');
     }
-    if (winStr.length < 3 || winStr.length > 4) throw Exception('Result must be 3 or 4 digits');
+    if (winStr.length < 3 || winStr.length > 4)
+      throw Exception('Result must be 3 or 4 digits');
     final pBefore = await db.getPeriodById(periodId);
     if (pBefore == null) throw Exception('Period not found: $periodId');
     final is3 = winStr.length == 3;
     final is4 = winStr.length == 4;
-    if (is3 && pBefore['result3'] != null && (pBefore['result3'] as String).isNotEmpty && !isCorrection) {
-      throw Exception('Result 3-digit already published for $periodId: ${pBefore['result3']} — use correction');
+    if (is3 &&
+        pBefore['result3'] != null &&
+        (pBefore['result3'] as String).isNotEmpty &&
+        !isCorrection) {
+      throw Exception(
+        'Result 3-digit already published for $periodId: ${pBefore['result3']} — use correction',
+      );
     }
-    if (is4 && pBefore['result4'] != null && (pBefore['result4'] as String).isNotEmpty && !isCorrection) {
-      throw Exception('Result 4-digit already published for $periodId: ${pBefore['result4']} — use correction');
+    if (is4 &&
+        pBefore['result4'] != null &&
+        (pBefore['result4'] as String).isNotEmpty &&
+        !isCorrection) {
+      throw Exception(
+        'Result 4-digit already published for $periodId: ${pBefore['result4']} — use correction',
+      );
     }
-    // For dual, only reset lines matching this digit length? But for now reset all pending status for that length will be handled via validate.
+    // A corrected result must not leave the old winner paid while a new
+    // winner is paid as well. Reverse the affected payouts first.
+    if (isCorrection) {
+      final lines = await db.getTicketLinesByPeriod(periodId);
+      final affected = lines
+          .where(
+            (l) => (l['numbers'] as String).split(',').length == winStr.length,
+          )
+          .map((l) => l['ticketId'] as String)
+          .toSet();
+      for (final tid in affected) {
+        await reversePayout(tid, 'correction for $periodId');
+      }
+    }
     await db.resetPeriodTickets(periodId);
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     if (is3) {
-      await db.publishPeriodResult3(periodId, winStr, nowMs, _currentUser!['username'] as String, resultSource);
+      await db.publishPeriodResult3(
+        periodId,
+        winStr,
+        nowMs,
+        _currentUser!['username'] as String,
+        resultSource,
+      );
     } else if (is4) {
-      await db.publishPeriodResult4(periodId, winStr, nowMs, _currentUser!['username'] as String, resultSource);
+      await db.publishPeriodResult4(
+        periodId,
+        winStr,
+        nowMs,
+        _currentUser!['username'] as String,
+        resultSource,
+      );
     } else {
-      await db.publishPeriodResult(periodId, winStr, nowMs, _currentUser!['username'] as String, resultSource);
+      await db.publishPeriodResult(
+        periodId,
+        winStr,
+        nowMs,
+        _currentUser!['username'] as String,
+        resultSource,
+      );
     }
     // Audit
     await db.insertAuditLog({
@@ -1963,23 +2713,42 @@ class AppState extends ChangeNotifier {
       'user': _currentUser!['username'],
       'action': isCorrection ? 'RESULT_CORRECTED' : 'RESULT_PUBLISHED',
       'periodId': periodId,
-      'oldValue': is3 ? pBefore['result3']?.toString() : is4 ? pBefore['result4']?.toString() : pBefore['result']?.toString(),
+      'oldValue': is3
+          ? pBefore['result3']?.toString()
+          : is4
+          ? pBefore['result4']?.toString()
+          : pBefore['result']?.toString(),
       'newValue': winStr,
       'timestamp': nowMs,
-      'reason': isCorrection ? 'Correction $periodId ($winStr)' : 'Publish $periodId ($winStr)',
+      'reason': isCorrection
+          ? 'Correction $periodId ($winStr)'
+          : 'Publish $periodId ($winStr)',
     });
     // Auto winner evaluation for period lines
     final allLines = await db.getAllTicketLines();
-    final periodLines = allLines.where((l) => l['periodId'] == periodId).toList();
+    final periodLines = allLines
+        .where((l) => l['periodId'] == periodId)
+        .toList();
     final ticketIds = periodLines.map((l) => l['ticketId'] as String).toSet();
     final tickets = await db.getTickets();
     int winningCount = 0, losingCount = 0;
     double totalPrize = 0, totalSales = 0;
-    for (final l in periodLines) totalSales += (l['amount'] as num).toDouble();
+    for (final l in periodLines) {
+      if ((l['periodStatus'] as String?) == 'cancelled') continue;
+      totalSales += (l['amount'] as num).toDouble();
+    }
     for (final tid in ticketIds) {
-      final ticket = tickets.firstWhere((t) => t['id'] == tid, orElse: () => {});
-      if (ticket.isEmpty || ticket['status'] == 'paid' || ticket['status'] == 'cancelled') continue;
-      final res = await validateTicket(ticket['barcode'] ?? ticket['id'] as String);
+      final ticket = tickets.firstWhere(
+        (t) => t['id'] == tid,
+        orElse: () => {},
+      );
+      if (ticket.isEmpty ||
+          ticket['status'] == 'paid' ||
+          ticket['status'] == 'cancelled')
+        continue;
+      final res = await validateTicket(
+        ticket['barcode'] ?? ticket['id'] as String,
+      );
       bool isWinForPeriod = false;
       double prizeForPeriod = 0;
       if (res['lineDetails'] != null) {
@@ -1993,9 +2762,16 @@ class AppState extends ChangeNotifier {
         if (isWinForPeriod) {
           winningCount++;
           totalPrize += prizeForPeriod;
-          if (autoPay && res['alreadyPaid'] != true) await payWinningTicket(tid, (res['prize'] as num).toDouble());
+          // Pay only this period's prize, and never auto-pay a ticket that
+          // still has unsettled lines in another period (it would be marked
+          // paid and its later prize would be lost).
+          if (autoPay && res['alreadyPaid'] != true && res['pending'] != true) {
+            await payWinningTicket(tid, prizeForPeriod);
+          }
         } else if (res['pending'] != true) {
-          final has = (res['lineDetails'] as List).any((d) => (d['line'] as Map)['periodId'] == periodId);
+          final has = (res['lineDetails'] as List).any(
+            (d) => (d['line'] as Map)['periodId'] == periodId,
+          );
           if (has) losingCount++;
         }
       }
@@ -2024,10 +2800,42 @@ class AppState extends ChangeNotifier {
     if (_currentUser == null) throw Exception('Not logged in');
     _ensureNotExpired();
     if (!isAdmin) throw Exception('Only admin can set winning numbers');
-    final winStr = winningNumbers.map((e) => e.trim()).where((e) => e.isNotEmpty).join(',');
+    final winStr = winningNumbers
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .join(',');
     if (winStr.isEmpty) throw Exception('winningNumbers empty');
     for (final d in winningNumbers) {
-      if (!RegExp(r'^[0-9]$').hasMatch(d)) throw Exception('Winning digits must be 0-9');
+      if (!RegExp(r'^[0-9]$').hasMatch(d))
+        throw Exception('Winning digits must be 0-9');
+    }
+    // Replacing an existing result is a correction: reverse any payouts made
+    // under the old result so the winner of the new result can be paid once.
+    final priorDraw = await db.getDrawById(drawId);
+    final previous = (priorDraw?['winningNumbers'] as String?) ?? '';
+    if (previous.trim().isNotEmpty) {
+      final allLines = await db.getAllTicketLines();
+      final affected = allLines
+          .where(
+            (l) =>
+                l['drawId'] == drawId &&
+                (l['numbers'] as String).split(',').length ==
+                    winningNumbers.length,
+          )
+          .map((l) => l['ticketId'] as String)
+          .toSet();
+      final legacy = (await db.getTickets())
+          .where(
+            (t) =>
+                t['drawId'] == drawId &&
+                (t['numbers'] as String).split(',').length ==
+                    winningNumbers.length,
+          )
+          .map((t) => t['id'] as String)
+          .toSet();
+      for (final tid in {...affected, ...legacy}) {
+        await reversePayout(tid, 'correction for draw $drawId');
+      }
     }
     await db.resetDrawTickets(drawId);
     await db.updateDrawResult(drawId, winStr);
@@ -2035,17 +2843,35 @@ class AppState extends ChangeNotifier {
     try {
       final draw = await db.getDrawById(drawId);
       if (draw != null) {
-        final dt = DateTime.fromMillisecondsSinceEpoch(draw['drawTime'] as int);
+        final dt = MarketTimezone.wallTimeFromEpoch(
+          draw['drawTime'] as int,
+          (await db.getAppConfig()).firstWhere(
+                (c) => c['key'] == 'draw_timezone',
+                orElse: () => {'value': MarketTimezone.defaultTimezone},
+              )['value']
+              as String?,
+        );
         final name = draw['name'] as String;
         String pType = name.contains('Evening') ? 'EVENING' : 'MIDDAY';
-        if (name.toLowerCase().contains('evening')) pType = 'EVENING';
-        else if (name.toLowerCase().contains('midday') || name.toLowerCase().contains('morning')) pType = 'MIDDAY';
+        if (name.toLowerCase().contains('evening'))
+          pType = 'EVENING';
+        else if (name.toLowerCase().contains('midday') ||
+            name.toLowerCase().contains('morning'))
+          pType = 'MIDDAY';
         final pid = _periodIdForDate(dt, pType);
         final p = await db.getPeriodById(pid);
         if (p != null) {
           final plain = winningNumbers.join('');
           await db.resetPeriodTickets(pid);
-          await db.publishPeriodResult(pid, plain, DateTime.now().millisecondsSinceEpoch, _currentUser!['username'] as String, 'manual');
+          final nowMs = DateTime.now().millisecondsSinceEpoch;
+          final user = _currentUser!['username'] as String;
+          // Write the SAME result column the Winner Settings screen uses,
+          // otherwise validation keeps reading the old result3/result4.
+          if (plain.length == 3) {
+            await db.publishPeriodResult3(pid, plain, nowMs, user, 'manual');
+          } else {
+            await db.publishPeriodResult4(pid, plain, nowMs, user, 'manual');
+          }
         }
       }
     } catch (_) {}
@@ -2053,11 +2879,21 @@ class AppState extends ChangeNotifier {
     // For multi-tickets, we need to evaluate if ticket has at least one line matching this draw
     // Simpler: iterate all tickets, but validate will check its lines
     final allLines = await db.getAllTicketLines();
-    final ticketIdsForDraw = allLines.where((l)=> l['drawId']==drawId).map((l)=> l['ticketId'] as String).toSet();
+    final ticketIdsForDraw = allLines
+        .where((l) => l['drawId'] == drawId)
+        .map((l) => l['ticketId'] as String)
+        .toSet();
     // Also include legacy tickets with drawId == drawId
-    final legacyForDraw = tickets.where((t)=> t['drawId']==drawId && !ticketIdsForDraw.contains(t['id'])).map((t)=> t['id'] as String).toSet();
+    final legacyForDraw = tickets
+        .where(
+          (t) => t['drawId'] == drawId && !ticketIdsForDraw.contains(t['id']),
+        )
+        .map((t) => t['id'] as String)
+        .toSet();
     final drawTicketIds = {...ticketIdsForDraw, ...legacyForDraw};
-    final drawTickets = tickets.where((t)=> drawTicketIds.contains(t['id'])).toList();
+    final drawTickets = tickets
+        .where((t) => drawTicketIds.contains(t['id']))
+        .toList();
 
     int winningCount = 0;
     int losingCount = 0;
@@ -2065,35 +2901,55 @@ class AppState extends ChangeNotifier {
     double totalSales = 0;
     // totalSales should sum line amounts for draw, not ticket total if ticket multi-draw
     for (final tid in drawTicketIds) {
-      final lines = allLines.where((l)=> l['ticketId']==tid).toList();
+      final lines = allLines.where((l) => l['ticketId'] == tid).toList();
       if (lines.isNotEmpty) {
-        for (final l in lines.where((x)=> x['drawId']==drawId)) totalSales += (l['amount'] as num).toDouble();
+        for (final l in lines.where(
+          (x) =>
+              x['drawId'] == drawId &&
+              (x['periodStatus'] as String?) != 'cancelled',
+        )) {
+          totalSales += (l['amount'] as num).toDouble();
+        }
       } else {
-        final t = tickets.firstWhere((x)=> x['id']==tid);
+        final t = tickets.firstWhere((x) => x['id'] == tid);
         totalSales += (t['amount'] as num).toDouble();
       }
     }
 
     for (final ticket in drawTickets) {
-      if (ticket['status'] == 'paid' || ticket['status'] == 'cancelled') continue;
-      final res = await validateTicket(ticket['barcode'] ?? ticket['id'] as String);
+      if (ticket['status'] == 'paid' || ticket['status'] == 'cancelled')
+        continue;
+      final res = await validateTicket(
+        ticket['barcode'] ?? ticket['id'] as String,
+      );
       // For multi tickets, validate aggregates; we count ticket as winning if any line wins for this draw
       // Check lineDetails for this draw if multi
       bool isWinForThisDraw = false;
       double prizeForThisDraw = 0;
       if (res['lineDetails'] != null) {
         for (final d in res['lineDetails'] as List) {
-          final line = d['line'] as Map<String,dynamic>;
-          if (line['drawId'] == drawId && (d['isWinning']==true)) { isWinForThisDraw = true; prizeForThisDraw += (d['prize'] as num).toDouble(); }
+          final line = d['line'] as Map<String, dynamic>;
+          if (line['drawId'] == drawId && (d['isWinning'] == true)) {
+            isWinForThisDraw = true;
+            prizeForThisDraw += (d['prize'] as num).toDouble();
+          }
         }
         // if pending for this draw, skip counting
-        if (res['pending']==true && !isWinForThisDraw) {
+        if (res['pending'] == true && !isWinForThisDraw) {
           // need to know if lines for this draw are pending? if winStr present they wouldn't be pending
         }
-        if (isWinForThisDraw) { winningCount++; totalPrize += prizeForThisDraw; if (autoPay && res['alreadyPaid'] != true) { await payWinningTicket(ticket['id'] as String, (res['prize'] as num).toDouble()); } }
-        else if (res['pending'] != true) { // only count losing if not pending
+        if (isWinForThisDraw) {
+          winningCount++;
+          totalPrize += prizeForThisDraw;
+          if (autoPay && res['alreadyPaid'] != true && res['pending'] != true) {
+            await payWinningTicket(ticket['id'] as String, prizeForThisDraw);
+          }
+        } else if (res['pending'] != true) {
+          // only count losing if not pending
           // check if ticket has at least one line for this draw that is not pending and not winning -> losing
-          final hasLinesForDraw = (res['lineDetails'] as List).any((d)=> (d['line'] as Map)['drawId']==drawId);
+          final hasLinesForDraw = (res['lineDetails'] as List).any(
+            (d) => (d['line'] as Map)['drawId'] == drawId,
+          );
           if (hasLinesForDraw) losingCount++;
         }
       } else {
@@ -2101,9 +2957,14 @@ class AppState extends ChangeNotifier {
           winningCount++;
           totalPrize += (res['prize'] as num).toDouble();
           if (autoPay && res['alreadyPaid'] != true) {
-            await payWinningTicket(ticket['id'] as String, (res['prize'] as num).toDouble());
+            await payWinningTicket(
+              ticket['id'] as String,
+              (res['prize'] as num).toDouble(),
+            );
           }
-        } else if (res['found'] == true && res['isWinning'] == false && res['pending'] != true) {
+        } else if (res['found'] == true &&
+            res['isWinning'] == false &&
+            res['pending'] != true) {
           losingCount++;
         }
       }

@@ -1,9 +1,11 @@
 import 'dart:io';
 import 'dart:typed_data';
+
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite3;
+
 import '../data/database.dart';
 
 class BackupService {
@@ -63,15 +65,21 @@ class BackupService {
       }
     }
     String? visibleDir;
-    try { visibleDir = (await getVisibleExportDir(requestPermission: false))?.path; } catch (_) {}
+    try {
+      visibleDir = (await getVisibleExportDir(requestPermission: false))?.path;
+    } catch (_) {}
     String? internalDir;
-    try { internalDir = (await _internalBackupDir()).path; } catch (_) {}
+    try {
+      internalDir = (await _internalBackupDir()).path;
+    } catch (_) {}
     return {
       'enabled': enabled,
       'interval': interval,
       'intervalLabel': intervals[interval] ?? interval,
       'lastAt': lastAt,
-      'lastAtDate': lastAt == null ? null : DateTime.fromMillisecondsSinceEpoch(lastAt),
+      'lastAtDate': lastAt == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(lastAt),
       'lastPath': lastPath,
       'nextAt': nextAt,
       'retention': retention,
@@ -94,7 +102,8 @@ class BackupService {
   }
 
   Future<void> setInterval(String interval) async {
-    if (!intervals.containsKey(interval)) throw Exception('Invalid interval: $interval');
+    if (!intervals.containsKey(interval))
+      throw Exception('Invalid interval: $interval');
     await db.upsertConfig(keyInterval, interval, 'local');
     if (interval == 'never') {
       await db.upsertConfig(keyEnabled, '0', 'local');
@@ -142,7 +151,9 @@ class BackupService {
   }
 
   Future<void> openStorageSettings() async {
-    try { await openAppSettings(); } catch (_) {}
+    try {
+      await openAppSettings();
+    } catch (_) {}
   }
 
   Future<bool> canWritePath(String dirPath) async {
@@ -153,7 +164,8 @@ class BackupService {
 
   String suggestedFileName({String reason = 'manual'}) {
     final now = DateTime.now();
-    final ts = '${now.year}${now.month.toString().padLeft(2,'0')}${now.day.toString().padLeft(2,'0')}_${now.hour.toString().padLeft(2,'0')}${now.minute.toString().padLeft(2,'0')}${now.second.toString().padLeft(2,'0')}';
+    final ts =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
     return 'yelottery_backup_${ts}_$reason.sqlite';
   }
 
@@ -195,7 +207,9 @@ class BackupService {
   }
 
   /// مجلد مرئي يبقى بعد حذف التطبيق قدر الإمكان (Downloads/Documents)
-  Future<Directory?> getVisibleExportDir({bool requestPermission = false}) async {
+  Future<Directory?> getVisibleExportDir({
+    bool requestPermission = false,
+  }) async {
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       try {
         final downloads = await getDownloadsDirectory();
@@ -232,7 +246,11 @@ class BackupService {
     return null;
   }
 
-  Future<String?> _copyBytesToDir(Uint8List bytes, String dirPath, String fileName) async {
+  Future<String?> _copyBytesToDir(
+    Uint8List bytes,
+    String dirPath,
+    String fileName,
+  ) async {
     final dir = Directory(dirPath);
     if (!await _canWriteDir(dir)) return null;
     final dest = p.join(dir.path, fileName);
@@ -249,9 +267,12 @@ class BackupService {
   Future<Uint8List> _readDbBytes() async {
     final dbPath = await getDbPath();
     final src = File(dbPath);
-    if (!await src.exists()) throw Exception('قاعدة البيانات غير موجودة: $dbPath');
+    if (!await src.exists())
+      throw Exception('قاعدة البيانات غير موجودة: $dbPath');
     // إغلاق WAL في الملف الرئيسي — يضمن نسخة متسقة 100% بدون الحاجة لنسخ wal/shm
-    try { await db.customStatement('PRAGMA wal_checkpoint(TRUNCATE)'); } catch (_) {}
+    try {
+      await db.customStatement('PRAGMA wal_checkpoint(TRUNCATE)');
+    } catch (_) {}
     await Future.delayed(const Duration(milliseconds: 150));
     try {
       return await src.readAsBytes();
@@ -259,19 +280,30 @@ class BackupService {
       final tmp = File('$dbPath.bakcopy');
       await src.copy(tmp.path);
       final bytes = await tmp.readAsBytes();
-      try { await tmp.delete(); } catch (_) {}
+      try {
+        await tmp.delete();
+      } catch (_) {}
       return bytes;
     }
   }
 
   /// Perform a backup now. Returns the most user-visible saved path.
   /// يحفظ نسخة أساسية + نسخة مرئية + نسخة المجلد المخصص إن وُجد
-  Future<String> performBackup({String reason = 'manual', bool requestPermission = true}) async {
-    final result = await performBackupDetailed(reason: reason, requestPermission: requestPermission);
+  Future<String> performBackup({
+    String reason = 'manual',
+    bool requestPermission = true,
+  }) async {
+    final result = await performBackupDetailed(
+      reason: reason,
+      requestPermission: requestPermission,
+    );
     return result['primary'] as String;
   }
 
-  Future<Map<String, dynamic>> performBackupDetailed({String reason = 'manual', bool requestPermission = true}) async {
+  Future<Map<String, dynamic>> performBackupDetailed({
+    String reason = 'manual',
+    bool requestPermission = true,
+  }) async {
     if (requestPermission) {
       await ensureStorageAccess(prompt: true);
     }
@@ -288,7 +320,8 @@ class BackupService {
 
     try {
       final vis = await getVisibleExportDir(requestPermission: false);
-      if (vis != null && !p.equals(p.normalize(vis.path), p.normalize(dir.path))) {
+      if (vis != null &&
+          !p.equals(p.normalize(vis.path), p.normalize(dir.path))) {
         visiblePath = await _copyBytesToDir(bytes, vis.path, fileName);
         if (visiblePath != null) saved.add(visiblePath);
       } else if (vis != null) {
@@ -332,7 +365,8 @@ class BackupService {
         'oldValue': null,
         'newValue': primary,
         'timestamp': nowMs,
-        'reason': 'Backup $reason -> ${saved.join(' | ')} (${bytes.length} bytes, all tables)',
+        'reason':
+            'Backup $reason -> ${saved.join(' | ')} (${bytes.length} bytes, all tables)',
       });
     } catch (_) {}
 
@@ -350,13 +384,15 @@ class BackupService {
   /// اسم ملف مقترح للحفظ عبر FilePicker — الكتابة الفعلية تتم من الواجهة
   Future<String> saveBackupToPickedFile({String? reason}) async {
     final now = DateTime.now();
-    final ts = '${now.year}${now.month.toString().padLeft(2,'0')}${now.day.toString().padLeft(2,'0')}_${now.hour.toString().padLeft(2,'0')}${now.minute.toString().padLeft(2,'0')}${now.second.toString().padLeft(2,'0')}';
+    final ts =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
     return 'yelottery_backup_${ts}_${reason ?? 'manual'}.sqlite';
   }
 
   Future<String> exportBackupToPath(String sourcePath, String destPath) async {
     final src = File(sourcePath);
-    if(!await src.exists()) throw Exception('ملف المصدر غير موجود: $sourcePath');
+    if (!await src.exists())
+      throw Exception('ملف المصدر غير موجود: $sourcePath');
     final bytes = await src.readAsBytes();
     final dest = File(destPath);
     await dest.parent.create(recursive: true);
@@ -366,13 +402,25 @@ class BackupService {
 
   Future<void> _pruneDir(Directory dir, int retention) async {
     if (!await dir.exists()) return;
-    final files = dir.listSync().whereType<File>().where((f) => f.path.endsWith('.sqlite')).toList();
-    files.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
+    final files = dir
+        .listSync()
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.sqlite'))
+        .toList();
+    files.sort(
+      (a, b) => b.statSync().modified.compareTo(a.statSync().modified),
+    );
     if (files.length <= retention) return;
     for (var i = retention; i < files.length; i++) {
-      try { await files[i].delete(); } catch (_) {}
-      try { await File('${files[i].path}-wal').delete(); } catch (_) {}
-      try { await File('${files[i].path}-shm').delete(); } catch (_) {}
+      try {
+        await files[i].delete();
+      } catch (_) {}
+      try {
+        await File('${files[i].path}-wal').delete();
+      } catch (_) {}
+      try {
+        await File('${files[i].path}-shm').delete();
+      } catch (_) {}
     }
   }
 
@@ -388,6 +436,7 @@ class BackupService {
         seen.add(key);
         await _pruneDir(dir, retention);
       }
+
       await pruneOnce(await _internalBackupDir());
       await pruneOnce(await _backupDir());
       await pruneOnce(await getVisibleExportDir(requestPermission: false));
@@ -419,11 +468,22 @@ class BackupService {
     final List<File> all = [];
     Future<void> addFrom(Directory? dir) async {
       if (dir == null || !await dir.exists()) return;
-      all.addAll(dir.listSync().whereType<File>().where((f) => f.path.endsWith('.sqlite')));
+      all.addAll(
+        dir.listSync().whereType<File>().where(
+          (f) => f.path.endsWith('.sqlite'),
+        ),
+      );
     }
-    try { await addFrom(await _internalBackupDir()); } catch (_) {}
-    try { await addFrom(await _backupDir()); } catch (_) {}
-    try { await addFrom(await getVisibleExportDir(requestPermission: false)); } catch (_) {}
+
+    try {
+      await addFrom(await _internalBackupDir());
+    } catch (_) {}
+    try {
+      await addFrom(await _backupDir());
+    } catch (_) {}
+    try {
+      await addFrom(await getVisibleExportDir(requestPermission: false));
+    } catch (_) {}
     try {
       final cfg = await _configMap();
       final customDir = cfg[keyCustomDir];
@@ -464,7 +524,8 @@ class BackupService {
       await raf.readInto(header);
       final expected = 'SQLite format 3\x00';
       final actual = String.fromCharCodes(header);
-      if (actual != expected) throw Exception('الملف ليس قاعدة بيانات SQLite صالحة');
+      if (actual != expected)
+        throw Exception('الملف ليس قاعدة بيانات SQLite صالحة');
     } finally {
       await raf.close();
     }
@@ -476,14 +537,57 @@ class BackupService {
       final first = res.firstOrNull?['integrity_check'] as String? ?? 'ok';
       if (first != 'ok') throw Exception('فحص السلامة فشل: $first');
       // Check ALL essential tables exist — كااافة البيانات بدون استثناء
-      final tables = tmp.select("SELECT name FROM sqlite_master WHERE type='table'").map((r) => r['name'] as String).toSet();
-      const required = ['tickets','ticket_lines','accounts','games','draws','draw_periods','cash_ledger','balance_movements','cash_sessions','app_config','audit_logs'];
-      final missing = required.where((t)=> !tables.contains(t)).toList();
+      final tables = tmp
+          .select("SELECT name FROM sqlite_master WHERE type='table'")
+          .map((r) => r['name'] as String)
+          .toSet();
+      const required = [
+        'tickets',
+        'ticket_lines',
+        'accounts',
+        'games',
+        'draws',
+        'draw_periods',
+        'cash_ledger',
+        'balance_movements',
+        'cash_sessions',
+        'app_config',
+        'audit_logs',
+      ];
+      final missing = required.where((t) => !tables.contains(t)).toList();
       if (missing.isNotEmpty) {
-        throw Exception('النسخة ناقصة — جداول مفقودة: ${missing.join(', ')} — قد تكون نسخة قديمة أو ملف خاطئ');
+        throw Exception(
+          'النسخة ناقصة — جداول مفقودة: ${missing.join(', ')} — قد تكون نسخة قديمة أو ملف خاطئ',
+        );
+      }
+      // A backup without the sequence keys resets ticket/serial numbering on
+      // restore and produces duplicate ticket IDs. Tolerate a completely empty
+      // (old) app_config, but otherwise require both keys to be present.
+      try {
+        final cfgKeys = tmp
+            .select('SELECT key FROM app_config')
+            .map((r) => r['key'] as String)
+            .toSet();
+        if (cfgKeys.isNotEmpty) {
+          const requiredKeys = ['ticket_seq', 'serial_seq'];
+          final missingKeys = requiredKeys
+              .where((k) => !cfgKeys.contains(k))
+              .toList();
+          if (missingKeys.isNotEmpty) {
+            throw Exception(
+              'النسخة لا تحتوي على مفاتيح التسلسل: ${missingKeys.join(', ')} — قد تنتج أرقام تذاكر مكررة عند الاستعادة',
+            );
+          }
+        }
+      } catch (e) {
+        if (e.toString().contains('مفاتيح التسلسل')) rethrow;
+        // Old/empty config tables that cannot be queried are tolerated.
       }
     } catch (e) {
-      if (e.toString().contains('فحص السلامة') || e.toString().contains('النسخة ناقصة') || e.toString().contains('النسخة لا تحتوي')) rethrow;
+      if (e.toString().contains('فحص السلامة') ||
+          e.toString().contains('النسخة ناقصة') ||
+          e.toString().contains('النسخة لا تحتوي'))
+        rethrow;
       throw Exception('تعذر فتح النسخة كـ SQLite: $e');
     } finally {
       tmp?.close();
@@ -492,39 +596,172 @@ class BackupService {
   }
 
   Future<Map<String, dynamic>> getCurrentStats() async {
-    int tickets = 0, lines = 0, accounts = 0, draws=0, periods=0, cash=0, balance=0, sessions=0, configs=0, audits=0;
+    int tickets = 0,
+        lines = 0,
+        accounts = 0,
+        draws = 0,
+        periods = 0,
+        cash = 0,
+        balance = 0,
+        sessions = 0,
+        configs = 0,
+        audits = 0;
     int dbSize = 0;
-    try { final r = await db.customSelect('SELECT COUNT(*) as c FROM tickets').getSingle(); tickets = r.data['c'] as int; } catch (_) {}
-    try { final r = await db.customSelect('SELECT COUNT(*) as c FROM ticket_lines').getSingle(); lines = r.data['c'] as int; } catch (_) {}
-    try { final r = await db.customSelect('SELECT COUNT(*) as c FROM accounts').getSingle(); accounts = r.data['c'] as int; } catch (_) {}
-    try { final r = await db.customSelect('SELECT COUNT(*) as c FROM draws').getSingle(); draws = r.data['c'] as int; } catch (_) {}
-    try { final r = await db.customSelect('SELECT COUNT(*) as c FROM draw_periods').getSingle(); periods = r.data['c'] as int; } catch (_) {}
-    try { final r = await db.customSelect('SELECT COUNT(*) as c FROM cash_ledger').getSingle(); cash = r.data['c'] as int; } catch (_) {}
-    try { final r = await db.customSelect('SELECT COUNT(*) as c FROM balance_movements').getSingle(); balance = r.data['c'] as int; } catch (_) {}
-    try { final r = await db.customSelect('SELECT COUNT(*) as c FROM cash_sessions').getSingle(); sessions = r.data['c'] as int; } catch (_) {}
-    try { final r = await db.customSelect('SELECT COUNT(*) as c FROM app_config').getSingle(); configs = r.data['c'] as int; } catch (_) {}
-    try { final r = await db.customSelect('SELECT COUNT(*) as c FROM audit_logs').getSingle(); audits = r.data['c'] as int; } catch (_) {}
-    try { final path = await getDbPath(); final f = File(path); if (await f.exists()) dbSize = await f.length(); } catch (_) {}
-    return {'tickets': tickets, 'lines': lines, 'accounts': accounts, 'draws': draws, 'periods': periods, 'cash': cash, 'balance': balance, 'sessions': sessions, 'configs': configs, 'audits': audits, 'size': dbSize, 'hasData': tickets > 0 || lines > 0 || cash>0};
+    try {
+      final r = await db
+          .customSelect('SELECT COUNT(*) as c FROM tickets')
+          .getSingle();
+      tickets = r.data['c'] as int;
+    } catch (_) {}
+    try {
+      final r = await db
+          .customSelect('SELECT COUNT(*) as c FROM ticket_lines')
+          .getSingle();
+      lines = r.data['c'] as int;
+    } catch (_) {}
+    try {
+      final r = await db
+          .customSelect('SELECT COUNT(*) as c FROM accounts')
+          .getSingle();
+      accounts = r.data['c'] as int;
+    } catch (_) {}
+    try {
+      final r = await db
+          .customSelect('SELECT COUNT(*) as c FROM draws')
+          .getSingle();
+      draws = r.data['c'] as int;
+    } catch (_) {}
+    try {
+      final r = await db
+          .customSelect('SELECT COUNT(*) as c FROM draw_periods')
+          .getSingle();
+      periods = r.data['c'] as int;
+    } catch (_) {}
+    try {
+      final r = await db
+          .customSelect('SELECT COUNT(*) as c FROM cash_ledger')
+          .getSingle();
+      cash = r.data['c'] as int;
+    } catch (_) {}
+    try {
+      final r = await db
+          .customSelect('SELECT COUNT(*) as c FROM balance_movements')
+          .getSingle();
+      balance = r.data['c'] as int;
+    } catch (_) {}
+    try {
+      final r = await db
+          .customSelect('SELECT COUNT(*) as c FROM cash_sessions')
+          .getSingle();
+      sessions = r.data['c'] as int;
+    } catch (_) {}
+    try {
+      final r = await db
+          .customSelect('SELECT COUNT(*) as c FROM app_config')
+          .getSingle();
+      configs = r.data['c'] as int;
+    } catch (_) {}
+    try {
+      final r = await db
+          .customSelect('SELECT COUNT(*) as c FROM audit_logs')
+          .getSingle();
+      audits = r.data['c'] as int;
+    } catch (_) {}
+    try {
+      final path = await getDbPath();
+      final f = File(path);
+      if (await f.exists()) dbSize = await f.length();
+    } catch (_) {}
+    return {
+      'tickets': tickets,
+      'lines': lines,
+      'accounts': accounts,
+      'draws': draws,
+      'periods': periods,
+      'cash': cash,
+      'balance': balance,
+      'sessions': sessions,
+      'configs': configs,
+      'audits': audits,
+      'size': dbSize,
+      'hasData': tickets > 0 || lines > 0 || cash > 0,
+    };
   }
 
   Future<Map<String, dynamic>> getBackupStats(String backupPath) async {
     sqlite3.Database? tmp;
     try {
       tmp = sqlite3.sqlite3.open(backupPath, mode: sqlite3.OpenMode.readOnly);
-      int tickets = 0, lines = 0, accounts = 0, draws=0, periods=0, cash=0, balance=0, sessions=0, configs=0, audits=0;
-      try { tickets = tmp.select('SELECT COUNT(*) as c FROM tickets').first['c'] as int; } catch (_) {}
-      try { lines = tmp.select('SELECT COUNT(*) as c FROM ticket_lines').first['c'] as int; } catch (_) {}
-      try { accounts = tmp.select('SELECT COUNT(*) as c FROM accounts').first['c'] as int; } catch (_) {}
-      try { draws = tmp.select('SELECT COUNT(*) as c FROM draws').first['c'] as int; } catch (_) {}
-      try { periods = tmp.select('SELECT COUNT(*) as c FROM draw_periods').first['c'] as int; } catch (_) {}
-      try { cash = tmp.select('SELECT COUNT(*) as c FROM cash_ledger').first['c'] as int; } catch (_) {}
-      try { balance = tmp.select('SELECT COUNT(*) as c FROM balance_movements').first['c'] as int; } catch (_) {}
-      try { sessions = tmp.select('SELECT COUNT(*) as c FROM cash_sessions').first['c'] as int; } catch (_) {}
-      try { configs = tmp.select('SELECT COUNT(*) as c FROM app_config').first['c'] as int; } catch (_) {}
-      try { audits = tmp.select('SELECT COUNT(*) as c FROM audit_logs').first['c'] as int; } catch (_) {}
+      int tickets = 0,
+          lines = 0,
+          accounts = 0,
+          draws = 0,
+          periods = 0,
+          cash = 0,
+          balance = 0,
+          sessions = 0,
+          configs = 0,
+          audits = 0;
+      try {
+        tickets =
+            tmp.select('SELECT COUNT(*) as c FROM tickets').first['c'] as int;
+      } catch (_) {}
+      try {
+        lines =
+            tmp.select('SELECT COUNT(*) as c FROM ticket_lines').first['c']
+                as int;
+      } catch (_) {}
+      try {
+        accounts =
+            tmp.select('SELECT COUNT(*) as c FROM accounts').first['c'] as int;
+      } catch (_) {}
+      try {
+        draws = tmp.select('SELECT COUNT(*) as c FROM draws').first['c'] as int;
+      } catch (_) {}
+      try {
+        periods =
+            tmp.select('SELECT COUNT(*) as c FROM draw_periods').first['c']
+                as int;
+      } catch (_) {}
+      try {
+        cash =
+            tmp.select('SELECT COUNT(*) as c FROM cash_ledger').first['c']
+                as int;
+      } catch (_) {}
+      try {
+        balance =
+            tmp.select('SELECT COUNT(*) as c FROM balance_movements').first['c']
+                as int;
+      } catch (_) {}
+      try {
+        sessions =
+            tmp.select('SELECT COUNT(*) as c FROM cash_sessions').first['c']
+                as int;
+      } catch (_) {}
+      try {
+        configs =
+            tmp.select('SELECT COUNT(*) as c FROM app_config').first['c']
+                as int;
+      } catch (_) {}
+      try {
+        audits =
+            tmp.select('SELECT COUNT(*) as c FROM audit_logs').first['c']
+                as int;
+      } catch (_) {}
       final sz = await File(backupPath).length();
-      return {'tickets': tickets, 'lines': lines, 'accounts': accounts, 'draws': draws, 'periods': periods, 'cash': cash, 'balance': balance, 'sessions': sessions, 'configs': configs, 'audits': audits, 'size': sz};
+      return {
+        'tickets': tickets,
+        'lines': lines,
+        'accounts': accounts,
+        'draws': draws,
+        'periods': periods,
+        'cash': cash,
+        'balance': balance,
+        'sessions': sessions,
+        'configs': configs,
+        'audits': audits,
+        'size': sz,
+      };
     } finally {
       tmp?.close();
     }
@@ -537,7 +774,9 @@ class BackupService {
     final bak = await getBackupStats(backupPath);
     final cfg = await _configMap();
     final lastPath = cfg[keyLastPath];
-    final isSameAsLastBackup = lastPath != null && p.equals(p.normalize(lastPath), p.normalize(backupPath));
+    final isSameAsLastBackup =
+        lastPath != null &&
+        p.equals(p.normalize(lastPath), p.normalize(backupPath));
     // Compare file hashes by size+modified if same path check not enough
     bool isIdenticalContent = false;
     try {
@@ -578,27 +817,44 @@ class BackupService {
       final cur = await getCurrentStats();
       if (!(cur['hasData'] as bool)) return null; // no data to save
       return await performBackup(reason: 'before_restore');
-    } catch (_) { return null; }
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Execute restore — closes DB, copies backup over current DB file — يستعيد كااافة البيانات بدون استثناء (ملف كامل)
   /// Returns safety backup path if created.
   /// NOTE: After calling this, the app MUST be restarted — DB handle is closed.
-  Future<String?> executeRestore(String backupPath, {bool createSafety = true}) async {
+  Future<String?> executeRestore(
+    String backupPath, {
+    bool createSafety = true,
+  }) async {
     await validateBackupFile(backupPath);
     final dbPath = await getDbPath();
     String? safetyPath;
     if (createSafety) {
-      try { safetyPath = await createSafetyBackup(); } catch (_) {}
+      try {
+        safetyPath = await createSafetyBackup();
+      } catch (_) {}
     }
     // Checkpoint and close current DB
-    try { await db.customStatement('PRAGMA wal_checkpoint(TRUNCATE)'); } catch (_) {}
-    try { await db.close(); } catch (_) {}
+    try {
+      await db.customStatement('PRAGMA wal_checkpoint(TRUNCATE)');
+    } catch (_) {}
+    try {
+      await db.close();
+    } catch (_) {}
     // Small delay to let file handles release (Windows)
     await Future.delayed(const Duration(milliseconds: 400));
     // Delete WAL/SHM companions of current DB — لا نريد ملفات wal قديمة تفسد الاستعادة
-    try { final wal = File('$dbPath-wal'); if (await wal.exists()) await wal.delete(); } catch (_) {}
-    try { final shm = File('$dbPath-shm'); if (await shm.exists()) await shm.delete(); } catch (_) {}
+    try {
+      final wal = File('$dbPath-wal');
+      if (await wal.exists()) await wal.delete();
+    } catch (_) {}
+    try {
+      final shm = File('$dbPath-shm');
+      if (await shm.exists()) await shm.delete();
+    } catch (_) {}
     // Copy backup over — نسخ البايتات مباشرة لضمان ملف متكامل بدون wal/shm منفصل
     final src = File(backupPath);
     final bytes = await src.readAsBytes();
@@ -606,15 +862,25 @@ class BackupService {
     final parent = Directory(p.dirname(dbPath));
     if (!await parent.exists()) await parent.create(recursive: true);
     // If db file exists, delete first (Windows lock workaround)
-    try { final cur = File(dbPath); if (await cur.exists()) await cur.delete(); } catch (_) {}
+    try {
+      final cur = File(dbPath);
+      if (await cur.exists()) await cur.delete();
+    } catch (_) {}
     await File(dbPath).writeAsBytes(bytes, flush: true);
     // تأكد من عدم بقاء wal/shm من النسخة (النسخة الحديثة لا تحتويهما كملفين منفصلين)
-    try { final bw = File('$backupPath-wal'); if (await bw.exists()) {/* لا تنسخ */} } catch (_) {}
+    try {
+      final bw = File('$backupPath-wal');
+      if (await bw.exists()) {
+        /* لا تنسخ */
+      }
+    } catch (_) {}
 
     // Audit to new DB? Can't — DB was closed. We log to a marker file instead
     try {
       final marker = File(p.join(p.dirname(dbPath), 'restore_marker.txt'));
-      await marker.writeAsString('Restored from $backupPath at ${DateTime.now().toIso8601String()} safety=$safetyPath bytes=${bytes.length}');
+      await marker.writeAsString(
+        'Restored from $backupPath at ${DateTime.now().toIso8601String()} safety=$safetyPath bytes=${bytes.length}',
+      );
     } catch (_) {}
 
     return safetyPath;
@@ -628,7 +894,13 @@ class BackupService {
   Future<void> deleteBackup(String path) async {
     final f = File(path);
     if (await f.exists()) await f.delete();
-    try { final w = File('$path-wal'); if (await w.exists()) await w.delete(); } catch (_) {}
-    try { final s = File('$path-shm'); if (await s.exists()) await s.delete(); } catch (_) {}
+    try {
+      final w = File('$path-wal');
+      if (await w.exists()) await w.delete();
+    } catch (_) {}
+    try {
+      final s = File('$path-shm');
+      if (await s.exists()) await s.delete();
+    } catch (_) {}
   }
 }
