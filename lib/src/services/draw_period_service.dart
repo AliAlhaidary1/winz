@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
-
 import '../data/database.dart';
 import '../utils/timezone.dart';
 

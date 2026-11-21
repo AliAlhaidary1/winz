@@ -6,7 +6,6 @@ import 'package:provider/provider.dart';
 import '../data/database.dart';
 import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
-import '../utils/responsive.dart';
 import '../widgets/app_drawer.dart';
 import '../utils/format.dart';
 import '../utils/ticket_pdf.dart';
@@ -1495,80 +1494,6 @@ class _WinzScreenState extends State<WinzScreen> {
       ),
     ),
   );
-
-  Widget _drawer() {
-    final user = context.watch<AppState>().currentUser;
-    return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          DrawerHeader(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [AppTheme.orange, const Color(0xFFE65100)],
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(Icons.emoji_events, color: Colors.white, size: 32),
-                const SizedBox(height: 8),
-                const Text(
-                  'Win 4 • NY Lottery',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                Text(
-                  '${user?['username'] ?? ''} • ${user?['role'] ?? ''}',
-                  style: const TextStyle(color: Colors.white70, fontSize: 11),
-                ),
-              ],
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.numbers),
-            title: const Text('Numbers'),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.pushNamed(context, '/numbers');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.emoji_events, color: AppTheme.orange),
-            title: const Text('Win 4'),
-            selected: true,
-            onTap: () => Navigator.pop(context),
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.confirmation_number),
-            title: const Text('Tickets'),
-            onTap: () => Navigator.pushNamed(context, '/tickets'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.verified),
-            title: const Text('Winning Tickets'),
-            onTap: () => Navigator.pushNamed(context, '/winning'),
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.logout, color: Colors.red),
-            title: const Text('Logout', style: TextStyle(color: Colors.red)),
-            onTap: () {
-              context.read<AppState>().logout();
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                '/login',
-                (_) => false,
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _keyBtn(
     String l, {

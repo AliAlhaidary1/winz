@@ -1478,17 +1478,21 @@ class AppDatabase extends GeneratedDatabase {
   Future<Map<String, dynamic>?> getTicketByBarcode(String barcode) async {
     barcode = barcode.trim();
     if (barcode.isEmpty) return null;
-    Future<Map<String, dynamic>?> lookup(String v) async {
+    // Search each column separately and in a fixed priority order. An OR
+    // query with LIMIT 1 can return an arbitrary ticket when one ticket's id
+    // happens to equal another ticket's serial number.
+    Future<Map<String, dynamic>?> one(String column, String value) async {
       final rows = await customSelect(
-        'SELECT * FROM tickets WHERE barcode = ? OR id = ? OR serialNumber = ? LIMIT 1',
-        variables: [
-          Variable.withString(v),
-          Variable.withString(v),
-          Variable.withString(v),
-        ],
+        'SELECT * FROM tickets WHERE $column = ? ORDER BY createdAt DESC LIMIT 1',
+        variables: [Variable.withString(value)],
       ).get();
-      if (rows.isEmpty) return null;
-      return rows.first.data;
+      return rows.isEmpty ? null : rows.first.data;
+    }
+
+    Future<Map<String, dynamic>?> lookup(String v) async {
+      return await one('barcode', v) ??
+          await one('id', v) ??
+          await one('serialNumber', v);
     }
 
     final exact = await lookup(barcode);

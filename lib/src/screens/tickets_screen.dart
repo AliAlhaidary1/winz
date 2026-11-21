@@ -530,9 +530,11 @@ class _TicketsScreenState extends State<TicketsScreen> {
                                       ? _color(f)
                                       : AppTheme.cardBorder,
                                 ),
-                                onSelected: (_) => setState(
-                                  () => {_filter = f, _loading = true, _load()},
-                                ),
+                                onSelected: (_) => setState(() {
+                                  _filter = f;
+                                  _loading = true;
+                                  _load();
+                                }),
                               ),
                             ),
                         ],

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/database.dart';
-import '../../services/draw_period_service.dart';
 import '../../providers/app_state.dart';
 import '../../utils/responsive.dart';
 import '../../utils/format.dart';
@@ -62,14 +61,12 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
           ),
         );
     if (!mounted) return;
-    setState(
-      () => {
-        _periods = periods,
-        _winningRestricted = restricted,
-        _tz = tz,
-        _loading = false,
-      },
-    );
+    setState(() {
+      _periods = periods;
+      _winningRestricted = restricted;
+      _tz = tz;
+      _loading = false;
+    });
     // init controllers
     for (final p in periods) {
       final id = p['id'] as String;
@@ -87,20 +84,6 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
         if (_ctrl3[id]!.text != v3) _ctrl3[id]!.text = v3;
         if (_ctrl4[id]!.text != v4) _ctrl4[id]!.text = v4;
       }
-    }
-  }
-
-  String _fmt12(String hhmm) {
-    try {
-      final parts = hhmm.trim().split(':');
-      int h = int.parse(parts[0]);
-      int m = int.parse(parts[1].replaceAll(RegExp(r'[^0-9]'), ''));
-      final am = h < 12;
-      int h12 = h % 12;
-      if (h12 == 0) h12 = 12;
-      return '$h12:${m.toString().padLeft(2, '0')} ${am ? 'AM' : 'PM'}';
-    } catch (_) {
-      return hhmm;
     }
   }
 
@@ -150,9 +133,6 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
       return;
     }
     try {
-      final user =
-          context.read<AppState>().currentUser?['username'] as String? ??
-          'admin';
       final existing =
           (_periods.firstWhere((e) => e['id'] == periodId)['result3']
               as String?);
@@ -208,9 +188,6 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
       return;
     }
     try {
-      final user =
-          context.read<AppState>().currentUser?['username'] as String? ??
-          'admin';
       final existing =
           (_periods.firstWhere((e) => e['id'] == periodId)['result4']
               as String?);
