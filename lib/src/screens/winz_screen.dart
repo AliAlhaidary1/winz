@@ -252,6 +252,32 @@ class _WinzScreenState extends State<WinzScreen> {
     return fact(d.length) ~/ denom;
   }
 
+  /// UI-only mirror of the validation in _addToCart / AppState. Gates the ADD
+  /// button so invalid entries never reach a snackbar. Commit math is untouched.
+  bool get _canAdd {
+    if (_digits.length != 4) return false;
+    final amt = double.tryParse(_amountCtrl.text);
+    if (amt == null) return false;
+    final low = _winzType.toLowerCase();
+    final isCombo = low.contains('combo');
+    final isAll = _isStBoxBet(_winzType);
+    final isBox = low == 'box';
+    final allSame = _digits.split('').toSet().length == 1;
+    if (allSame && (isBox || isAll || isCombo)) return false;
+    final bool stepped = ((amt) * 100).round() % 50 == 0;
+    if (!isCombo && !isAll && !isBox) {
+      return amt >= 0.5 && amt <= 10 && stepped;
+    } else if (isBox) {
+      return amt >= 0.5 && amt <= 50 && stepped;
+    }
+    if (isCombo) {
+      if (_combo(_digits.split('')) <= 1) return false;
+      return amt >= 0.5 - 1e-9 && amt <= 10 + 1e-9 && stepped;
+    }
+    // ST/BOX (All): input limit keeps the doubled total within its cap.
+    return amt >= 0.5 - 1e-9 && amt <= 25 + 1e-9 && stepped;
+  }
+
   String _betInfoText() {
     final amt = double.tryParse(_amountCtrl.text);
     if (amt == null || _digits.length != 4) return '';
@@ -1470,12 +1496,13 @@ class _WinzScreenState extends State<WinzScreen> {
   }
 
   Widget _addToCartButton() {
+    final enabled = _canAdd;
     return InkWell(
-      onTap: _addToCart,
+      onTap: enabled ? _addToCart : null,
       borderRadius: BorderRadius.circular(14),
       child: Container(
         decoration: BoxDecoration(
-          color: AppTheme.blue,
+          color: enabled ? AppTheme.blue : Colors.grey.shade400,
           borderRadius: BorderRadius.circular(14),
         ),
         alignment: Alignment.center,
@@ -1504,12 +1531,13 @@ class _WinzScreenState extends State<WinzScreen> {
 
   /// Single-line ADD for the stacked (narrow phone) keypad layout.
   Widget _addToCartButtonCompact() {
+    final enabled = _canAdd;
     return InkWell(
-      onTap: _addToCart,
+      onTap: enabled ? _addToCart : null,
       borderRadius: BorderRadius.circular(14),
       child: Container(
         decoration: BoxDecoration(
-          color: AppTheme.blue,
+          color: enabled ? AppTheme.blue : Colors.grey.shade400,
           borderRadius: BorderRadius.circular(14),
         ),
         alignment: Alignment.center,

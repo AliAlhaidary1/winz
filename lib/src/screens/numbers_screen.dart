@@ -31,6 +31,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
   bool _isQuickPick = false;
   bool _loadingDraws = true;
   String _digitMode = '3D'; // 3D / 4D
+  int get _expectedDigits => _digitMode == '4D' ? 4 : 3;
   final betTypes = ['Straight', 'Box', 'ST/BOX', 'Combo'];
   List<Map<String, dynamic>> _periods = [];
   Timer? _sellableTick;
@@ -180,7 +181,8 @@ class _NumbersScreenState extends State<NumbersScreen> {
   }
 
   void _pressDigit(String d) {
-    if (_digits.length >= 4) return;
+    // Never allow more digits than the selected 3D/4D mode expects.
+    if (_digits.length >= _expectedDigits) return;
     setState(() => _digits += d);
   }
 
@@ -262,6 +264,36 @@ class _NumbersScreenState extends State<NumbersScreen> {
       denom *= fact(c);
     }
     return fact(n) ~/ denom;
+  }
+
+  /// UI-only mirror of the validation performed in _addToCart / AppState.
+  /// It exists solely to gate the ADD button so invalid entries produce no
+  /// snackbar at all. The real validation math stays unchanged on commit.
+  bool get _canAdd {
+    final expected = _expectedDigits;
+    if (_digits.length != expected) return false;
+    final amt = double.tryParse(_amountCtrl.text);
+    if (amt == null) return false;
+    final low = _betType.toLowerCase();
+    final isCombo = low.contains('combo');
+    final isAll = _isStBoxBet(_betType);
+    final isBox = low == 'box';
+    final allSame = _digits.split('').toSet().length == 1;
+    if (allSame && (isBox || isAll || isCombo)) return false;
+    final bool stepped = ((amt) * 100).round() % 50 == 0;
+    if (!isCombo && !isAll && !isBox) {
+      final maxStraight = expected == 3 ? 100.0 : 10.0;
+      return amt >= 0.5 && amt <= maxStraight;
+    } else if (isBox) {
+      return amt >= 0.5 && amt <= 50 && stepped;
+    }
+    if (isCombo) {
+      if (_comboCount(_digits.split('')) <= 1) return false;
+      return amt >= 0.5 - 1e-9 && amt <= 10 + 1e-9 && stepped;
+    }
+    // ST/BOX (All): input limit keeps the doubled total within its cap.
+    final maxAllInput = expected == 3 ? 50.0 : 25.0;
+    return amt >= 0.5 - 1e-9 && amt <= maxAllInput + 1e-9 && stepped;
   }
 
   String _betInfoText() {
@@ -1470,12 +1502,13 @@ class _NumbersScreenState extends State<NumbersScreen> {
   }
 
   Widget _addToCartButton() {
+    final enabled = _canAdd;
     return InkWell(
-      onTap: _addToCart,
+      onTap: enabled ? _addToCart : null,
       borderRadius: BorderRadius.circular(14),
       child: Container(
         decoration: BoxDecoration(
-          color: AppTheme.blue,
+          color: enabled ? AppTheme.blue : Colors.grey.shade400,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: AppTheme.cardBorder),
         ),
@@ -1512,12 +1545,13 @@ class _NumbersScreenState extends State<NumbersScreen> {
   /// Single-line ADD button used when the keypad actions are stacked under the
   /// grid on narrow phones â€” a full-height button would overflow the column.
   Widget _addToCartButtonCompact() {
+    final enabled = _canAdd;
     return InkWell(
-      onTap: _addToCart,
+      onTap: enabled ? _addToCart : null,
       borderRadius: BorderRadius.circular(14),
       child: Container(
         decoration: BoxDecoration(
-          color: AppTheme.blue,
+          color: enabled ? AppTheme.blue : Colors.grey.shade400,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: AppTheme.cardBorder),
         ),

@@ -74,7 +74,9 @@ class _PlayScreenState extends State<PlayScreen> {
   }
 
   void _pressDigit(String d) {
-    if (_digits.length >= 4) return;
+    // Cap input to the selected 3D/4D mode so 3 digits cannot become 4.
+    final max = _gameFilter == '4D' ? 4 : 3;
+    if (_digits.length >= max) return;
     setState(() => _digits += d);
   }
 
@@ -98,7 +100,14 @@ class _PlayScreenState extends State<PlayScreen> {
   }
 
   void _cycleDigitMode() {
-    setState(() => _gameFilter = _gameFilter == '4D' ? 'Numbers' : '4D');
+    setState(() {
+      _gameFilter = _gameFilter == '4D' ? 'Numbers' : '4D';
+      // Dropping back to 3D trims a previously entered 4th digit; switching up
+      // to 4D keeps the existing digits.
+      if (_gameFilter == 'Numbers' && _digits.length > 3) {
+        _digits = _digits.substring(0, 3);
+      }
+    });
   }
 
   /// Same normalization as numbers_screen / app_state, so every spelling of a
@@ -128,6 +137,33 @@ class _PlayScreenState extends State<PlayScreen> {
       denom *= fact(c);
     }
     return fact(n) ~/ denom;
+  }
+
+  /// UI-only mirror of the validation in _addToCart / AppState. Gates the ADD
+  /// button so invalid entries never reach a snackbar. Commit math is untouched.
+  bool get _canAdd {
+    final len = _digits.length;
+    if (len != 3 && len != 4) return false;
+    final amt = double.tryParse(_amountCtrl.text);
+    if (amt == null) return false;
+    final is3D = len == 3;
+    final digits = _digits.split('');
+    final low = _betType.toLowerCase();
+    final isCombo = low.contains('combo');
+    final isStBox = _isStBoxBet(_betType);
+    final isBox = low == 'box';
+    if (digits.toSet().length == 1 && (isBox || isStBox || isCombo))
+      return false;
+    final bool stepped = ((amt) * 100).round() % 50 == 0;
+    if (isCombo) {
+      if (_comboCount(digits) <= 1) return false;
+      return amt >= 0.5 - 1e-9 && amt <= 10 + 1e-9 && stepped;
+    } else if (isStBox) {
+      final maxInput = is3D ? 50.0 : 25.0;
+      return amt >= 0.5 - 1e-9 && amt <= maxInput + 1e-9 && stepped;
+    }
+    final maxAmt = isBox ? 50.0 : (is3D ? 100.0 : 10.0);
+    return amt >= 0.5 && amt <= maxAmt;
   }
 
   /// Total actually charged for the current selection (one draw).
@@ -968,12 +1004,13 @@ class _PlayScreenState extends State<PlayScreen> {
   }
 
   Widget _addToCartButton() {
+    final enabled = _canAdd;
     return InkWell(
-      onTap: _addToCart,
+      onTap: enabled ? _addToCart : null,
       borderRadius: BorderRadius.circular(10),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.blue,
+          color: enabled ? Colors.blue : Colors.grey.shade400,
           borderRadius: BorderRadius.circular(10),
         ),
         alignment: Alignment.center,
@@ -1000,12 +1037,13 @@ class _PlayScreenState extends State<PlayScreen> {
 
   /// Single-line ADD for the stacked (narrow phone) keypad layout.
   Widget _addToCartButtonCompact() {
+    final enabled = _canAdd;
     return InkWell(
-      onTap: _addToCart,
+      onTap: enabled ? _addToCart : null,
       borderRadius: BorderRadius.circular(10),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.blue,
+          color: enabled ? Colors.blue : Colors.grey.shade400,
           borderRadius: BorderRadius.circular(10),
         ),
         alignment: Alignment.center,

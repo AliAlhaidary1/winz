@@ -20,6 +20,8 @@ class _HomeScreenState extends State<HomeScreen> {
   double _balance = 0;
   List<Map<String, dynamic>> _pendingNotifs = [];
   List<Map<String, dynamic>> _customers = [];
+  // Cached saved-play counts for the customer card, keyed by customer id.
+  final Map<String, int> _playCounts = {};
 
   @override
   void initState() {
@@ -170,6 +172,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   _primaryAction(),
                   const SizedBox(height: 20),
                   _customersStrip(),
+                  const SizedBox(height: 12),
+                  _customerCard(),
                   const SizedBox(height: 20),
                   _quickAccess(),
                   const SizedBox(height: 28),
@@ -555,6 +559,196 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Current customer card (compact)
+  // ---------------------------------------------------------------------------
+
+  /// Saved-play count for a customer. The default (Cash) customer never has
+  /// saved plays; other ids are fetched from AppState and cached locally.
+  Future<int> _playCount(String id) async {
+    if (id == AppState.defaultCustomerId) return 0;
+    final cached = _playCounts[id];
+    if (cached != null) return cached;
+    try {
+      final plays = await context.read<AppState>().getCustomerPlays(id);
+      _playCounts[id] = plays.length;
+      return plays.length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Play action for the customer card. A registered customer reuses the same
+  /// saved-play prefill flow as tapping a chip; the default customer just
+  /// opens the numbers screen.
+  Future<void> _onCardPlay() async {
+    final customer = context.read<AppState>().currentCustomer;
+    final id = '${customer['id'] ?? AppState.defaultCustomerId}';
+    if (id == AppState.defaultCustomerId) {
+      if (!mounted) return;
+      Navigator.pushNamed(context, '/numbers');
+      return;
+    }
+    final name = '${customer['name'] ?? AppState.defaultCustomerName}';
+    await _onCustomerTap(id, name);
+  }
+
+  /// Slim card showing the active customer from `AppState.currentCustomer`,
+  /// their phone (when present) and saved-play count, with Manage / Play
+  /// actions. Everything ellipsizes so it fits 320dp phones and wide screens.
+  Widget _customerCard() {
+    final customer = context.watch<AppState>().currentCustomer;
+    final id = '${customer['id'] ?? AppState.defaultCustomerId}';
+    final name = '${customer['name'] ?? AppState.defaultCustomerName}';
+    final phone = customer['phone']?.toString().trim() ?? '';
+    final isDefault = id == AppState.defaultCustomerId;
+    final trimmedName = name.trim();
+    final initial = trimmedName.isEmpty ? 'C' : trimmedName[0];
+    final pad = Responsive.cardPadding(context);
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: pad,
+        vertical: Responsive.isMobile(context) ? 10 : 12,
+      ),
+      decoration: AppTheme.cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              CircleAvatar(
+                radius: 17,
+                backgroundColor: isDefault
+                    ? AppTheme.greenSoft
+                    : AppTheme.blue.withValues(alpha: 0.10),
+                child: Text(
+                  initial.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: isDefault ? AppTheme.green : AppTheme.blue,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FutureBuilder<int>(
+                  future: _playCount(id),
+                  initialData: _playCounts[id] ?? 0,
+                  builder: (ctx, snap) {
+                    final count = snap.data ?? 0;
+                    final playsLabel =
+                        '$count saved ${count == 1 ? 'play' : 'plays'}';
+                    final subtitle = phone.isEmpty
+                        ? playsLabel
+                        : '$phone  •  $playsLabel';
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Customer / العميل',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.textMuted,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.textDark,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          subtitle,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.textMuted,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 30,
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.pushNamed(context, '/customers'),
+                    icon: const Icon(Icons.people_outline, size: 14),
+                    label: const Text(
+                      'Manage / إدارة',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.textDark,
+                      side: const BorderSide(color: AppTheme.cardBorder),
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      minimumSize: Size.zero,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: SizedBox(
+                  height: 30,
+                  child: FilledButton.icon(
+                    onPressed: _onCardPlay,
+                    icon: const Icon(Icons.play_arrow_rounded, size: 15),
+                    label: const Text(
+                      'Play / لعب',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppTheme.green,
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      minimumSize: Size.zero,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

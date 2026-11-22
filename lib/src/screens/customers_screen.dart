@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/app_state.dart';
@@ -290,121 +291,204 @@ class _CustomersScreenState extends State<CustomersScreen> {
     final customerId = '${c['id'] ?? ''}';
     final numbersCtrl = TextEditingController();
     final amountCtrl = TextEditingController();
-    String gameId = 'g_numbers';
+    int digitCount = 3;
     String betType = numbersBetTypes.first;
     String drawType = drawTypes.first;
 
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialog) => AlertDialog(
-          insetPadding: Responsive.dialogInsets(ctx),
-          title: Text('Add play / إضافة لعبة — ${c['name'] ?? ''}'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<String>(
-                  initialValue: gameId,
-                  decoration: const InputDecoration(labelText: 'Game / اللعبة'),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'g_numbers',
-                      child: Text('Numbers'),
+    // The digit count fully determines the game: 3 -> Numbers, 4 -> Win 4.
+    String gameIdFor(int count) => count == 4 ? 'g_winz' : 'g_numbers';
+    String gameNameFor(int count) => count == 4 ? 'Win 4' : 'Numbers';
+    List<String> betTypesFor(int count) =>
+        count == 4 ? winzBetTypes : numbersBetTypes;
+
+    /// The first thing still missing/invalid, or null when the play is ready.
+    /// Drives both the inline hint and the Save button, so a bad tap can never
+    /// fall through to the snackbar path.
+    String? validationError() {
+      final numbers = numbersCtrl.text.trim();
+      if (numbers.length != digitCount) {
+        return 'Enter exactly $digitCount digits / أدخل $digitCount أرقام';
+      }
+      final amount = double.tryParse(amountCtrl.text.trim());
+      if (amount == null || amount <= 0) {
+        return 'Enter an amount above \$0 / أدخل مبلغاً أكبر من صفر';
+      }
+      if ((amount * 100).round() % 50 != 0) {
+        return 'Amount must be in \$0.50 steps / المبلغ بخطوات 0.50\$';
+      }
+      final isCombo = betType == 'Combo';
+      final isBox = betType == 'Box';
+      final isStBox = betType == 'ST/BOX';
+      if (isCombo && amount > 10 + 1e-9) {
+        return 'Combo max \$10 per combo / 10\$ لكل تركيبة كحد أقصى';
+      }
+      if (isBox && amount > 50 + 1e-9) {
+        return 'Box max \$50 / 50\$ كحد أقصى';
+      }
+      if (isStBox && amount > (digitCount == 4 ? 25 : 50) + 1e-9) {
+        return 'ST/BOX max \$${digitCount == 4 ? 25 : 50} / حد أقصى';
+      }
+      if (!isCombo && !isBox && !isStBox) {
+        final maxStraight = digitCount == 4 ? 10.0 : 100.0;
+        if (amount > maxStraight + 1e-9) {
+          return 'Straight max \$${maxStraight.toStringAsFixed(0)} / حد أقصى';
+        }
+      }
+      return null;
+    }
+
+    try {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialog) {
+            final error = validationError();
+            return AlertDialog(
+              insetPadding: Responsive.dialogInsets(ctx),
+              title: Text('Add play / إضافة لعبة — ${c['name'] ?? ''}'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Digits / عدد الأرقام',
+                      style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                     ),
-                    DropdownMenuItem(value: 'g_winz', child: Text('Win4')),
+                    const SizedBox(height: 6),
+                    SegmentedButton<int>(
+                      segments: const [
+                        ButtonSegment(value: 3, label: Text('3 digits')),
+                        ButtonSegment(value: 4, label: Text('4 digits')),
+                      ],
+                      selected: {digitCount},
+                      onSelectionChanged: (selection) {
+                        if (selection.isEmpty) return;
+                        setDialog(() {
+                          digitCount = selection.first;
+                          // A saved number belongs to one count only: drop it
+                          // when the count changes instead of keeping a
+                          // now-invalid value.
+                          numbersCtrl.clear();
+                          final allowed = betTypesFor(digitCount);
+                          if (!allowed.contains(betType)) {
+                            betType = allowed.first;
+                          }
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: numbersCtrl,
+                      keyboardType: TextInputType.number,
+                      maxLength: digitCount,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: InputDecoration(
+                        labelText: 'Numbers / الأرقام',
+                        hintText: digitCount == 4 ? '1234' : '123',
+                        counterText: '',
+                      ),
+                      onChanged: (v) {
+                        final digits = v.replaceAll(RegExp(r'\D'), '');
+                        final trimmed = digits.length > digitCount
+                            ? digits.substring(0, digitCount)
+                            : digits;
+                        if (trimmed != v) {
+                          numbersCtrl.value = numbersCtrl.value.copyWith(
+                            text: trimmed,
+                            selection: TextSelection.collapsed(
+                              offset: trimmed.length,
+                            ),
+                          );
+                        }
+                        setDialog(() {});
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      // Recreate when the count changes so the allowed bet
+                      // types (4 digits has no Combo) are picked up by
+                      // initialValue.
+                      key: ValueKey('betType-$digitCount'),
+                      initialValue: betType,
+                      decoration: const InputDecoration(
+                        labelText: 'Bet type / نوع الرهان',
+                      ),
+                      items: betTypesFor(digitCount)
+                          .map(
+                            (t) => DropdownMenuItem(value: t, child: Text(t)),
+                          )
+                          .toList(),
+                      onChanged: (v) =>
+                          setDialog(() => betType = v ?? 'Straight'),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: amountCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'Amount / المبلغ',
+                        hintText: '0.50',
+                      ),
+                      onChanged: (_) => setDialog(() {}),
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      initialValue: drawType,
+                      decoration: const InputDecoration(
+                        labelText: 'Draw type / نوع السحب (optional)',
+                      ),
+                      items: drawTypes
+                          .map(
+                            (t) => DropdownMenuItem(value: t, child: Text(t)),
+                          )
+                          .toList(),
+                      onChanged: (v) => setDialog(() => drawType = v ?? 'Any'),
+                    ),
+                    if (error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: Text(
+                          error,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.red,
+                          ),
+                        ),
+                      ),
                   ],
-                  onChanged: (v) {
-                    setDialog(() {
-                      gameId = v ?? 'g_numbers';
-                      final allowed = gameId == 'g_winz'
-                          ? winzBetTypes
-                          : numbersBetTypes;
-                      if (!allowed.contains(betType)) betType = allowed.first;
-                    });
-                  },
                 ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: numbersCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Numbers / الأرقام',
-                    hintText: '123 or 1234',
-                  ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel / إلغاء'),
                 ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  // Recreate when the game changes so the allowed bet types
-                  // (Win4 has no Combo) are picked up by initialValue.
-                  key: ValueKey('betType-$gameId'),
-                  initialValue: betType,
-                  decoration: const InputDecoration(
-                    labelText: 'Bet type / نوع الرهان',
-                  ),
-                  items: (gameId == 'g_winz' ? winzBetTypes : numbersBetTypes)
-                      .map((t) => DropdownMenuItem(value: t, child: Text(t)))
-                      .toList(),
-                  onChanged: (v) => setDialog(() => betType = v ?? 'Straight'),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: amountCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Amount / المبلغ',
-                    hintText: '0.50',
-                  ),
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  initialValue: drawType,
-                  decoration: const InputDecoration(
-                    labelText: 'Draw type / نوع السحب',
-                  ),
-                  items: drawTypes
-                      .map((t) => DropdownMenuItem(value: t, child: Text(t)))
-                      .toList(),
-                  onChanged: (v) => setDialog(() => drawType = v ?? 'Any'),
+                ElevatedButton(
+                  onPressed: error == null
+                      ? () => Navigator.pop(ctx, true)
+                      : null,
+                  child: const Text('Save / حفظ'),
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel / إلغاء'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Save / حفظ'),
-            ),
-          ],
+            );
+          },
         ),
-      ),
-    );
-    if (ok != true) return;
-
-    final numbers = numbersCtrl.text.trim();
-    final amount = double.tryParse(amountCtrl.text.trim()) ?? 0;
-    if (numbers.isEmpty) {
-      _snack('Numbers are required / الأرقام مطلوبة', background: Colors.red);
-      return;
-    }
-    if (amount <= 0) {
-      _snack(
-        'Enter a valid amount / أدخل مبلغاً صحيحاً',
-        background: Colors.red,
       );
-      return;
-    }
-    try {
+      if (ok != true) return;
+      // Save is already gated by the same validation; this is only a safety
+      // net so invalid input never produces a snackbar.
+      if (validationError() != null) return;
+
+      final numbers = numbersCtrl.text.trim();
+      final amount = double.tryParse(amountCtrl.text.trim())!;
       await state.addCustomerPlay(
         customerId,
-        gameId: gameId,
-        gameName: gameId == 'g_winz' ? 'Win4' : 'Numbers',
+        gameId: gameIdFor(digitCount),
+        gameName: gameNameFor(digitCount),
         numbers: numbers,
         betType: betType,
         amount: amount,
@@ -414,6 +498,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
       await _load();
     } catch (e) {
       _snack(e.toString(), background: Colors.red);
+    } finally {
+      numbersCtrl.dispose();
+      amountCtrl.dispose();
     }
   }
 
