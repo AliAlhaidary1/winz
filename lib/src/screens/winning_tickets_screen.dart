@@ -321,11 +321,15 @@ class _WinningTicketsScreenState extends State<WinningTicketsScreen> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        const Text(
-                          'Scan Ticket by Barcode',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
+                        const Flexible(
+                          child: Text(
+                            'Scan Ticket by Barcode',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         const Spacer(),
@@ -578,46 +582,67 @@ class _WinningTicketsScreenState extends State<WinningTicketsScreen> {
                                                   ),
                                                 ),
                                                 const SizedBox(width: 6),
-                                                Text(
-                                                  (lines[i]['numbers']
-                                                          as String)
-                                                      .replaceAll(',', ' '),
-                                                  style: const TextStyle(
-                                                    fontSize: 11,
-                                                    fontWeight: FontWeight.w800,
+                                                Flexible(
+                                                  child: Text(
+                                                    (lines[i]['numbers']
+                                                            as String)
+                                                        .replaceAll(',', ' '),
+                                                    style: const TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight:
+                                                          FontWeight.w800,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
                                                   ),
                                                 ),
                                                 const SizedBox(width: 6),
-                                                Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                        horizontal: 6,
-                                                        vertical: 1,
-                                                      ),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.white,
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          4,
+                                                Flexible(
+                                                  child: Container(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 6,
+                                                          vertical: 1,
                                                         ),
-                                                    border: Border.all(
-                                                      color:
-                                                          Colors.grey.shade300,
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.white,
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            4,
+                                                          ),
+                                                      border: Border.all(
+                                                        color: Colors
+                                                            .grey
+                                                            .shade300,
+                                                      ),
                                                     ),
-                                                  ),
-                                                  child: Text(
-                                                    lines[i]['betType'],
-                                                    style: const TextStyle(
-                                                      fontSize: 9,
+                                                    child: Text(
+                                                      lines[i]['betType'],
+                                                      style: const TextStyle(
+                                                        fontSize: 9,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
                                                     ),
                                                   ),
                                                 ),
                                                 const Spacer(),
-                                                Text(
-                                                  fmtMoney(lines[i]['amount']),
-                                                  style: const TextStyle(
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.bold,
+                                                Flexible(
+                                                  child: Text(
+                                                    fmtMoney(
+                                                      lines[i]['amount'],
+                                                    ),
+                                                    style: const TextStyle(
+                                                      fontSize: 10,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                    textAlign: TextAlign.right,
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
                                                   ),
                                                 ),
                                                 if (lineDetails != null) ...[
@@ -649,6 +674,8 @@ class _WinningTicketsScreenState extends State<WinningTicketsScreen> {
                                         Text(
                                           'Game: ${t['gameName']} • ${t['betType']} • ${t['numbers'].toString().replaceAll(',', ' ')}',
                                           style: const TextStyle(fontSize: 11),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       Text(
                                         'Total: ${fmtMoney(t['total'] ?? t['amount'])} • Date: ${fmtDate(t['createdAt'])}',
@@ -666,6 +693,8 @@ class _WinningTicketsScreenState extends State<WinningTicketsScreen> {
                                             fontWeight: FontWeight.bold,
                                             color: green,
                                           ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       if (_result!['pending'] == true)
                                         const Text(
@@ -745,11 +774,15 @@ class _WinningTicketsScreenState extends State<WinningTicketsScreen> {
               children: [
                 const Icon(Icons.emoji_events, color: green, size: 16),
                 const SizedBox(width: 6),
-                Text(
-                  'Winners List (${_winningList.length})',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
+                Flexible(
+                  child: Text(
+                    'Winners List (${_winningList.length})',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 const Spacer(),

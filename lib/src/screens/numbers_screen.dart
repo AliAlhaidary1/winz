@@ -59,7 +59,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
 
   /// Apply the optional prefill payload passed by callers via
   /// `Navigator.pushNamed(context, '/numbers', arguments: {...})`.
-  /// No user feedback is shown — this only seeds the input controls.
+  /// No user feedback is shown â€” this only seeds the input controls.
   void _applyRoutePrefill() {
     final args = ModalRoute.of(context)?.settings.arguments;
     if (args is! Map) return;
@@ -101,16 +101,16 @@ class _NumbersScreenState extends State<NumbersScreen> {
     await db.refreshPeriodStatuses();
     final allDraws = await db.getDrawsByGame('g_numbers');
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-    // فلترة legacy draws: فقط المستقبلية + المفتوحة حسب draw_periods
+    // ظپظ„طھط±ط© legacy draws: ظپظ‚ط· ط§ظ„ظ…ط³طھظ‚ط¨ظ„ظٹط© + ط§ظ„ظ…ظپطھظˆط­ط© ط­ط³ط¨ draw_periods
     final openPeriods = await db.getOpenPeriods();
     final openIds = openPeriods.map((p) => p['id'] as String).toSet();
-    // draws التي تتوافق مع فترة OPEN و drawTime في المستقبل (5 دقائق سماح)
+    // draws ط§ظ„طھظٹ طھطھظˆط§ظپظ‚ ظ…ط¹ ظپطھط±ط© OPEN ظˆ drawTime ظپظٹ ط§ظ„ظ…ط³طھظ‚ط¨ظ„ (5 ط¯ظ‚ط§ط¦ظ‚ ط³ظ…ط§ط­)
     final List<Map<String, dynamic>> draws =
         allDraws.where((d) {
           if (d['status'] != 'open') return false;
           final dt = asInt(d['drawTime']);
-          if (dt <= nowMs - 5 * 60 * 1000) return false; // منتهية
-          // تحقق من الفترة المقابلة
+          if (dt <= nowMs - 5 * 60 * 1000) return false; // ظ…ظ†طھظ‡ظٹط©
+          // طھط­ظ‚ظ‚ ظ…ظ† ط§ظ„ظپطھط±ط© ط§ظ„ظ…ظ‚ط§ط¨ظ„ط©
           final name = d['name'] as String;
           final isMidday = name.contains('Midday') || name.contains('Morning');
           final type = isMidday ? 'MIDDAY' : 'EVENING';
@@ -124,8 +124,8 @@ class _NumbersScreenState extends State<NumbersScreen> {
     final List<Map<String, dynamic>> finalDraws = draws;
     final periods = await db.getAllPeriods();
     if (!mounted) return;
-    // السماح بالخلط: لا نحتاج لاشتقاق الفترة من السلة (معطّل)
-    // final cart = context.read<AppState>().cart; // غير مستخدم الآن
+    // ط§ظ„ط³ظ…ط§ط­ ط¨ط§ظ„ط®ظ„ط·: ظ„ط§ ظ†ط­طھط§ط¬ ظ„ط§ط´طھظ‚ط§ظ‚ ط§ظ„ظپطھط±ط© ظ…ظ† ط§ظ„ط³ظ„ط© (ظ…ط¹ط·ظ‘ظ„)
+    // final cart = context.read<AppState>().cart; // ط؛ظٹط± ظ…ط³طھط®ط¯ظ… ط§ظ„ط¢ظ†
     setState(() {
       _draws = finalDraws;
       if (_draws.isNotEmpty) {
@@ -135,9 +135,9 @@ class _NumbersScreenState extends State<NumbersScreen> {
       }
       _periods = periods;
       _loadingDraws = false;
-      // السماح بالخلط: لا نفرض تغيير الفترة حسب السلة عند وجود خلط يدوي
-      // نحتفظ باختيار المستخدم الحالي، فقط نطبق قيود الإغلاق
-      // if (modeFromCart != null) _drawMode = modeFromCart; // معطّل للسماح بـ Midday + Evening + Both بنفس الفاتورة
+      // ط§ظ„ط³ظ…ط§ط­ ط¨ط§ظ„ط®ظ„ط·: ظ„ط§ ظ†ظپط±ط¶ طھط؛ظٹظٹط± ط§ظ„ظپطھط±ط© ط­ط³ط¨ ط§ظ„ط³ظ„ط© ط¹ظ†ط¯ ظˆط¬ظˆط¯ ط®ظ„ط· ظٹط¯ظˆظٹ
+      // ظ†ط­طھظپط¸ ط¨ط§ط®طھظٹط§ط± ط§ظ„ظ…ط³طھط®ط¯ظ… ط§ظ„ط­ط§ظ„ظٹطŒ ظپظ‚ط· ظ†ط·ط¨ظ‚ ظ‚ظٹظˆط¯ ط§ظ„ط¥ط؛ظ„ط§ظ‚
+      // if (modeFromCart != null) _drawMode = modeFromCart; // ظ…ط¹ط·ظ‘ظ„ ظ„ظ„ط³ظ…ط§ط­ ط¨ظ€ Midday + Evening + Both ط¨ظ†ظپط³ ط§ظ„ظپط§طھظˆط±ط©
       _applySellableDrawMode();
     });
   }
@@ -273,7 +273,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
     if (low.contains('combo') && _digits.length >= 3) {
       final combos = _comboCount(_digits.split(''));
       if (combos <= 1)
-        return 'Invalid Combo — 100% repeating digits (e.g. 111)';
+        return 'Invalid Combo â€” 100% repeating digits (e.g. 111)';
       final total = amt * combos;
       if (isBoth) return 'Amount Due: \$${(total * 2).toStringAsFixed(2)}';
       return 'Amount Due: \$${total.toStringAsFixed(2)}';
@@ -399,10 +399,10 @@ class _NumbersScreenState extends State<NumbersScreen> {
               _drawMode = v;
               _syncDrawModeToPeriods();
             });
-            // السماح بالخلط في نفس الفاتورة: لا نعيد تحويل السلة القديمة
-            // عند تغيير الفترة، تبقى العناصر السابقة كما هي (صباحي/مسائي/Both)
-            // والعناصر الجديدة فقط ستُضاف بالفترة الجديدة — هذا يحقق طلب المستخدم
-            // "العب صباحي ومسائي و Both بنفس اللعبة بنفس الفاتورة"
+            // ط§ظ„ط³ظ…ط§ط­ ط¨ط§ظ„ط®ظ„ط· ظپظٹ ظ†ظپط³ ط§ظ„ظپط§طھظˆط±ط©: ظ„ط§ ظ†ط¹ظٹط¯ طھط­ظˆظٹظ„ ط§ظ„ط³ظ„ط© ط§ظ„ظ‚ط¯ظٹظ…ط©
+            // ط¹ظ†ط¯ طھط؛ظٹظٹط± ط§ظ„ظپطھط±ط©طŒ طھط¨ظ‚ظ‰ ط§ظ„ط¹ظ†ط§طµط± ط§ظ„ط³ط§ط¨ظ‚ط© ظƒظ…ط§ ظ‡ظٹ (طµط¨ط§ط­ظٹ/ظ…ط³ط§ط¦ظٹ/Both)
+            // ظˆط§ظ„ط¹ظ†ط§طµط± ط§ظ„ط¬ط¯ظٹط¯ط© ظپظ‚ط· ط³طھظڈط¶ط§ظپ ط¨ط§ظ„ظپطھط±ط© ط§ظ„ط¬ط¯ظٹط¯ط© â€” ظ‡ط°ط§ ظٹط­ظ‚ظ‚ ط·ظ„ط¨ ط§ظ„ظ…ط³طھط®ط¯ظ…
+            // "ط§ظ„ط¹ط¨ طµط¨ط§ط­ظٹ ظˆظ…ط³ط§ط¦ظٹ ظˆ Both ط¨ظ†ظپط³ ط§ظ„ظ„ط¹ط¨ط© ط¨ظ†ظپط³ ط§ظ„ظپط§طھظˆط±ط©"
           },
           selectedItemBuilder: (ctx) {
             final labels = <String, String>{
@@ -513,12 +513,12 @@ class _NumbersScreenState extends State<NumbersScreen> {
     );
   }
 
-  // ADD to cart (before SALE, removable) — supports Both (Spec §13-14)
+  // ADD to cart (before SALE, removable) â€” supports Both (Spec آ§13-14)
   Future<void> _addToCart() async {
     if (_drawId == null || _draws.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('No open draw available — sales are closed'),
+          content: Text('No open draw available â€” sales are closed'),
           backgroundColor: Colors.red,
         ),
       );
@@ -530,7 +530,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Both is not available — a period is closed. Play the open period only.',
+            'Both is not available â€” a period is closed. Play the open period only.',
           ),
           backgroundColor: Colors.red,
         ),
@@ -541,7 +541,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
     if (_drawMode == 'Midday' && !morningOpen) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Morning is closed — Evening only'),
+          content: Text('Morning is closed â€” Evening only'),
           backgroundColor: Colors.red,
         ),
       );
@@ -589,7 +589,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Repeated digits like $_digits are allowed in Straight only — choose Straight or change the number',
+            'Repeated digits like $_digits are allowed in Straight only â€” choose Straight or change the number',
           ),
           backgroundColor: Colors.red,
         ),
@@ -633,13 +633,13 @@ class _NumbersScreenState extends State<NumbersScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Combo not valid for $_digits — requires distinct permutations',
+              'Combo not valid for $_digits â€” requires distinct permutations',
             ),
           ),
         );
         return;
       }
-      // المبلغ المدخل هو للتركيبة الواحدة — الإجمالي = amt × combos
+      // ط§ظ„ظ…ط¨ظ„ط؛ ط§ظ„ظ…ط¯ط®ظ„ ظ‡ظˆ ظ„ظ„طھط±ظƒظٹط¨ط© ط§ظ„ظˆط§ط­ط¯ط© â€” ط§ظ„ط¥ط¬ظ…ط§ظ„ظٹ = amt أ— combos
       if (amt < 0.5 - 1e-9) {
         ScaffoldMessenger.of(
           context,
@@ -688,12 +688,13 @@ class _NumbersScreenState extends State<NumbersScreen> {
       int? comboCount;
       if (isCombo) {
         comboCount = _comboCount(_digits.split(''));
-        cartAmount = amt * comboCount; // الإجمالي المطلوب دفعه
+        cartAmount =
+            amt * comboCount; // ط§ظ„ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ظ…ط·ظ„ظˆط¨ ط¯ظپط¹ظ‡
       } else if (isAll) {
-        cartAmount = amt * 2; // All = $1 Straight + $1 Box = $2 لكل سحب
+        cartAmount = amt * 2; // All = $1 Straight + $1 Box = $2 ظ„ظƒظ„ ط³ط­ط¨
       }
       if (_drawMode == 'Both') {
-        // Both: amountPerDraw هو الإجمالي للسحب الواحد، الإجمالي للاثنين = amountPerDraw*2
+        // Both: amountPerDraw ظ‡ظˆ ط§ظ„ط¥ط¬ظ…ط§ظ„ظٹ ظ„ظ„ط³ط­ط¨ ط§ظ„ظˆط§ط­ط¯طŒ ط§ظ„ط¥ط¬ظ…ط§ظ„ظٹ ظ„ظ„ط§ط«ظ†ظٹظ† = amountPerDraw*2
         await context.read<AppState>().addBothToCart(
           gameId: 'g_numbers',
           gameName: 'Numbers',
@@ -712,7 +713,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'Added BOTH COMBO: \$${savedAmt.toStringAsFixed(2)}×$savedCombos = \$${savedTotal.toStringAsFixed(2)} per draw • total \$${(savedTotal * 2).toStringAsFixed(2)}',
+                'Added BOTH COMBO: \$${savedAmt.toStringAsFixed(2)}أ—$savedCombos = \$${savedTotal.toStringAsFixed(2)} per draw â€¢ total \$${(savedTotal * 2).toStringAsFixed(2)}',
               ),
               backgroundColor: AppTheme.green,
             ),
@@ -759,7 +760,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
   Future<void> _doSale() async {
     final app = context.read<AppState>();
     if (app.isCartEmpty) {
-      showSaleToast(context, 'Cart empty — add numbers first', error: true);
+      showSaleToast(context, 'Cart empty â€” add numbers first', error: true);
       return;
     }
     try {
@@ -767,11 +768,11 @@ class _NumbersScreenState extends State<NumbersScreen> {
       if (!mounted) return;
       showSaleToast(
         context,
-        'SALE success — Ticket ${ticket['id']} • ${ticket['linesCount']} plays • ${fmtMoney(ticket['total'])}',
+        'SALE success â€” Ticket ${ticket['id']} â€¢ ${ticket['linesCount']} plays â€¢ ${fmtMoney(ticket['total'])}',
         color: AppTheme.green,
       );
       await _load();
-      // إذا توجد طابعة افتراضية — اطبع مباشرة بدون انتقال للصفحة
+      // ط¥ط°ط§ طھظˆط¬ط¯ ط·ط§ط¨ط¹ط© ط§ظپطھط±ط§ط¶ظٹط© â€” ط§ط·ط¨ط¹ ظ…ط¨ط§ط´ط±ط© ط¨ط¯ظˆظ† ط§ظ†طھظ‚ط§ظ„ ظ„ظ„طµظپط­ط©
       final lines =
           (ticket['lines'] as List?)?.cast<Map<String, dynamic>>() ?? [];
       final printed = await tryDirectPrintTicket(context, ticket, lines);
@@ -809,7 +810,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
         ),
         content: Text(
-          'Delete all items (${app.cartCount} plays • ${fmtMoney(app.cartTotal)})?',
+          'Delete all items (${app.cartCount} plays â€¢ ${fmtMoney(app.cartTotal)})?',
           style: const TextStyle(fontSize: 12),
         ),
         actions: [
@@ -852,7 +853,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
           child: Row(
             children: [
-              // CLEAR — يحذف الفاتورة/كل العناصر
+              // CLEAR â€” ظٹط­ط°ظپ ط§ظ„ظپط§طھظˆط±ط©/ظƒظ„ ط§ظ„ط¹ظ†ط§طµط±
               SizedBox(
                 height: 44,
                 child: OutlinedButton.icon(
@@ -883,22 +884,32 @@ class _NumbersScreenState extends State<NumbersScreen> {
               Expanded(
                 child: SizedBox(
                   height: 44,
-                  child: ElevatedButton.icon(
+                  child: ElevatedButton(
                     onPressed: _doSale,
-                    icon: const Icon(Icons.receipt_long, size: 18),
-                    label: Text(
-                      'SALE • ${fmtMoney(app.cartTotal)} (${cart.length})',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 13,
-                      ),
-                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.green,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.receipt_long, size: 18),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'SALE â€¢ ${fmtMoney(app.cartTotal)} (${cart.length})',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 13,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -928,7 +939,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
               final combos = _comboCount(item.numbers);
               final per = combos > 0 ? item.amount / combos : item.amount;
               subText =
-                  '${combos}×\$${per.toStringAsFixed(2)} = ${fmtMoney(item.amount)}';
+                  '${combos}أ—\$${per.toStringAsFixed(2)} = ${fmtMoney(item.amount)}';
             } else if (_isStBoxBet(item.betType)) {
               final perSide = item.amount / 2;
               subText =
@@ -960,105 +971,121 @@ class _NumbersScreenState extends State<NumbersScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.greenLight,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  item.betType,
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppTheme.green,
-                                  ),
+                              // Wrap lets the chips flow onto a second line on
+                              // narrow phones instead of overflowing the row.
+                              Expanded(
+                                child: Wrap(
+                                  spacing: 6,
+                                  runSpacing: 6,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.greenLight,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        item.betType,
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppTheme.green,
+                                        ),
+                                      ),
+                                    ),
+                                    Builder(
+                                      builder: (_) {
+                                        final p =
+                                            (item.drawType ??
+                                                    item.periodId ??
+                                                    item.drawName ??
+                                                    '')
+                                                .toString()
+                                                .toUpperCase();
+                                        final isEve =
+                                            p.contains('EVENING') ||
+                                            p.contains('EVE');
+                                        final isMid =
+                                            p.contains('MIDDAY') ||
+                                            p.contains('MORNING') ||
+                                            p.contains('MID');
+                                        final label = isEve
+                                            ? 'EVENING'
+                                            : isMid
+                                            ? 'MIDDAY'
+                                            : '';
+                                        if (label.isEmpty)
+                                          return const SizedBox.shrink();
+                                        return Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 3,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: isEve
+                                                ? const Color(0xFFF3E5F5)
+                                                : const Color(0xFFFFF8E1),
+                                            borderRadius: BorderRadius.circular(
+                                              6,
+                                            ),
+                                            border: Border.all(
+                                              color: isEve
+                                                  ? Colors.purple.shade200
+                                                  : Colors.orange.shade200,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                isEve
+                                                    ? Icons.nights_stay
+                                                    : Icons.wb_sunny,
+                                                size: 10,
+                                                color: isEve
+                                                    ? Colors.purple
+                                                    : Colors.orange.shade700,
+                                              ),
+                                              const SizedBox(width: 3),
+                                              Text(
+                                                label,
+                                                style: TextStyle(
+                                                  fontSize: 8,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: isEve
+                                                      ? Colors.purple.shade700
+                                                      : Colors.orange.shade700,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                    ConstrainedBox(
+                                      constraints: const BoxConstraints(
+                                        maxWidth: 170,
+                                      ),
+                                      child: Text(
+                                        subText,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 1,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                               const SizedBox(width: 6),
-                              Builder(
-                                builder: (_) {
-                                  final p =
-                                      (item.drawType ??
-                                              item.periodId ??
-                                              item.drawName ??
-                                              '')
-                                          .toString()
-                                          .toUpperCase();
-                                  final isEve =
-                                      p.contains('EVENING') ||
-                                      p.contains('EVE');
-                                  final isMid =
-                                      p.contains('MIDDAY') ||
-                                      p.contains('MORNING') ||
-                                      p.contains('MID');
-                                  final label = isEve
-                                      ? 'EVENING'
-                                      : isMid
-                                      ? 'MIDDAY'
-                                      : '';
-                                  if (label.isEmpty)
-                                    return const SizedBox.shrink();
-                                  return Container(
-                                    margin: const EdgeInsets.only(right: 6),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 3,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: isEve
-                                          ? const Color(0xFFF3E5F5)
-                                          : const Color(0xFFFFF8E1),
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(
-                                        color: isEve
-                                            ? Colors.purple.shade200
-                                            : Colors.orange.shade200,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          isEve
-                                              ? Icons.nights_stay
-                                              : Icons.wb_sunny,
-                                          size: 10,
-                                          color: isEve
-                                              ? Colors.purple
-                                              : Colors.orange.shade700,
-                                        ),
-                                        const SizedBox(width: 3),
-                                        Text(
-                                          label,
-                                          style: TextStyle(
-                                            fontSize: 8,
-                                            fontWeight: FontWeight.w900,
-                                            color: isEve
-                                                ? Colors.purple.shade700
-                                                : Colors.orange.shade700,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              ),
-                              Flexible(
-                                child: Text(
-                                  subText,
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const Spacer(),
                               Container(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 8,
@@ -1099,7 +1126,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                               const SizedBox(width: 4),
                               Expanded(
                                 child: Text(
-                                  '${item.drawName ?? '-'} • ${item.gameName} • ${fmtMoney(item.amount)}',
+                                  '${item.drawName ?? '-'} â€¢ ${item.gameName} â€¢ ${fmtMoney(item.amount)}',
                                   style: const TextStyle(
                                     fontSize: 10,
                                     color: AppTheme.textMuted,
@@ -1292,6 +1319,10 @@ class _NumbersScreenState extends State<NumbersScreen> {
 
   Widget _buildInputPanel() {
     final info = _betInfoText();
+    // Save vertical space on short/narrow phones so the cart section and
+    // keypad still fit without a vertical overflow.
+    final bool compact = MediaQuery.of(context).size.width < 400;
+    final double digitBox = compact ? 42 : 48;
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1304,7 +1335,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
           ),
         ],
       ),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      padding: EdgeInsets.fromLTRB(12, compact ? 6 : 10, 12, compact ? 6 : 10),
       child: Column(
         children: [
           Row(
@@ -1313,8 +1344,8 @@ class _NumbersScreenState extends State<NumbersScreen> {
               final has = idx < _digits.length;
               final char = has ? _digits[idx] : '';
               return Container(
-                width: 48,
-                height: 48,
+                width: digitBox,
+                height: digitBox,
                 margin: const EdgeInsets.symmetric(horizontal: 3),
                 decoration: BoxDecoration(
                   color: has ? AppTheme.green : Colors.white,
@@ -1335,7 +1366,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                         ),
                       )
                     : Text(
-                        '—',
+                        'â€”',
                         style: TextStyle(
                           fontSize: 16,
                           color: Colors.grey.shade400,
@@ -1384,7 +1415,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                 textAlign: TextAlign.center,
                 softWrap: true,
                 maxLines: 2,
-                overflow: TextOverflow.visible,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
@@ -1393,116 +1424,178 @@ class _NumbersScreenState extends State<NumbersScreen> {
     );
   }
 
-  Widget _buildKeypad() {
-    final gridHeight = 4 * 56 + 3 * 8 + 8.0;
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 3,
-            child: GridView.count(
-              crossAxisCount: 3,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 8,
-              crossAxisSpacing: 8,
-              childAspectRatio: 1.8,
-              children: [
-                for (int i = 1; i <= 9; i++)
-                  _keyBtn('$i', onTap: () => _pressDigit('$i')),
-                _keyBtn(
-                  'C',
-                  onTap: _clear,
-                  bg: const Color(0xFFFFF1F1),
-                  fg: Colors.red,
-                  border: const Color(0xFFFFC9C9),
-                ),
-                _keyBtn('0', onTap: () => _pressDigit('0')),
-                _keyBtn('', onTap: _back, icon: Icons.backspace_outlined),
-              ],
+  Widget _keypadGrid({double aspect = 1.8}) {
+    return GridView.count(
+      crossAxisCount: 3,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 8,
+      crossAxisSpacing: 8,
+      childAspectRatio: aspect,
+      children: [
+        for (int i = 1; i <= 9; i++)
+          _keyBtn('$i', onTap: () => _pressDigit('$i')),
+        _keyBtn(
+          'C',
+          onTap: _clear,
+          bg: const Color(0xFFFFF1F1),
+          fg: Colors.red,
+          border: const Color(0xFFFFC9C9),
+        ),
+        _keyBtn('0', onTap: () => _pressDigit('0')),
+        _keyBtn('', onTap: _back, icon: Icons.backspace_outlined),
+      ],
+    );
+  }
+
+  Widget _quickPickButton() {
+    return SizedBox(
+      height: 56,
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: _quickPick,
+        icon: const Icon(Icons.auto_awesome, size: 16),
+        label: const Text(
+          'Quick Pick',
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
+        ),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          side: BorderSide(color: AppTheme.green.withValues(alpha: 0.4)),
+        ),
+      ),
+    );
+  }
+
+  Widget _addToCartButton() {
+    return InkWell(
+      onTap: _addToCart,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppTheme.blue,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppTheme.cardBorder),
+        ),
+        alignment: Alignment.center,
+        child: const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add_shopping_cart, color: Colors.white, size: 28),
+            SizedBox(height: 4),
+            Text(
+              'ADD',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 16,
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            flex: 1,
-            child: SizedBox(
-              height: gridHeight,
-              child: Column(
-                children: [
-                  SizedBox(
-                    height: 56,
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _quickPick,
-                      icon: const Icon(Icons.auto_awesome, size: 16),
-                      label: const Text(
-                        'Quick Pick',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
+            SizedBox(height: 2),
+            Text(
+              'to cart',
+              style: TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w600,
+                fontSize: 10,
+                letterSpacing: 1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Single-line ADD button used when the keypad actions are stacked under the
+  /// grid on narrow phones â€” a full-height button would overflow the column.
+  Widget _addToCartButtonCompact() {
+    return InkWell(
+      onTap: _addToCart,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppTheme.blue,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppTheme.cardBorder),
+        ),
+        alignment: Alignment.center,
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.add_shopping_cart, color: Colors.white, size: 22),
+            SizedBox(width: 8),
+            Text(
+              'ADD TO CART',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildKeypad() {
+    const gridHeight = 4 * 56 + 3 * 8 + 8.0;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Below this width the 1-flex action column (< ~84dp) cannot fit the
+        // "Quick Pick" label, so stack the actions under a full-width keypad.
+        final bool stackActions = constraints.maxWidth < 360;
+        return Container(
+          color: Colors.white,
+          padding: const EdgeInsets.all(8),
+          child: stackActions
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Shorter keys keep the keypad inside a short phone
+                    // viewport even when the cart section is visible.
+                    _keypadGrid(aspect: 2.2),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(child: _quickPickButton()),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
+                          child: SizedBox(
+                            height: 56,
+                            child: _addToCartButtonCompact(),
+                          ),
                         ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                        side: BorderSide(
-                          color: AppTheme.green.withValues(alpha: 0.4),
-                        ),
-                      ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: InkWell(
-                      onTap: _addToCart,
-                      borderRadius: BorderRadius.circular(14),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: AppTheme.blue,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: AppTheme.cardBorder),
-                        ),
-                        alignment: Alignment.center,
-                        child: const Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                  ],
+                )
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(flex: 3, child: _keypadGrid()),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 1,
+                      child: SizedBox(
+                        height: gridHeight,
+                        child: Column(
                           children: [
-                            Icon(
-                              Icons.add_shopping_cart,
-                              color: Colors.white,
-                              size: 28,
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              'ADD',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 16,
-                              ),
-                            ),
-                            SizedBox(height: 2),
-                            Text(
-                              'to cart',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 10,
-                                letterSpacing: 1,
-                              ),
-                            ),
+                            _quickPickButton(),
+                            const SizedBox(height: 8),
+                            Expanded(child: _addToCartButton()),
                           ],
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
+                  ],
+                ),
+        );
+      },
     );
   }
 
@@ -1522,7 +1615,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
-              'Enter Ticket ID or Serial — e.g. 000001 or 00000001',
+              'Enter Ticket ID or Serial â€” e.g. 000001 or 00000001',
               style: TextStyle(fontSize: 11),
             ),
             const SizedBox(height: 10),
@@ -1564,7 +1657,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Ticket not found: $code — try the barcode or serial number',
+            'Ticket not found: $code â€” try the barcode or serial number',
           ),
           backgroundColor: Colors.red,
         ),
@@ -1604,7 +1697,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Text(
-                  'PAID — no re-sale',
+                  'PAID â€” no re-sale',
                   style: TextStyle(
                     fontSize: 9,
                     fontWeight: FontWeight.bold,
@@ -1620,7 +1713,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Text(
-                  'CANCELLED — no re-sale',
+                  'CANCELLED â€” no re-sale',
                   style: TextStyle(
                     fontSize: 9,
                     fontWeight: FontWeight.bold,
@@ -1656,8 +1749,10 @@ class _NumbersScreenState extends State<NumbersScreen> {
               ),
           ],
         ),
-        content: SizedBox(
-          width: 400,
+        content: ConstrainedBox(
+          // A fixed 400dp dialog overflows 320-411dp phones; let it shrink to
+          // the available width while capping it on larger screens.
+          constraints: const BoxConstraints(maxWidth: 400),
           child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1818,7 +1913,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
           ElevatedButton.icon(
             icon: const Icon(Icons.copy, size: 16),
             label: const Text(
-              'Copy — choose period',
+              'Copy â€” choose period',
               style: TextStyle(fontSize: 11),
             ),
             style: ElevatedButton.styleFrom(
@@ -1833,7 +1928,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                     if (choice == null) return;
                     try {
                       // validateTicket already resolved formatted payloads (e.g.
-                      // "Ticket:000123") to the real ticket — replay must use that id.
+                      // "Ticket:000123") to the real ticket â€” replay must use that id.
                       final tid = ticket['id'] as String;
                       final res = await app.replayTicketToCartWithChoice(
                         tid,
@@ -1844,19 +1939,19 @@ class _NumbersScreenState extends State<NumbersScreen> {
                       final skipped = (res['skipped'] as List).cast<String>();
                       final trimmed = (res['trimmed'] as List).cast<String>();
                       final label = choice == 'BOTH'
-                          ? 'Both (×2)'
+                          ? 'Both (أ—2)'
                           : choice == 'MIDDAY'
                           ? 'Midday only'
                           : 'Evening only';
                       String extra = '';
                       if (skipped.isNotEmpty)
-                        extra += ' — ${skipped.length} محذوف';
+                        extra += ' â€” ${skipped.length} ظ…ط­ط°ظˆظپ';
                       if (trimmed.isNotEmpty)
-                        extra += ' — ${trimmed.length} مقلّل';
+                        extra += ' â€” ${trimmed.length} ظ…ظ‚ظ„ظ‘ظ„';
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
-                            'Copied $count play(s) → $label — tap SALE to print$extra',
+                            'Copied $count play(s) â†’ $label â€” tap SALE to print$extra',
                           ),
                           backgroundColor: AppTheme.green,
                           duration: Duration(seconds: extra.isNotEmpty ? 5 : 3),
@@ -1870,7 +1965,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             title: const Text(
-                              'تم النسخ مع تعديلات',
+                              'طھظ… ط§ظ„ظ†ط³ط® ظ…ط¹ طھط¹ط¯ظٹظ„ط§طھ',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
@@ -1881,13 +1976,13 @@ class _NumbersScreenState extends State<NumbersScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'تم نسخ $count → $label',
+                                    'طھظ… ظ†ط³ط® $count â†’ $label',
                                     style: const TextStyle(fontSize: 11),
                                   ),
                                   if (skipped.isNotEmpty) ...[
                                     const SizedBox(height: 8),
                                     const Text(
-                                      '⚠️ محذوف (Sold Out):',
+                                      'âڑ ï¸ڈ ظ…ط­ط°ظˆظپ (Sold Out):',
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.bold,
@@ -1896,7 +1991,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                                     ),
                                     ...skipped.map(
                                       (s) => Text(
-                                        '• $s',
+                                        'â€¢ $s',
                                         style: const TextStyle(fontSize: 10),
                                       ),
                                     ),
@@ -1904,7 +1999,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                                   if (trimmed.isNotEmpty) ...[
                                     const SizedBox(height: 8),
                                     const Text(
-                                      '✂️ مقلّل للحد المتبقي:',
+                                      'âœ‚ï¸ڈ ظ…ظ‚ظ„ظ‘ظ„ ظ„ظ„ط­ط¯ ط§ظ„ظ…طھط¨ظ‚ظٹ:',
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.bold,
@@ -1913,7 +2008,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                                     ),
                                     ...trimmed.map(
                                       (s) => Text(
-                                        '• $s',
+                                        'â€¢ $s',
                                         style: const TextStyle(fontSize: 10),
                                       ),
                                     ),
@@ -1924,7 +2019,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.pop(c),
-                                child: const Text('حسناً'),
+                                child: const Text('ط­ط³ظ†ط§ظ‹'),
                               ),
                             ],
                           ),
@@ -1970,11 +2065,15 @@ class _NumbersScreenState extends State<NumbersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final double screenWidth = MediaQuery.of(context).size.width;
     final isTablet =
         Responsive.isTablet(context) || Responsive.isDesktop(context);
     final isLand = Responsive.isLandscape(context);
-    final useTwoPane =
-        isTablet && isLand && MediaQuery.of(context).size.width >= 900;
+    final useTwoPane = isTablet && isLand && screenWidth >= 900;
+    // On narrow phones the title dropdown cannot sit beside three action
+    // icons and the cart badge. Collapse the two utility icons into a single
+    // overflow menu and cap the badge so the toolbar never overflows.
+    final bool compactAppBar = screenWidth < 480;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
@@ -1991,30 +2090,61 @@ class _NumbersScreenState extends State<NumbersScreen> {
         appBar: AppBar(
           title: _appBarDrawField(),
           centerTitle: true,
+          leadingWidth: compactAppBar ? 48 : 56,
           actions: [
-            IconButton(
-              icon: const Icon(Icons.qr_code_scanner, size: 20),
-              tooltip: 'Scan barcode',
-              onPressed: _scanAndReplay,
-            ),
-            IconButton(
-              icon: const Icon(Icons.search, size: 20),
-              tooltip: 'Search by ticket number',
-              onPressed: _copyByTicketNumber,
-            ),
+            // Compact phones: one menu instead of two separate utility icons.
+            if (compactAppBar)
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, size: 20),
+                tooltip: 'More actions',
+                onSelected: (value) {
+                  if (value == 'scan') {
+                    _scanAndReplay();
+                  } else if (value == 'search') {
+                    _copyByTicketNumber();
+                  }
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem<String>(
+                    value: 'scan',
+                    child: Text('Scan barcode', style: TextStyle(fontSize: 13)),
+                  ),
+                  PopupMenuItem<String>(
+                    value: 'search',
+                    child: Text(
+                      'Search ticket',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            if (!compactAppBar) ...[
+              IconButton(
+                icon: const Icon(Icons.qr_code_scanner, size: 20),
+                tooltip: 'Scan barcode',
+                onPressed: _scanAndReplay,
+              ),
+              IconButton(
+                icon: const Icon(Icons.search, size: 20),
+                tooltip: 'Search by ticket number',
+                onPressed: _copyByTicketNumber,
+              ),
+            ],
             Consumer<AppState>(
               builder: (_, app, __) => app.isCartEmpty
                   ? const SizedBox()
                   : Padding(
-                      padding: const EdgeInsets.only(right: 8),
+                      padding: EdgeInsets.only(right: compactAppBar ? 2 : 8),
                       child: Center(
                         // Cap the badge so a large cart total cannot squeeze
                         // the AppBar title dropdown into an overflow.
                         child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 100),
+                          constraints: BoxConstraints(
+                            maxWidth: compactAppBar ? 72 : 100,
+                          ),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
+                              horizontal: 6,
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
@@ -2022,13 +2152,14 @@ class _NumbersScreenState extends State<NumbersScreen> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
-                              '${app.cartCount} • ${fmtMoney(app.cartTotal)}',
+                              '${app.cartCount} â€¢ ${fmtMoney(app.cartTotal)}',
                               style: const TextStyle(
                                 color: AppTheme.green,
                                 fontWeight: FontWeight.w800,
                                 fontSize: 11,
                               ),
                               overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
                             ),
                           ),
                         ),
@@ -2104,7 +2235,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
     final dt = DateTime.fromMillisecondsSinceEpoch(asInt(d['drawTime']));
     final time =
         '${dt.hour > 12 ? dt.hour - 12 : dt.hour}:${dt.minute.toString().padLeft(2, '0')} ${dt.hour >= 12 ? 'PM' : 'AM'}';
-    return '$period • $time';
+    return '$period â€¢ $time';
   }
 
   Widget _empty() {
@@ -2133,7 +2264,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
             ),
             const SizedBox(height: 4),
             const Text(
-              'Enter digits → ADD to cart → SALE to print one ticket',
+              'Enter digits â†’ ADD to cart â†’ SALE to print one ticket',
               style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
               textAlign: TextAlign.center,
             ),
@@ -2142,7 +2273,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
               builder: (_, app, __) => app.isCartEmpty
                   ? const SizedBox()
                   : Text(
-                      'Cart: ${app.cartCount} plays • ${fmtMoney(app.cartTotal)}',
+                      'Cart: ${app.cartCount} plays â€¢ ${fmtMoney(app.cartTotal)}',
                       style: TextStyle(
                         fontSize: 11,
                         color: AppTheme.green,

@@ -85,6 +85,8 @@ class LotteryScreen extends StatelessWidget {
                         fontSize: 10,
                         color: Colors.black45,
                       ),
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),

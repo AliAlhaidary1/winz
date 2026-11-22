@@ -60,6 +60,26 @@ class Responsive {
       isTablet(c) || isDesktop(c) ? 52 : 48;
   static double digitBoxSize(BuildContext c) =>
       isTablet(c) || isDesktop(c) ? 60 : 48;
+
+  /// Insets for dialogs. The Material default (40px each side) leaves only
+  /// 240px on a 320px-wide phone, which is narrower than the dialog's default
+  /// 280px minimum and causes a horizontal overflow. Reducing the inset on
+  /// small screens keeps every dialog inside the viewport.
+  static EdgeInsets dialogInsets(BuildContext c) {
+    final w = MediaQuery.of(c).size.width;
+    if (w < 360) {
+      return const EdgeInsets.symmetric(horizontal: 12, vertical: 20);
+    }
+    if (w < 600) {
+      return const EdgeInsets.symmetric(horizontal: 20, vertical: 24);
+    }
+    return const EdgeInsets.symmetric(horizontal: 40, vertical: 24);
+  }
+
+  /// A cap for the scrollable body of selection dialogs so a long list can
+  /// never push the dialog's buttons off a short phone screen.
+  static double dialogContentMaxHeight(BuildContext c) =>
+      MediaQuery.of(c).size.height * 0.5;
 }
 
 Widget responsiveCenter({required Widget child, double? maxWidth}) {

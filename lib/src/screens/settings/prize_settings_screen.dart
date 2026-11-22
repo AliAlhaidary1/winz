@@ -85,6 +85,8 @@ class _PrizeSettingsScreenState extends State<PrizeSettingsScreen> {
         title: Text(
           key,
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -209,6 +211,8 @@ class _PrizeSettingsScreenState extends State<PrizeSettingsScreen> {
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         subtitle: Text(
                           _desc(k),
@@ -216,25 +220,32 @@ class _PrizeSettingsScreenState extends State<PrizeSettingsScreen> {
                             fontSize: 10,
                             color: Colors.black54,
                           ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE6F4EA),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                v,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: green,
-                                  fontSize: 12,
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 72),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE6F4EA),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  v,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: green,
+                                    fontSize: 12,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ),

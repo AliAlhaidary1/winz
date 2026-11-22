@@ -101,6 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (c) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        insetPadding: Responsive.dialogInsets(c),
         title: const Text('Exit App'),
         content: const Text('Do you want to exit the application?'),
         actions: [
@@ -137,38 +138,7 @@ class _HomeScreenState extends State<HomeScreen> {
         appBar: AppBar(
           title: const Text('NY Lottery POS'),
           actions: [
-            Container(
-              margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 12,
-                    backgroundColor: Colors.white,
-                    child: Text(
-                      (user?['username']?[0] ?? 'U').toUpperCase(),
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.green,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    user?['username'] ?? '',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            _userChip(user),
             IconButton(
               icon: const Icon(Icons.logout, size: 18),
               tooltip: 'Logout',
@@ -214,6 +184,55 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// Compact account badge in the app bar. On the narrowest phones the
+  /// centered title needs the space, so only the initial is shown there;
+  /// the full username remains available in the drawer header.
+  Widget _userChip(Map<String, dynamic>? user) {
+    final username = user?['username']?.toString() ?? '';
+    final initial = username.isEmpty ? 'U' : username[0];
+    final avatar = CircleAvatar(
+      radius: 12,
+      backgroundColor: Colors.white,
+      child: Text(
+        initial.toUpperCase(),
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          color: AppTheme.green,
+        ),
+      ),
+    );
+    if (MediaQuery.of(context).size.width < 393) {
+      return Padding(padding: const EdgeInsets.only(right: 8), child: avatar);
+    }
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          avatar,
+          const SizedBox(width: 6),
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: Responsive.isDesktop(context) ? 140 : 84,
+            ),
+            child: Text(
+              username,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -332,6 +351,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textMuted,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -386,11 +407,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       fontWeight: FontWeight.w800,
                       color: Colors.white,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   SizedBox(height: 4),
                   Text(
                     'Numbers • Pick 3/4',
                     style: TextStyle(fontSize: 12, color: Colors.white70),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
@@ -424,6 +449,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   fontWeight: FontWeight.w800,
                   color: AppTheme.textDark,
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             TextButton(
@@ -480,42 +507,52 @@ class _HomeScreenState extends State<HomeScreen> {
     required VoidCallback onTap,
   }) {
     final color = isDefault ? AppTheme.green : AppTheme.textDark;
-    return SizedBox(
-      height: 34,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(17),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            color: isDefault ? AppTheme.greenSoft : Colors.white,
-            borderRadius: BorderRadius.circular(17),
-            border: Border.all(
-              color: isDefault
-                  ? AppTheme.green.withValues(alpha: 0.35)
-                  : AppTheme.cardBorder,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                isDefault ? Icons.person_outline : Icons.person,
-                size: 14,
-                color: color,
+    // A horizontal ListView gives its children unbounded width. Cap each
+    // chip so a very long (Arabic/English) customer name ellipsizes instead
+    // of producing a chip wider than the screen.
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.of(context).size.width - 48,
+      ),
+      child: SizedBox(
+        height: 34,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(17),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              color: isDefault ? AppTheme.greenSoft : Colors.white,
+              borderRadius: BorderRadius.circular(17),
+              border: Border.all(
+                color: isDefault
+                    ? AppTheme.green.withValues(alpha: 0.35)
+                    : AppTheme.cardBorder,
               ),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isDefault ? Icons.person_outline : Icons.person,
+                  size: 14,
                   color: color,
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: color,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -545,28 +582,31 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (c) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        insetPadding: Responsive.dialogInsets(c),
         title: const Text('Add customer / إضافة عميل'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameCtrl,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(
-                labelText: 'Name / الاسم',
-                hintText: 'e.g. Ahmad / أحمد',
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Name / الاسم',
+                  hintText: 'e.g. Ahmad / أحمد',
+                ),
               ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: phoneCtrl,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Phone / الهاتف',
-                hintText: 'Optional / اختياري',
+              const SizedBox(height: 10),
+              TextField(
+                controller: phoneCtrl,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Phone / الهاتف',
+                  hintText: 'Optional / اختياري',
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -623,34 +663,44 @@ class _HomeScreenState extends State<HomeScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
+          insetPadding: Responsive.dialogInsets(c),
           title: Text('Saved plays / المحفوظة\n$name'),
           content: SizedBox(
             width: double.maxFinite,
-            child: ListView.separated(
-              shrinkWrap: true,
-              itemCount: plays.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (ctx, i) {
-                final p = plays[i];
-                return ListTile(
-                  dense: true,
-                  title: Text(
-                    '${p['gameName'] ?? ''}  •  ${_numbersString(p['numbers'])}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: Responsive.dialogContentMaxHeight(c),
+              ),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: plays.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (ctx, i) {
+                  final p = plays[i];
+                  return ListTile(
+                    dense: true,
+                    title: Text(
+                      '${p['gameName'] ?? ''}  •  ${_numbersString(p['numbers'])}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  subtitle: Text(
-                    '${p['betType'] ?? ''}  •  ${fmtMoney(p['amount'])}',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: AppTheme.textMuted,
+                    subtitle: Text(
+                      '${p['betType'] ?? ''}  •  ${fmtMoney(p['amount'])}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.textMuted,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  onTap: () => Navigator.pop(c, p),
-                );
-              },
+                    onTap: () => Navigator.pop(c, p),
+                  );
+                },
+              ),
             ),
           ),
           actions: [
@@ -709,12 +759,9 @@ class _HomeScreenState extends State<HomeScreen> {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: Responsive.gridCrossAxisCount(
-          context,
-          mobile: 2,
-          tablet: 4,
-          desktop: 4,
-        ),
+        // 2 columns on phones, 3 on tablets (600-1023) and 4 on desktop:
+        // 4 across a 600px tablet made the tiles cramped and clipped labels.
+        crossAxisCount: Responsive.gridCrossAxisCount(context),
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,
         childAspectRatio: 1.35,
@@ -772,6 +819,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (c) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        insetPadding: Responsive.dialogInsets(c),
         title: const Text('Logout'),
         content: const Text('End your session?'),
         actions: [

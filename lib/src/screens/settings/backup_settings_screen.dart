@@ -295,9 +295,13 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
               ...saved.map(
                 (path) => Padding(
                   padding: const EdgeInsets.only(bottom: 6),
-                  child: SelectableText(
-                    path,
-                    style: const TextStyle(fontSize: 11),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SelectableText(
+                      path,
+                      style: const TextStyle(fontSize: 11),
+                      maxLines: 1,
+                    ),
                   ),
                 ),
               ),
@@ -594,9 +598,16 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  SelectableText(
-                    backupPath,
-                    style: TextStyle(fontSize: 9, color: Colors.grey.shade600),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SelectableText(
+                      backupPath,
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: Colors.grey.shade600,
+                      ),
+                      maxLines: 1,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   CheckboxListTile(
@@ -688,6 +699,8 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                 backupPath.split('/').last.split('\\').last,
                 style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
                 textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
@@ -745,6 +758,8 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                         child: Text(
                           'نسخة الأمان محفوظة:\n${safety.split('/').last.split('\\').last}',
                           style: const TextStyle(fontSize: 10),
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -926,6 +941,8 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
         content: Text(
           'هل تريد حذف ${path.split('/').last.split('\\').last} ؟',
           style: const TextStyle(fontSize: 12),
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
         ),
         actions: [
           TextButton(
@@ -970,6 +987,11 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
     if (dt == null) return '—';
     return DateFormat('yyyy-MM-dd HH:mm').format(dt);
   }
+
+  /// Paths have no spaces, so a long one would overflow a narrow column.
+  /// Zero-width spaces after separators give the paragraph soft wrap points.
+  String _wrappablePath(String path) =>
+      path.replaceAll('\\', '\\\u200B').replaceAll('/', '/\u200B');
 
   @override
   Widget build(BuildContext context) {
@@ -1238,10 +1260,11 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                   ),
                                 ),
                                 child: SelectableText(
-                                  _customDir ??
-                                      (_visibleDir == null
-                                          ? 'لم يتم الاختيار — سيتم استخدام المجلد الافتراضي المرئي إن وُجد'
-                                          : 'لم يتم الاختيار — الافتراضي: $_visibleDir'),
+                                  _customDir == null
+                                      ? (_visibleDir == null
+                                            ? 'لم يتم الاختيار — سيتم استخدام المجلد الافتراضي المرئي إن وُجد'
+                                            : 'لم يتم الاختيار — الافتراضي: $_visibleDir')
+                                      : _wrappablePath(_customDir!),
                                   style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: _customDir == null
@@ -1933,7 +1956,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                                     ),
                                                   ),
                                                   content: SelectableText(
-                                                    f.path,
+                                                    _wrappablePath(f.path),
                                                     style: const TextStyle(
                                                       fontSize: 11,
                                                     ),
@@ -2052,7 +2075,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
       ),
       Expanded(
         child: SelectableText(
-          value,
+          _wrappablePath(value),
           style: TextStyle(
             fontSize: small ? 10 : 11,
             fontWeight: FontWeight.bold,

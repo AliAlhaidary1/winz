@@ -301,10 +301,13 @@ class _CashScreenState extends State<CashScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          // At narrow widths (<=~411 logical px) the fixed-width
+                          // action used to squeeze the period-net amount until it
+                          // overflowed. Stack the action below the amounts there.
+                          final narrow = constraints.maxWidth < 400;
+                          final icon = Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
                               color: Colors.white.withValues(alpha: 0.18),
@@ -315,23 +318,26 @@ class _CashScreenState extends State<CashScreen> {
                               color: Colors.white,
                               size: 22,
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Period Net — صافي الفترة',
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: 0.5,
-                                  ),
+                          );
+                          final amounts = Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Period Net — صافي الفترة',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.5,
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
                                   fmtMoney(net),
                                   style: const TextStyle(
                                     color: Colors.white,
@@ -339,130 +345,161 @@ class _CashScreenState extends State<CashScreen> {
                                     fontWeight: FontWeight.w900,
                                     letterSpacing: 0.5,
                                   ),
-                                ),
-                                if (_session != null)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 2),
-                                    child: Text(
-                                      'افتتاح: ${fmtMoney(asDouble(_session!['openingAmount']))} • ${fmtDate(asInt(_session!['openedAt']))}',
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 9,
-                                      ),
-                                    ),
-                                  ),
-                                if (_session == null)
-                                  const Padding(
-                                    padding: EdgeInsets.only(top: 2),
-                                    child: Text(
-                                      'لا توجد جلسة مفتوحة — افتح جلسة للبدء',
-                                      style: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 9,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          if (_session != null)
-                            ElevatedButton(
-                              onPressed: _closeSession,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.white,
-                                foregroundColor: AppTheme.red,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 10,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
+                                  maxLines: 1,
                                 ),
                               ),
-                              child: const Text(
-                                'إغلاق',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
+                              if (_session != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text(
+                                    'افتتاح: ${fmtMoney(asDouble(_session!['openingAmount']))} • ${fmtDate(asInt(_session!['openedAt']))}',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 9,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                              ),
-                            )
-                          else
-                            SizedBox(
-                              width: 140,
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: TextField(
-                                      controller: _openCtrl,
-                                      keyboardType:
-                                          const TextInputType.numberWithOptions(
-                                            decimal: true,
+                              if (_session == null)
+                                const Padding(
+                                  padding: EdgeInsets.only(top: 2),
+                                  child: Text(
+                                    'لا توجد جلسة مفتوحة — افتح جلسة للبدء',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 9,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                          );
+                          final action = _session != null
+                              ? ElevatedButton(
+                                  onPressed: _closeSession,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.white,
+                                    foregroundColor: AppTheme.red,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 10,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'إغلاق',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                )
+                              : SizedBox(
+                                  width: narrow ? double.infinity : 160,
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextField(
+                                          controller: _openCtrl,
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
                                           ),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12,
-                                      ),
-                                      decoration: InputDecoration(
-                                        hintText: '0.00',
-                                        hintStyle: TextStyle(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.6,
-                                          ),
-                                          fontSize: 11,
-                                        ),
-                                        filled: true,
-                                        fillColor: Colors.white.withValues(
-                                          alpha: 0.15,
-                                        ),
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                          borderSide: BorderSide.none,
-                                        ),
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 8,
+                                          decoration: InputDecoration(
+                                            hintText: '0.00',
+                                            hintStyle: TextStyle(
+                                              color: Colors.white.withValues(
+                                                alpha: 0.6,
+                                              ),
+                                              fontSize: 11,
                                             ),
-                                        isDense: true,
-                                        prefixText: '\$',
-                                        prefixStyle: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 11,
+                                            filled: true,
+                                            fillColor: Colors.white.withValues(
+                                              alpha: 0.15,
+                                            ),
+                                            border: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                              borderSide: BorderSide.none,
+                                            ),
+                                            contentPadding:
+                                                const EdgeInsets.symmetric(
+                                                  horizontal: 10,
+                                                  vertical: 8,
+                                                ),
+                                            isDense: true,
+                                            prefixText: '\$',
+                                            prefixStyle: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 11,
+                                            ),
+                                          ),
                                         ),
                                       ),
-                                    ),
+                                      const SizedBox(width: 6),
+                                      ElevatedButton(
+                                        onPressed: _openSession,
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.white,
+                                          foregroundColor: AppTheme.green,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 10,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'فتح',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 6),
-                                  ElevatedButton(
-                                    onPressed: _openSession,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.white,
-                                      foregroundColor: AppTheme.green,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 10,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                    ),
-                                    child: const Text(
-                                      'فتح',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
+                                );
+                          if (narrow) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    icon,
+                                    const SizedBox(width: 12),
+                                    Expanded(child: amounts),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                action,
+                              ],
+                            );
+                          }
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              icon,
+                              const SizedBox(width: 12),
+                              Expanded(child: amounts),
+                              const SizedBox(width: 8),
+                              action,
+                            ],
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -539,11 +576,12 @@ class _CashScreenState extends State<CashScreen> {
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          SizedBox(
-                            width: 130,
+                          Expanded(
+                            flex: 4,
                             child: DropdownButtonFormField<String>(
                               value: _adjType,
                               isDense: true,
+                              isExpanded: true,
                               decoration: const InputDecoration(
                                 contentPadding: EdgeInsets.symmetric(
                                   horizontal: 10,
@@ -590,6 +628,7 @@ class _CashScreenState extends State<CashScreen> {
                           ),
                           const SizedBox(width: 8),
                           Expanded(
+                            flex: 4,
                             child: TextField(
                               controller: _adjCtrl,
                               keyboardType:
@@ -614,7 +653,7 @@ class _CashScreenState extends State<CashScreen> {
                               onPressed: _adjust,
                               style: ElevatedButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
+                                  horizontal: 8,
                                 ),
                               ),
                               child: const Text(
@@ -802,30 +841,33 @@ class _CashScreenState extends State<CashScreen> {
                               color: AppTheme.green,
                             ),
                             const SizedBox(width: 6),
-                            const Text(
-                              'الحركات — Transactions',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 11,
+                            const Flexible(
+                              child: Text(
+                                'الحركات — Transactions',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 11,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
+                            const SizedBox(width: 6),
                             const Spacer(),
-                            if (_ledger.isEmpty)
-                              const Text(
-                                'لا يوجد',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: AppTheme.textMuted,
-                                ),
-                              )
-                            else
-                              Text(
-                                '${_ledger.length} حركة',
+                            Flexible(
+                              child: Text(
+                                _ledger.isEmpty
+                                    ? 'لا يوجد'
+                                    : '${_ledger.length} حركة',
                                 style: const TextStyle(
                                   fontSize: 10,
                                   color: AppTheme.textMuted,
                                 ),
+                                textAlign: TextAlign.end,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
+                            ),
                           ],
                         ),
                       ),
@@ -887,83 +929,88 @@ class _CashScreenState extends State<CashScreen> {
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(color: AppTheme.cardBorder),
                               ),
-                              child: ListTile(
-                                dense: true,
-                                visualDensity: VisualDensity.compact,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 2,
-                                ),
-                                leading: Container(
-                                  width: 32,
-                                  height: 32,
-                                  decoration: BoxDecoration(
-                                    color: col.withValues(alpha: 0.10),
-                                    borderRadius: BorderRadius.circular(8),
+                              child: Material(
+                                type: MaterialType.transparency,
+                                child: ListTile(
+                                  dense: true,
+                                  visualDensity: VisualDensity.compact,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 2,
                                   ),
-                                  child: Icon(
-                                    _typeIcon(type),
-                                    size: 16,
+                                  leading: Container(
+                                    width: 32,
+                                    height: 32,
+                                    decoration: BoxDecoration(
+                                      color: col.withValues(alpha: 0.10),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Icon(
+                                      _typeIcon(type),
+                                      size: 16,
+                                      color: col,
+                                    ),
+                                  ),
+                                  title: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: col.withValues(alpha: 0.10),
+                                          borderRadius: BorderRadius.circular(
+                                            6,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          type.toUpperCase(),
+                                          style: TextStyle(
+                                            fontSize: 8,
+                                            fontWeight: FontWeight.bold,
+                                            color: col,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          '${dir == 'in' ? '+' : '-'} ${fmtMoney(amt)}',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w900,
+                                            color: col,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  subtitle: Text(
+                                    '${e['description'] ?? type} • ${_fmtDateShort(asInt(e['createdAt']))}${e['ticketId'] != null ? ' • #${e['ticketId']}' : ''}',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: AppTheme.textMuted,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  trailing: Icon(
+                                    dir == 'in'
+                                        ? Icons.arrow_downward
+                                        : Icons.arrow_upward,
+                                    size: 14,
                                     color: col,
                                   ),
+                                  onTap: e['ticketId'] != null
+                                      ? () => Navigator.pushNamed(
+                                          context,
+                                          '/ticket_detail',
+                                          arguments: {'id': e['ticketId']},
+                                        )
+                                      : null,
                                 ),
-                                title: Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: col.withValues(alpha: 0.10),
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: Text(
-                                        type.toUpperCase(),
-                                        style: TextStyle(
-                                          fontSize: 8,
-                                          fontWeight: FontWeight.bold,
-                                          color: col,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Expanded(
-                                      child: Text(
-                                        '${dir == 'in' ? '+' : '-'} ${fmtMoney(amt)}',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w900,
-                                          color: col,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                subtitle: Text(
-                                  '${e['description'] ?? type} • ${_fmtDateShort(asInt(e['createdAt']))}${e['ticketId'] != null ? ' • #${e['ticketId']}' : ''}',
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    color: AppTheme.textMuted,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                trailing: Icon(
-                                  dir == 'in'
-                                      ? Icons.arrow_downward
-                                      : Icons.arrow_upward,
-                                  size: 14,
-                                  color: col,
-                                ),
-                                onTap: e['ticketId'] != null
-                                    ? () => Navigator.pushNamed(
-                                        context,
-                                        '/ticket_detail',
-                                        arguments: {'id': e['ticketId']},
-                                      )
-                                    : null,
                               ),
                             ),
                           );

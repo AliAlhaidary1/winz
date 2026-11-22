@@ -1741,16 +1741,22 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                             ),
                                           ),
                                           const Spacer(),
-                                          Builder(
-                                            builder: (_) {
-                                              return Text(
-                                                '${dt.year}/${dt.month.toString().padLeft(2, '0')}/${dt.day.toString().padLeft(2, '0')} • $drawTime12',
-                                                style: const TextStyle(
-                                                  fontSize: 10,
-                                                  color: Colors.black54,
-                                                ),
-                                              );
-                                            },
+                                          Flexible(
+                                            child: Builder(
+                                              builder: (_) {
+                                                return Text(
+                                                  '${dt.year}/${dt.month.toString().padLeft(2, '0')}/${dt.day.toString().padLeft(2, '0')} • $drawTime12',
+                                                  style: const TextStyle(
+                                                    fontSize: 10,
+                                                    color: Colors.black54,
+                                                  ),
+                                                  textAlign: TextAlign.end,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                );
+                                              },
+                                            ),
                                           ),
                                         ],
                                       ),

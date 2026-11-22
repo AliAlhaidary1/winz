@@ -7,6 +7,7 @@ import '../data/database.dart';
 import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
 import '../utils/app_toast.dart';
+import '../utils/responsive.dart';
 import '../widgets/app_drawer.dart';
 import '../utils/format.dart';
 import '../utils/ticket_pdf.dart';
@@ -502,86 +503,96 @@ class _WinzScreenState extends State<WinzScreen> {
               ),
           ],
         ),
-        content: SizedBox(
-          width: 400,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Status: ${ticket['status']} • Total: ${fmtMoney(ticket['total'] ?? ticket['amount'])}',
-                style: const TextStyle(fontSize: 11),
-              ),
-              const SizedBox(height: 8),
-              if (blockedForResale)
+        content: ConstrainedBox(
+          // Fixed 400dp overflows narrow phones; shrink to the available
+          // dialog width while capping it on larger screens.
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Status: ${ticket['status']} • Total: ${fmtMoney(ticket['total'] ?? ticket['amount'])}',
+                  style: const TextStyle(fontSize: 11),
+                ),
+                const SizedBox(height: 8),
+                if (blockedForResale)
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.red.shade200),
+                    ),
+                    child: Text(
+                      'This ticket is ${st.toUpperCase()}. Copying would create a NEW sale and is not allowed.',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red,
+                      ),
+                    ),
+                  ),
+                if (lines != null && lines.isNotEmpty)
+                  for (int i = 0; i < lines.length; i++)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        children: [
+                          Text(
+                            '${i + 1}.',
+                            style: const TextStyle(fontSize: 10),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            (lines[i]['numbers'] as String).replaceAll(
+                              ',',
+                              ' ',
+                            ),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            lines[i]['betType'],
+                            style: const TextStyle(fontSize: 9),
+                          ),
+                          const Spacer(),
+                          Text(
+                            fmtMoney(lines[i]['amount']),
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                else
+                  Text(
+                    'Numbers: ${(ticket['numbers'] as String).replaceAll(',', ' ')} • ${ticket['betType']}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.red.shade50,
+                    color: const Color(0xFFFFF3E0),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.red.shade200),
                   ),
-                  child: Text(
-                    'This ticket is ${st.toUpperCase()}. Copying would create a NEW sale and is not allowed.',
-                    style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red,
-                    ),
+                  child: const Text(
+                    'When copying you will choose Midday, Evening, or both.',
+                    style: TextStyle(fontSize: 9, color: Colors.black54),
                   ),
                 ),
-              if (lines != null && lines.isNotEmpty)
-                for (int i = 0; i < lines.length; i++)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Row(
-                      children: [
-                        Text('${i + 1}.', style: const TextStyle(fontSize: 10)),
-                        const SizedBox(width: 6),
-                        Text(
-                          (lines[i]['numbers'] as String).replaceAll(',', ' '),
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          lines[i]['betType'],
-                          style: const TextStyle(fontSize: 9),
-                        ),
-                        const Spacer(),
-                        Text(
-                          fmtMoney(lines[i]['amount']),
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-              else
-                Text(
-                  'Numbers: ${(ticket['numbers'] as String).replaceAll(',', ' ')} • ${ticket['betType']}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF3E0),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  'When copying you will choose Midday, Evening, or both.',
-                  style: TextStyle(fontSize: 9, color: Colors.black54),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         actions: [
@@ -1002,19 +1013,29 @@ class _WinzScreenState extends State<WinzScreen> {
               Expanded(
                 child: SizedBox(
                   height: 44,
-                  child: ElevatedButton.icon(
+                  child: ElevatedButton(
                     onPressed: _doSale,
-                    icon: const Icon(Icons.receipt_long),
-                    label: Text(
-                      'SALE • ${fmtMoney(app.cartTotal)} (${app.cartCount})',
-                      style: const TextStyle(fontWeight: FontWeight.w900),
-                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.orange,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.receipt_long),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'SALE • ${fmtMoney(app.cartTotal)} (${app.cartCount})',
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -1028,8 +1049,10 @@ class _WinzScreenState extends State<WinzScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final w = MediaQuery.of(context).size.width;
-    final isTablet = w >= 600;
+    final double screenWidth = MediaQuery.of(context).size.width;
+    // Three icon buttons + the cart badge cannot share the toolbar with the
+    // draw dropdown on narrow phones. Use one overflow menu there.
+    final bool compactAppBar = screenWidth < 480;
     return Scaffold(
       backgroundColor: AppTheme.bg,
       resizeToAvoidBottomInset: false,
@@ -1037,30 +1060,57 @@ class _WinzScreenState extends State<WinzScreen> {
         toolbarHeight: 60,
         title: _appBarDrawField(),
         centerTitle: true,
+        leadingWidth: compactAppBar ? 48 : 56,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.qr_code_scanner, size: 18),
-            tooltip: 'Scan barcode',
-            onPressed: _scanAndReplay,
-          ),
-          IconButton(
-            icon: const Icon(Icons.search, size: 18),
-            tooltip: 'Search by ticket number',
-            onPressed: _copyByTicketNumber,
-          ),
+          if (compactAppBar)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, size: 18),
+              tooltip: 'More actions',
+              onSelected: (value) {
+                if (value == 'scan') {
+                  _scanAndReplay();
+                } else if (value == 'search') {
+                  _copyByTicketNumber();
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem<String>(
+                  value: 'scan',
+                  child: Text('Scan barcode', style: TextStyle(fontSize: 13)),
+                ),
+                PopupMenuItem<String>(
+                  value: 'search',
+                  child: Text('Search ticket', style: TextStyle(fontSize: 13)),
+                ),
+              ],
+            ),
+          if (!compactAppBar) ...[
+            IconButton(
+              icon: const Icon(Icons.qr_code_scanner, size: 18),
+              tooltip: 'Scan barcode',
+              onPressed: _scanAndReplay,
+            ),
+            IconButton(
+              icon: const Icon(Icons.search, size: 18),
+              tooltip: 'Search by ticket number',
+              onPressed: _copyByTicketNumber,
+            ),
+          ],
           Consumer<AppState>(
             builder: (_, app, __) => app.isCartEmpty
                 ? const SizedBox()
                 : Padding(
-                    padding: const EdgeInsets.only(right: 6),
+                    padding: EdgeInsets.only(right: compactAppBar ? 2 : 6),
                     child: Center(
                       // Cap the badge so a large cart total cannot squeeze
                       // the AppBar title dropdown into an overflow.
                       child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 100),
+                        constraints: BoxConstraints(
+                          maxWidth: compactAppBar ? 72 : 100,
+                        ),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
+                            horizontal: 6,
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
@@ -1075,6 +1125,7 @@ class _WinzScreenState extends State<WinzScreen> {
                               fontSize: 11,
                             ),
                             overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
                         ),
                       ),
@@ -1091,7 +1142,7 @@ class _WinzScreenState extends State<WinzScreen> {
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: isTablet ? 760 : double.infinity,
+            maxWidth: Responsive.contentMaxWidth(context),
           ),
           child: Column(
             children: [
@@ -1253,6 +1304,9 @@ class _WinzScreenState extends State<WinzScreen> {
               Builder(
                 builder: (ctx) {
                   final info = _betInfoText();
+                  // Save vertical space on short/narrow phones.
+                  final bool compact = MediaQuery.of(ctx).size.width < 400;
+                  final double digitBox = compact ? 42 : 48;
                   return Container(
                     decoration: BoxDecoration(
                       color: Colors.white,
@@ -1267,7 +1321,12 @@ class _WinzScreenState extends State<WinzScreen> {
                         ),
                       ],
                     ),
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                    padding: EdgeInsets.fromLTRB(
+                      12,
+                      compact ? 6 : 10,
+                      12,
+                      compact ? 6 : 10,
+                    ),
                     child: Column(
                       children: [
                         Row(
@@ -1276,8 +1335,8 @@ class _WinzScreenState extends State<WinzScreen> {
                             final has = idx < _digits.length;
                             final ch = has ? _digits[idx] : '';
                             return Container(
-                              width: 48,
-                              height: 48,
+                              width: digitBox,
+                              height: digitBox,
                               margin: const EdgeInsets.symmetric(horizontal: 3),
                               decoration: BoxDecoration(
                                 color: has ? AppTheme.orange : Colors.white,
@@ -1349,7 +1408,7 @@ class _WinzScreenState extends State<WinzScreen> {
                               textAlign: TextAlign.center,
                               softWrap: true,
                               maxLines: 2,
-                              overflow: TextOverflow.visible,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ],
@@ -1358,123 +1417,176 @@ class _WinzScreenState extends State<WinzScreen> {
                   );
                 },
               ),
-              Container(
+              _buildKeypad(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _keypadGrid({double aspect = 1.8}) {
+    return GridView.count(
+      crossAxisCount: 3,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 8,
+      crossAxisSpacing: 8,
+      childAspectRatio: aspect,
+      children: [
+        for (int i = 1; i <= 9; i++) _keyBtn('$i', onTap: () => _press('$i')),
+        _keyBtn(
+          'C',
+          onTap: _clear,
+          bg: const Color(0xFFFFF1F1),
+          fg: Colors.red,
+          border: const Color(0xFFFFC9C9),
+        ),
+        _keyBtn('0', onTap: () => _press('0')),
+        _keyBtn('', onTap: _back, icon: Icons.backspace_outlined),
+      ],
+    );
+  }
+
+  Widget _quickPickButton() {
+    return SizedBox(
+      height: 56,
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: _quickPick,
+        icon: const Icon(Icons.auto_awesome, size: 16),
+        label: const Text(
+          'Quick Pick',
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
+        ),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          side: BorderSide(color: AppTheme.orange.withValues(alpha: 0.4)),
+        ),
+      ),
+    );
+  }
+
+  Widget _addToCartButton() {
+    return InkWell(
+      onTap: _addToCart,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppTheme.blue,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        alignment: Alignment.center,
+        child: const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add_shopping_cart, color: Colors.white, size: 28),
+            SizedBox(height: 4),
+            Text(
+              'ADD',
+              style: TextStyle(
                 color: Colors.white,
-                padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-                child: Row(
+                fontWeight: FontWeight.w900,
+                fontSize: 16,
+              ),
+            ),
+            Text(
+              'to cart',
+              style: TextStyle(color: Colors.white70, fontSize: 10),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Single-line ADD for the stacked (narrow phone) keypad layout.
+  Widget _addToCartButtonCompact() {
+    return InkWell(
+      onTap: _addToCart,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppTheme.blue,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        alignment: Alignment.center,
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.add_shopping_cart, color: Colors.white, size: 22),
+            SizedBox(width: 8),
+            Text(
+              'ADD TO CART',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildKeypad() {
+    const actionColumnHeight = 4 * 56 + 3 * 8 + 8.0;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Under this width the 1-flex action column is too narrow for
+        // "Quick Pick"; stack the actions beneath a full-width keypad.
+        final bool stackActions = constraints.maxWidth < 360;
+        return Container(
+          color: Colors.white,
+          padding: const EdgeInsets.all(8),
+          child: stackActions
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Shorter keys keep the keypad inside a short phone
+                    // viewport even when the cart section is visible.
+                    _keypadGrid(aspect: 2.2),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(child: _quickPickButton()),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
+                          child: SizedBox(
+                            height: 56,
+                            child: _addToCartButtonCompact(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                )
+              : Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      flex: 3,
-                      child: GridView.count(
-                        crossAxisCount: 3,
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        mainAxisSpacing: 8,
-                        crossAxisSpacing: 8,
-                        childAspectRatio: 1.8,
-                        children: [
-                          for (int i = 1; i <= 9; i++)
-                            _keyBtn('$i', onTap: () => _press('$i')),
-                          _keyBtn(
-                            'C',
-                            onTap: _clear,
-                            bg: const Color(0xFFFFF1F1),
-                            fg: Colors.red,
-                            border: const Color(0xFFFFC9C9),
-                          ),
-                          _keyBtn('0', onTap: () => _press('0')),
-                          _keyBtn(
-                            '',
-                            onTap: _back,
-                            icon: Icons.backspace_outlined,
-                          ),
-                        ],
-                      ),
-                    ),
+                    Expanded(flex: 3, child: _keypadGrid()),
                     const SizedBox(width: 8),
                     Expanded(
                       flex: 1,
                       child: SizedBox(
-                        height: 4 * 56 + 3 * 8 + 8,
+                        height: actionColumnHeight,
                         child: Column(
                           children: [
-                            SizedBox(
-                              height: 56,
-                              width: double.infinity,
-                              child: OutlinedButton.icon(
-                                onPressed: _quickPick,
-                                icon: const Icon(Icons.auto_awesome, size: 16),
-                                label: const Text(
-                                  'Quick Pick',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                  ),
-                                  side: BorderSide(
-                                    color: AppTheme.orange.withValues(
-                                      alpha: 0.4,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
+                            _quickPickButton(),
                             const SizedBox(height: 8),
-                            Expanded(
-                              child: InkWell(
-                                onTap: _addToCart,
-                                borderRadius: BorderRadius.circular(14),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.blue,
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  alignment: Alignment.center,
-                                  child: const Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        Icons.add_shopping_cart,
-                                        color: Colors.white,
-                                        size: 28,
-                                      ),
-                                      SizedBox(height: 4),
-                                      Text(
-                                        'ADD',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w900,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                      Text(
-                                        'to cart',
-                                        style: TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 10,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
+                            Expanded(child: _addToCartButton()),
                           ],
                         ),
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
-        ),
-      ),
+        );
+      },
     );
   }
 

@@ -37,6 +37,8 @@ class AppDrawer extends StatelessWidget {
                 Text(
                   '${user?['username'] ?? ''} • ${user?['role'] ?? ''}',
                   style: const TextStyle(color: Colors.white70, fontSize: 11),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 6),
                 Container(
@@ -45,7 +47,7 @@ class AppDrawer extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.15),
+                    color: Colors.white.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(

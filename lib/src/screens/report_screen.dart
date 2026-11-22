@@ -601,10 +601,12 @@ class _ReportScreenState extends State<ReportScreen> {
                                 ),
                               ),
                               const SizedBox(height: 8),
-                              Row(
+                              Wrap(
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 6,
+                                runSpacing: 6,
                                 children: [
                                   const Icon(Icons.person, size: 14),
-                                  const SizedBox(width: 6),
                                   ChoiceChip(
                                     label: const Text(
                                       'My data',
@@ -617,7 +619,6 @@ class _ReportScreenState extends State<ReportScreen> {
                                       _load();
                                     },
                                   ),
-                                  const SizedBox(width: 6),
                                   ChoiceChip(
                                     label: const Text(
                                       'All operators',
@@ -633,68 +634,86 @@ class _ReportScreenState extends State<ReportScreen> {
                                 ],
                               ),
                               const SizedBox(height: 8),
-                              Row(
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Expanded(
-                                    child: Text(
-                                      _from == null
-                                          ? 'From: --'
-                                          : 'From: ${dateOnlyFmt.format(_from!)}',
-                                      style: const TextStyle(fontSize: 11),
-                                    ),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          _from == null
+                                              ? 'From: --'
+                                              : 'From: ${dateOnlyFmt.format(_from!)}',
+                                          style: const TextStyle(fontSize: 11),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          _to == null
+                                              ? 'To: --'
+                                              : 'To: ${dateOnlyFmt.format(_to!)}',
+                                          style: const TextStyle(fontSize: 11),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  Expanded(
-                                    child: Text(
-                                      _to == null
-                                          ? 'To: --'
-                                          : 'To: ${dateOnlyFmt.format(_to!)}',
-                                      style: const TextStyle(fontSize: 11),
-                                    ),
-                                  ),
-                                  TextButton(
-                                    onPressed: () async {
-                                      final d = await showDatePicker(
-                                        context: context,
-                                        firstDate: DateTime(2024),
-                                        lastDate: DateTime(2030),
-                                        initialDate: DateTime.now(),
-                                      );
-                                      if (d != null)
-                                        setState(() {
-                                          _from = d;
-                                          _preset = 'custom';
-                                        });
-                                      await _load();
-                                    },
-                                    child: const Text('From'),
-                                  ),
-                                  TextButton(
-                                    onPressed: () async {
-                                      final d = await showDatePicker(
-                                        context: context,
-                                        firstDate: DateTime(2024),
-                                        lastDate: DateTime(2030),
-                                        initialDate: DateTime.now(),
-                                      );
-                                      if (d != null)
-                                        setState(() {
-                                          _to = d;
-                                          _preset = 'custom';
-                                        });
-                                      await _load();
-                                    },
-                                    child: const Text('To'),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.clear),
-                                    onPressed: () {
-                                      setState(() {
-                                        _from = null;
-                                        _to = null;
-                                        _preset = 'all';
-                                      });
-                                      _load();
-                                    },
+                                  const SizedBox(height: 2),
+                                  Wrap(
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    spacing: 4,
+                                    children: [
+                                      TextButton(
+                                        onPressed: () async {
+                                          final d = await showDatePicker(
+                                            context: context,
+                                            firstDate: DateTime(2024),
+                                            lastDate: DateTime(2030),
+                                            initialDate: DateTime.now(),
+                                          );
+                                          if (d != null)
+                                            setState(() {
+                                              _from = d;
+                                              _preset = 'custom';
+                                            });
+                                          await _load();
+                                        },
+                                        child: const Text('From'),
+                                      ),
+                                      TextButton(
+                                        onPressed: () async {
+                                          final d = await showDatePicker(
+                                            context: context,
+                                            firstDate: DateTime(2024),
+                                            lastDate: DateTime(2030),
+                                            initialDate: DateTime.now(),
+                                          );
+                                          if (d != null)
+                                            setState(() {
+                                              _to = d;
+                                              _preset = 'custom';
+                                            });
+                                          await _load();
+                                        },
+                                        child: const Text('To'),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.clear),
+                                        onPressed: () {
+                                          setState(() {
+                                            _from = null;
+                                            _to = null;
+                                            _preset = 'all';
+                                          });
+                                          _load();
+                                        },
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
@@ -858,12 +877,16 @@ class _ReportScreenState extends State<ReportScreen> {
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-                                const Text(
-                                  'The Balance (ledger)',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
+                                const Flexible(
+                                  child: Text(
+                                    'The Balance (ledger)',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                               ],
@@ -1020,21 +1043,32 @@ class _ReportScreenState extends State<ReportScreen> {
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              color: AppTheme.textMuted,
-              fontWeight: bold ? FontWeight.bold : FontWeight.w600,
+          Flexible(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                color: AppTheme.textMuted,
+                fontWeight: bold ? FontWeight.bold : FontWeight.w600,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: bold ? 13 : 12,
-              fontWeight: bold ? FontWeight.w900 : FontWeight.bold,
-              color: bold ? Colors.black : color,
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: bold ? 13 : 12,
+                fontWeight: bold ? FontWeight.w900 : FontWeight.bold,
+                color: bold ? Colors.black : color,
+              ),
+              textAlign: TextAlign.end,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -1051,21 +1085,32 @@ class _ReportScreenState extends State<ReportScreen> {
   }) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: large ? 13 : 11,
-            color: Colors.white.withValues(alpha: bold ? 1 : 0.9),
-            fontWeight: bold ? FontWeight.w900 : FontWeight.w600,
+        Flexible(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: large ? 13 : 11,
+              color: Colors.white.withValues(alpha: bold ? 1 : 0.9),
+              fontWeight: bold ? FontWeight.w900 : FontWeight.w600,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: large ? 16 : 12,
-            color: color,
-            fontWeight: FontWeight.w900,
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: large ? 16 : 12,
+              color: color,
+              fontWeight: FontWeight.w900,
+            ),
+            textAlign: TextAlign.end,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ],

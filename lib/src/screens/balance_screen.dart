@@ -141,12 +141,17 @@ class _BalanceScreenState extends State<BalanceScreen> {
                                         fontSize: 12,
                                       ),
                                     ),
-                                    Text(
-                                      _fmt(_balance),
-                                      style: TextStyle(
-                                        fontSize: 28,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.green,
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        _fmt(_balance),
+                                        style: const TextStyle(
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.green,
+                                        ),
+                                        maxLines: 1,
                                       ),
                                     ),
                                   ],
@@ -164,12 +169,17 @@ class _BalanceScreenState extends State<BalanceScreen> {
                                         fontSize: 12,
                                       ),
                                     ),
-                                    Text(
-                                      _fmt(_cash),
-                                      style: TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.green,
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        _fmt(_cash),
+                                        style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.green,
+                                        ),
+                                        maxLines: 1,
                                       ),
                                     ),
                                   ],
@@ -482,9 +492,13 @@ class _BalanceScreenState extends State<BalanceScreen> {
                                 fontWeight: FontWeight.bold,
                                 color: signColor,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                             subtitle: Text(
                               '${isCredit ? 'CREDIT' : 'DEBIT'} • ${e['description'] ?? ''} • ${_fmtDate(e['createdAt'])}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         );

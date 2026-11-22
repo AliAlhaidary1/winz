@@ -398,27 +398,32 @@ pw.Widget buildTicketPdfWidget(
             ),
           ),
           pw.SizedBox(width: 6),
-          pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.end,
-            children: [
-              pw.Text(
-                'Date: ${fmtDate(t['createdAt'])}',
-                style: pw.TextStyle(
-                  fontSize: s.tiny,
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.black,
+          pw.SizedBox(
+            width: 96,
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.end,
+              children: [
+                _fitText(
+                  'Date: ${fmtDate(t['createdAt'])}',
+                  pw.TextStyle(
+                    fontSize: s.tiny,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.black,
+                  ),
+                  align: pw.TextAlign.right,
                 ),
-              ),
-              pw.SizedBox(height: 1),
-              pw.Text(
-                'Op: ${t['operatorName']}',
-                style: pw.TextStyle(
-                  fontSize: s.tiny,
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.black,
+                pw.SizedBox(height: 1),
+                _fitText(
+                  'Op: ${t['operatorName']}',
+                  pw.TextStyle(
+                    fontSize: s.tiny,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.black,
+                  ),
+                  align: pw.TextAlign.right,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       );

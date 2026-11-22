@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../utils/responsive.dart';
-
 import 'package:provider/provider.dart';
 
 import '../providers/app_state.dart';
@@ -65,7 +63,8 @@ class _SalesScreenState extends State<SalesScreen> {
               child: Text('No sales yet. Create via Numbers or Winz.'),
             )
           : ListView.separated(
-              padding: const EdgeInsets.all(8),
+              // Leave room so the extended FAB never covers the last row.
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
               itemCount: _tickets.length,
               separatorBuilder: (_, __) => const Divider(height: 1),
               itemBuilder: (c, i) {
@@ -88,16 +87,27 @@ class _SalesScreenState extends State<SalesScreen> {
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   subtitle: Text(
                     '${t['numbers']} • ${fmtMoney(t['amount'])} • ${fmtDate(t['createdAt'])} • ${t['operatorName']} • ${t['status']}',
                     style: const TextStyle(fontSize: 10),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  trailing: Text(
-                    fmtMoney(t['total']),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
+                  trailing: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 96),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        fmtMoney(t['total']),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                        maxLines: 1,
+                      ),
                     ),
                   ),
                   onTap: () => Navigator.pushNamed(

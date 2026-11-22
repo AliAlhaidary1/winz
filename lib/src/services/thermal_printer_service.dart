@@ -90,11 +90,13 @@ String _ascii(String input) {
 String _padLine(String left, String right, int width) {
   final l = _ascii(left);
   final r = _ascii(right);
+  // Never let a long amount get clipped by the paper edge: the right-hand
+  // value is the money/prize, so it wins and the label is what gets trimmed.
+  if (r.length >= width) return r.substring(r.length - width);
   final space = width - l.length - r.length;
   if (space < 1) {
     final keep = width - r.length - 1;
-    if (keep < 4)
-      return (l + r).length <= width ? l + r : (l + r).substring(0, width);
+    if (keep < 1) return r;
     return '${l.substring(0, keep)} $r';
   }
   return l + ' ' * space + r;

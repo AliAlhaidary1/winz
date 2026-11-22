@@ -105,10 +105,10 @@ class _PrintScreenState extends State<PrintScreen> {
                 Expanded(
                   child: Text(
                     (l['numbers'] as String).replaceAll(',', ' '),
-                    style: const TextStyle(
-                      fontSize: 28,
+                    style: TextStyle(
+                      fontSize: Responsive.isMobile(context) ? 20 : 28,
                       fontWeight: FontWeight.w900,
-                      letterSpacing: 3,
+                      letterSpacing: Responsive.isMobile(context) ? 1 : 3,
                       fontFamily: 'Courier',
                       color: Colors.black,
                     ),
@@ -116,22 +116,32 @@ class _PrintScreenState extends State<PrintScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  _displayBetUI(l['betType']),
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
+                const SizedBox(width: 6),
+                Flexible(
+                  flex: 2,
+                  child: Text(
+                    _displayBetUI(l['betType']),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  fmtMoney(l['amount']),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    fmtMoney(l['amount']),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
+                    textAlign: TextAlign.right,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
@@ -372,69 +382,82 @@ class _PrintScreenState extends State<PrintScreen> {
                                     ),
                                     // رقم الفاتورة والتاريخ مباشرة تحت SALES REPORT
                                     Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            const Text(
-                                              'Ticket ID / Barcode',
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.black,
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              const Text(
+                                                'Ticket ID / Barcode',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.black,
+                                                ),
                                               ),
-                                            ),
-                                            Text(
-                                              '${t['barcode'] ?? t['id']}',
-                                              style: const TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.black,
+                                              Text(
+                                                '${t['barcode'] ?? t['id']}',
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.black,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
                                               ),
-                                            ),
-                                          ],
+                                            ],
+                                          ),
                                         ),
-                                        Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.end,
-                                          children: [
-                                            const Text(
-                                              'Date',
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.black,
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.end,
+                                            children: [
+                                              const Text(
+                                                'Date',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.black,
+                                                ),
                                               ),
-                                            ),
-                                            Text(
-                                              fmtDate(t['createdAt']),
-                                              style: const TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.black,
+                                              Text(
+                                                fmtDate(t['createdAt']),
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.black,
+                                                ),
+                                                textAlign: TextAlign.end,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
                                               ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            const Text(
-                                              'Operator',
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.black,
+                                              const SizedBox(height: 4),
+                                              const Text(
+                                                'Operator',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.black,
+                                                ),
                                               ),
-                                            ),
-                                            Text(
-                                              '${t['operatorName']}',
-                                              style: const TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.black,
+                                              Text(
+                                                '${t['operatorName']}',
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.black,
+                                                ),
+                                                textAlign: TextAlign.end,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
                                               ),
-                                            ),
-                                          ],
+                                            ],
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -535,16 +558,48 @@ class _PrintScreenState extends State<PrintScreen> {
                                                                   ',',
                                                                   ' ',
                                                                 ),
+                                                            style: TextStyle(
+                                                              fontSize:
+                                                                  Responsive.isMobile(
+                                                                    context,
+                                                                  )
+                                                                  ? 18
+                                                                  : 26,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w900,
+                                                              letterSpacing:
+                                                                  Responsive.isMobile(
+                                                                    context,
+                                                                  )
+                                                                  ? 1
+                                                                  : 3,
+                                                              fontFamily:
+                                                                  'Courier',
+                                                              color:
+                                                                  Colors.black,
+                                                            ),
+                                                            maxLines: 1,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(
+                                                          width: 8,
+                                                        ),
+                                                        Flexible(
+                                                          flex: 2,
+                                                          child: Text(
+                                                            _displayBetUI(
+                                                              lines[i]['betType'],
+                                                            ),
                                                             style:
                                                                 const TextStyle(
-                                                                  fontSize: 26,
+                                                                  fontSize: 11,
                                                                   fontWeight:
                                                                       FontWeight
-                                                                          .w900,
-                                                                  letterSpacing:
-                                                                      3,
-                                                                  fontFamily:
-                                                                      'Courier',
+                                                                          .bold,
                                                                   color: Colors
                                                                       .black,
                                                                 ),
@@ -555,38 +610,29 @@ class _PrintScreenState extends State<PrintScreen> {
                                                           ),
                                                         ),
                                                         const SizedBox(
-                                                          width: 8,
+                                                          width: 6,
                                                         ),
-                                                        Text(
-                                                          _displayBetUI(
-                                                            lines[i]['betType'],
+                                                        Flexible(
+                                                          child: Text(
+                                                            fmtMoney(
+                                                              lines[i]['amount'],
+                                                            ),
+                                                            style:
+                                                                const TextStyle(
+                                                                  fontSize: 12,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .bold,
+                                                                  color: Colors
+                                                                      .black,
+                                                                ),
+                                                            textAlign:
+                                                                TextAlign.right,
+                                                            maxLines: 1,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
                                                           ),
-                                                          style:
-                                                              const TextStyle(
-                                                                fontSize: 12,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .bold,
-                                                                color: Colors
-                                                                    .black,
-                                                              ),
-                                                        ),
-                                                        const SizedBox(
-                                                          width: 8,
-                                                        ),
-                                                        Text(
-                                                          fmtMoney(
-                                                            lines[i]['amount'],
-                                                          ),
-                                                          style:
-                                                              const TextStyle(
-                                                                fontSize: 13,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .bold,
-                                                                color: Colors
-                                                                    .black,
-                                                              ),
                                                         ),
                                                       ],
                                                     ),
@@ -596,29 +642,41 @@ class _PrintScreenState extends State<PrintScreen> {
                                                   color: Colors.black,
                                                 ),
                                                 Row(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment
-                                                          .spaceBetween,
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.center,
                                                   children: [
                                                     const Text(
                                                       'TOTAL',
                                                       style: TextStyle(
                                                         fontWeight:
                                                             FontWeight.bold,
-                                                        fontSize: 14,
+                                                        fontSize: 13,
                                                         color: Colors.black,
                                                       ),
                                                     ),
-                                                    Text(
-                                                      fmtMoney(
-                                                        t['total'] ??
-                                                            t['amount'],
-                                                      ),
-                                                      style: const TextStyle(
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        fontSize: 18,
-                                                        color: Colors.black,
+                                                    const SizedBox(width: 8),
+                                                    Flexible(
+                                                      child: Text(
+                                                        fmtMoney(
+                                                          t['total'] ??
+                                                              t['amount'],
+                                                        ),
+                                                        style: TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          fontSize:
+                                                              Responsive.isMobile(
+                                                                context,
+                                                              )
+                                                              ? 14
+                                                              : 18,
+                                                          color: Colors.black,
+                                                        ),
+                                                        textAlign:
+                                                            TextAlign.right,
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
                                                       ),
                                                     ),
                                                   ],
@@ -640,6 +698,9 @@ class _PrintScreenState extends State<PrintScreen> {
                                                             FontWeight.bold,
                                                         color: green,
                                                       ),
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
                                                     ),
                                                   ),
                                               ],
@@ -709,16 +770,48 @@ class _PrintScreenState extends State<PrintScreen> {
                                                                   ',',
                                                                   ' ',
                                                                 ),
+                                                            style: TextStyle(
+                                                              fontSize:
+                                                                  Responsive.isMobile(
+                                                                    context,
+                                                                  )
+                                                                  ? 18
+                                                                  : 26,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w900,
+                                                              letterSpacing:
+                                                                  Responsive.isMobile(
+                                                                    context,
+                                                                  )
+                                                                  ? 1
+                                                                  : 3,
+                                                              fontFamily:
+                                                                  'Courier',
+                                                              color:
+                                                                  Colors.black,
+                                                            ),
+                                                            maxLines: 1,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(
+                                                          width: 8,
+                                                        ),
+                                                        Flexible(
+                                                          flex: 2,
+                                                          child: Text(
+                                                            _displayBetUI(
+                                                              otherLines[i]['betType'],
+                                                            ),
                                                             style:
                                                                 const TextStyle(
-                                                                  fontSize: 26,
+                                                                  fontSize: 11,
                                                                   fontWeight:
                                                                       FontWeight
-                                                                          .w900,
-                                                                  letterSpacing:
-                                                                      3,
-                                                                  fontFamily:
-                                                                      'Courier',
+                                                                          .bold,
                                                                   color: Colors
                                                                       .black,
                                                                 ),
@@ -729,38 +822,29 @@ class _PrintScreenState extends State<PrintScreen> {
                                                           ),
                                                         ),
                                                         const SizedBox(
-                                                          width: 8,
+                                                          width: 6,
                                                         ),
-                                                        Text(
-                                                          _displayBetUI(
-                                                            otherLines[i]['betType'],
+                                                        Flexible(
+                                                          child: Text(
+                                                            fmtMoney(
+                                                              otherLines[i]['amount'],
+                                                            ),
+                                                            style:
+                                                                const TextStyle(
+                                                                  fontSize: 12,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .bold,
+                                                                  color: Colors
+                                                                      .black,
+                                                                ),
+                                                            textAlign:
+                                                                TextAlign.right,
+                                                            maxLines: 1,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
                                                           ),
-                                                          style:
-                                                              const TextStyle(
-                                                                fontSize: 12,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .bold,
-                                                                color: Colors
-                                                                    .black,
-                                                              ),
-                                                        ),
-                                                        const SizedBox(
-                                                          width: 8,
-                                                        ),
-                                                        Text(
-                                                          fmtMoney(
-                                                            otherLines[i]['amount'],
-                                                          ),
-                                                          style:
-                                                              const TextStyle(
-                                                                fontSize: 13,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .bold,
-                                                                color: Colors
-                                                                    .black,
-                                                              ),
                                                         ),
                                                       ],
                                                     ),
@@ -771,28 +855,41 @@ class _PrintScreenState extends State<PrintScreen> {
                                                 color: Colors.black,
                                               ),
                                               Row(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment
-                                                        .spaceBetween,
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.center,
                                                 children: [
                                                   const Text(
                                                     'TOTAL',
                                                     style: TextStyle(
                                                       fontWeight:
                                                           FontWeight.bold,
-                                                      fontSize: 14,
+                                                      fontSize: 13,
                                                       color: Colors.black,
                                                     ),
                                                   ),
-                                                  Text(
-                                                    fmtMoney(
-                                                      t['total'] ?? t['amount'],
-                                                    ),
-                                                    style: const TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      fontSize: 18,
-                                                      color: Colors.black,
+                                                  const SizedBox(width: 8),
+                                                  Flexible(
+                                                    child: Text(
+                                                      fmtMoney(
+                                                        t['total'] ??
+                                                            t['amount'],
+                                                      ),
+                                                      style: TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        fontSize:
+                                                            Responsive.isMobile(
+                                                              context,
+                                                            )
+                                                            ? 14
+                                                            : 18,
+                                                        color: Colors.black,
+                                                      ),
+                                                      textAlign:
+                                                          TextAlign.right,
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
                                                     ),
                                                   ),
                                                 ],
@@ -814,6 +911,9 @@ class _PrintScreenState extends State<PrintScreen> {
                                                           FontWeight.bold,
                                                       color: green,
                                                     ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
                                                   ),
                                                 ),
                                             ],
@@ -849,13 +949,26 @@ class _PrintScreenState extends State<PrintScreen> {
                                               Text(
                                                 (t['numbers'] as String)
                                                     .replaceAll(',', '  '),
-                                                style: const TextStyle(
-                                                  fontSize: 34,
+                                                style: TextStyle(
+                                                  fontSize:
+                                                      Responsive.isMobile(
+                                                        context,
+                                                      )
+                                                      ? 24
+                                                      : 34,
                                                   fontWeight: FontWeight.w900,
-                                                  letterSpacing: 5,
+                                                  letterSpacing:
+                                                      Responsive.isMobile(
+                                                        context,
+                                                      )
+                                                      ? 2
+                                                      : 5,
                                                   fontFamily: 'Courier',
                                                   color: Colors.black,
                                                 ),
+                                                textAlign: TextAlign.center,
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
                                               ),
                                               const SizedBox(height: 6),
                                               Text(
@@ -883,6 +996,9 @@ class _PrintScreenState extends State<PrintScreen> {
                                                           FontWeight.bold,
                                                       color: green,
                                                     ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
                                                   ),
                                                 ),
                                             ],

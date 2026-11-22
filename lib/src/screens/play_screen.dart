@@ -11,7 +11,6 @@ import '../utils/responsive.dart';
 import '../widgets/app_drawer.dart';
 import '../utils/format.dart';
 import '../utils/ticket_pdf.dart';
-import 'barcode_scanner_screen.dart';
 
 class PlayScreen extends StatefulWidget {
   const PlayScreen({super.key});
@@ -195,16 +194,24 @@ class _PlayScreenState extends State<PlayScreen> {
               .map(
                 (d) => DropdownMenuItem(
                   value: d['id'] as String,
-                  child: Flexible(
-                    child: Text(
-                      _drawLabel(d),
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: green,
+                  // A Flexible must sit inside a Flex — DropdownMenuItem just
+                  // Aligns its child, so wrap it in a Row to avoid a runtime
+                  // ParentDataWidget error while keeping the ellipsis.
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          _drawLabel(d),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: green,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    ],
                   ),
                 ),
               )
@@ -509,14 +516,18 @@ class _PlayScreenState extends State<PlayScreen> {
                   : Colors.black54,
             ),
             const SizedBox(width: 4),
-            Text(
-              _gameFilter == 'Numbers' ? '3 Digits' : '4 Digits',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                color: _gameFilter == 'Numbers'
-                    ? const Color(0xFF0B8A3E)
-                    : Colors.black87,
+            Flexible(
+              child: Text(
+                _gameFilter == 'Numbers' ? '3 Digits' : '4 Digits',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: _gameFilter == 'Numbers'
+                      ? const Color(0xFF0B8A3E)
+                      : Colors.black87,
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
               ),
             ),
           ],
@@ -649,14 +660,24 @@ class _PlayScreenState extends State<PlayScreen> {
               Expanded(
                 child: SizedBox(
                   height: 44,
-                  child: ElevatedButton.icon(
+                  child: ElevatedButton(
                     onPressed: _doSale,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF0B8A3E),
                     ),
-                    icon: const Icon(Icons.receipt_long),
-                    label: Text(
-                      'SALE  ${fmtMoney(app.cartTotal)} (${app.cartCount})',
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.receipt_long),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'SALE  ${fmtMoney(app.cartTotal)} (${app.cartCount})',
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -671,12 +692,13 @@ class _PlayScreenState extends State<PlayScreen> {
   @override
   Widget build(BuildContext context) {
     const green = Color(0xFF0B8A3E);
-    final w = MediaQuery.of(context).size.width;
-    final isTablet = w >= 600;
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool compactAppBar = screenWidth < 480;
     return Scaffold(
       appBar: AppBar(
         title: _appBarDrawField(),
         centerTitle: true,
+        leadingWidth: compactAppBar ? 48 : 56,
         backgroundColor: green,
         foregroundColor: Colors.white,
         actions: [
@@ -684,15 +706,17 @@ class _PlayScreenState extends State<PlayScreen> {
             builder: (_, app, __) => app.isCartEmpty
                 ? const SizedBox()
                 : Padding(
-                    padding: const EdgeInsets.only(right: 8),
+                    padding: EdgeInsets.only(right: compactAppBar ? 2 : 8),
                     child: Center(
                       // Cap the badge so a large cart total cannot squeeze
                       // the AppBar title dropdown into an overflow.
                       child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 100),
+                        constraints: BoxConstraints(
+                          maxWidth: compactAppBar ? 72 : 100,
+                        ),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
+                            horizontal: 6,
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
@@ -707,6 +731,7 @@ class _PlayScreenState extends State<PlayScreen> {
                               fontSize: 11,
                             ),
                             overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
                         ),
                       ),
@@ -723,7 +748,7 @@ class _PlayScreenState extends State<PlayScreen> {
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: isTablet ? 760 : double.infinity,
+            maxWidth: Responsive.contentMaxWidth(context),
           ),
           child: Column(
             children: [
@@ -791,7 +816,7 @@ class _PlayScreenState extends State<PlayScreen> {
                           textAlign: TextAlign.center,
                           softWrap: true,
                           maxLines: 2,
-                          overflow: TextOverflow.visible,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -889,115 +914,182 @@ class _PlayScreenState extends State<PlayScreen> {
                 ),
               ),
               _cartSection(),
-              Container(
-                color: Colors.white,
-                padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: GridView.count(
-                        crossAxisCount: 3,
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        mainAxisSpacing: 8,
-                        crossAxisSpacing: 8,
-                        childAspectRatio: 1.7,
-                        children: [
-                          for (int i = 1; i <= 9; i++)
-                            _keyBtn('$i', onTap: () => _pressDigit('$i')),
-                          _keyBtn(
-                            'C',
-                            onTap: _clear,
-                            color: Colors.red.shade50,
-                          ),
-                          _keyBtn('0', onTap: () => _pressDigit('0')),
-                          _keyBtn(
-                            '',
-                            onTap: _back,
-                            icon: Icons.backspace_outlined,
-                            color: Colors.grey.shade100,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      flex: 1,
-                      child: SizedBox(
-                        height: 4 * 56 + 3 * 8,
-                        child: Column(
-                          children: [
-                            SizedBox(
-                              height: 56,
-                              width: double.infinity,
-                              child: OutlinedButton.icon(
-                                onPressed: _quickPick,
-                                icon: const Icon(Icons.auto_awesome, size: 16),
-                                label: const Text(
-                                  'Quick Pick',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                style: OutlinedButton.styleFrom(
-                                  side: BorderSide(
-                                    color: green.withValues(alpha: 0.4),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Expanded(
-                              child: InkWell(
-                                onTap: _addToCart,
-                                borderRadius: BorderRadius.circular(10),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.blue,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  alignment: Alignment.center,
-                                  child: const Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        Icons.add_shopping_cart,
-                                        color: Colors.white,
-                                        size: 28,
-                                      ),
-                                      Text(
-                                        'ADD',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w900,
-                                        ),
-                                      ),
-                                      Text(
-                                        'to cart',
-                                        style: TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 10,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              _keypad(),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _keypadGrid({double aspect = 1.7}) {
+    return GridView.count(
+      crossAxisCount: 3,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 8,
+      crossAxisSpacing: 8,
+      childAspectRatio: aspect,
+      children: [
+        for (int i = 1; i <= 9; i++)
+          _keyBtn('$i', onTap: () => _pressDigit('$i')),
+        _keyBtn('C', onTap: _clear, color: Colors.red.shade50),
+        _keyBtn('0', onTap: () => _pressDigit('0')),
+        _keyBtn(
+          '',
+          onTap: _back,
+          icon: Icons.backspace_outlined,
+          color: Colors.grey.shade100,
+        ),
+      ],
+    );
+  }
+
+  Widget _quickPickButton() {
+    const green = Color(0xFF0B8A3E);
+    return SizedBox(
+      height: 56,
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: _quickPick,
+        icon: const Icon(Icons.auto_awesome, size: 16),
+        label: const Text(
+          'Quick Pick',
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
+        ),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          side: BorderSide(color: green.withValues(alpha: 0.4)),
+        ),
+      ),
+    );
+  }
+
+  Widget _addToCartButton() {
+    return InkWell(
+      onTap: _addToCart,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.blue,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        alignment: Alignment.center,
+        child: const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add_shopping_cart, color: Colors.white, size: 28),
+            Text(
+              'ADD',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            Text(
+              'to cart',
+              style: TextStyle(color: Colors.white70, fontSize: 10),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Single-line ADD for the stacked (narrow phone) keypad layout.
+  Widget _addToCartButtonCompact() {
+    return InkWell(
+      onTap: _addToCart,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.blue,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        alignment: Alignment.center,
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.add_shopping_cart, color: Colors.white, size: 22),
+            SizedBox(width: 8),
+            Text(
+              'ADD TO CART',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _keypad() {
+    const actionColumnHeight = 4 * 56 + 3 * 8 + 8.0;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Under this width the 1-flex action column is too narrow for the
+        // "Quick Pick" button label, so stack the actions below the grid.
+        final bool stackActions = constraints.maxWidth < 360;
+        return Container(
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+          child: Center(
+            child: ConstrainedBox(
+              // Cap the keypad on wide screens: an unconstrained 3-column
+              // grid would grow taller than the viewport.
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: stackActions
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Shorter keys keep the keypad inside a short phone
+                        // viewport even when the cart section is visible.
+                        _keypadGrid(aspect: 2.2),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(child: _quickPickButton()),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              flex: 2,
+                              child: SizedBox(
+                                height: 56,
+                                child: _addToCartButtonCompact(),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    )
+                  : Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(flex: 3, child: _keypadGrid()),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 1,
+                          child: SizedBox(
+                            height: actionColumnHeight,
+                            child: Column(
+                              children: [
+                                _quickPickButton(),
+                                const SizedBox(height: 8),
+                                Expanded(child: _addToCartButton()),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+        );
+      },
     );
   }
 

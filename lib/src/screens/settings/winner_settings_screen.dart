@@ -353,72 +353,82 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                         color: Colors.white,
                         child: Padding(
                           padding: const EdgeInsets.all(12),
-                          child: Row(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(
-                                Icons.calendar_today,
-                                size: 16,
-                                color: Colors.deepPurple,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  '${_selectedDate.year}/${_selectedDate.month.toString().padLeft(2, '0')}/${_selectedDate.day.toString().padLeft(2, '0')}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.calendar_today,
+                                    size: 16,
+                                    color: Colors.deepPurple,
                                   ),
-                                ),
-                              ),
-                              OutlinedButton.icon(
-                                icon: const Icon(
-                                  Icons.arrow_back_ios,
-                                  size: 12,
-                                ),
-                                label: const Text(
-                                  'أمس',
-                                  style: TextStyle(fontSize: 11),
-                                ),
-                                onPressed: () {
-                                  setState(
-                                    () => _selectedDate = _selectedDate
-                                        .subtract(const Duration(days: 1)),
-                                  );
-                                  _load();
-                                },
-                              ),
-                              const SizedBox(width: 6),
-                              OutlinedButton.icon(
-                                icon: const Icon(Icons.today, size: 12),
-                                label: const Text(
-                                  'اليوم',
-                                  style: TextStyle(fontSize: 11),
-                                ),
-                                onPressed: () {
-                                  setState(
-                                    () => _selectedDate = DateTime.now(),
-                                  );
-                                  _load();
-                                },
-                              ),
-                              const SizedBox(width: 6),
-                              OutlinedButton.icon(
-                                icon: const Icon(
-                                  Icons.arrow_forward_ios,
-                                  size: 12,
-                                ),
-                                label: const Text(
-                                  'غداً',
-                                  style: TextStyle(fontSize: 11),
-                                ),
-                                onPressed: () {
-                                  setState(
-                                    () => _selectedDate = _selectedDate.add(
-                                      const Duration(days: 1),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      '${_selectedDate.year}/${_selectedDate.month.toString().padLeft(2, '0')}/${_selectedDate.day.toString().padLeft(2, '0')}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
                                     ),
-                                  );
-                                  _load();
-                                },
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: [
+                                  OutlinedButton.icon(
+                                    icon: const Icon(
+                                      Icons.arrow_back_ios,
+                                      size: 12,
+                                    ),
+                                    label: const Text(
+                                      'أمس',
+                                      style: TextStyle(fontSize: 11),
+                                    ),
+                                    onPressed: () {
+                                      setState(
+                                        () => _selectedDate = _selectedDate
+                                            .subtract(const Duration(days: 1)),
+                                      );
+                                      _load();
+                                    },
+                                  ),
+                                  OutlinedButton.icon(
+                                    icon: const Icon(Icons.today, size: 12),
+                                    label: const Text(
+                                      'اليوم',
+                                      style: TextStyle(fontSize: 11),
+                                    ),
+                                    onPressed: () {
+                                      setState(
+                                        () => _selectedDate = DateTime.now(),
+                                      );
+                                      _load();
+                                    },
+                                  ),
+                                  OutlinedButton.icon(
+                                    icon: const Icon(
+                                      Icons.arrow_forward_ios,
+                                      size: 12,
+                                    ),
+                                    label: const Text(
+                                      'غداً',
+                                      style: TextStyle(fontSize: 11),
+                                    ),
+                                    onPressed: () {
+                                      setState(
+                                        () => _selectedDate = _selectedDate.add(
+                                          const Duration(days: 1),
+                                        ),
+                                      );
+                                      _load();
+                                    },
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -523,6 +533,8 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                                           fontWeight: FontWeight.bold,
                                           color: statusColor,
                                         ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                   ],
@@ -548,31 +560,39 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                                       ),
                                     ),
                                     const SizedBox(width: 8),
-                                    const Text(
-                                      'فائز 3 أرقام',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12,
+                                    Flexible(
+                                      child: Text(
+                                        'فائز 3 أرقام',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
-                                    const Spacer(),
+                                    const SizedBox(width: 6),
                                     if (r3 != null && r3.isNotEmpty)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 6,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: Colors.green.shade50,
-                                          borderRadius: BorderRadius.circular(
-                                            6,
+                                      Flexible(
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
                                           ),
-                                        ),
-                                        child: Text(
-                                          'حالي: $r3',
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.green,
+                                          decoration: BoxDecoration(
+                                            color: Colors.green.shade50,
+                                            borderRadius: BorderRadius.circular(
+                                              6,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            'حالي: $r3',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.green,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
                                       ),
@@ -657,31 +677,39 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                                       ),
                                     ),
                                     const SizedBox(width: 8),
-                                    const Text(
-                                      'فائز 4 أرقام',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12,
+                                    Flexible(
+                                      child: Text(
+                                        'فائز 4 أرقام',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
-                                    const Spacer(),
+                                    const SizedBox(width: 6),
                                     if (r4 != null && r4.isNotEmpty)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 6,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: Colors.indigo.shade50,
-                                          borderRadius: BorderRadius.circular(
-                                            6,
+                                      Flexible(
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
                                           ),
-                                        ),
-                                        child: Text(
-                                          'حالي: $r4',
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.indigo,
+                                          decoration: BoxDecoration(
+                                            color: Colors.indigo.shade50,
+                                            borderRadius: BorderRadius.circular(
+                                              6,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            'حالي: $r4',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.indigo,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
                                       ),

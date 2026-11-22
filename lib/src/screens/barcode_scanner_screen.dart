@@ -323,10 +323,20 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen>
             controller: c,
             onDetect: _onDetect,
             errorBuilder: (context, error, _) => _errorView(error),
-            overlayBuilder: (context, constraints) => CustomPaint(
-              size: Size(constraints.maxWidth, constraints.maxHeight),
-              painter: _ScanFramePainter(),
-            ),
+            overlayBuilder: (context, constraints) {
+              // Keep the scan frame fully inside the preview on small phones
+              // and in landscape, where the camera area can be short.
+              final limit =
+                  (constraints.maxWidth < constraints.maxHeight
+                      ? constraints.maxWidth
+                      : constraints.maxHeight) -
+                  48;
+              final side = limit.clamp(140.0, 260.0);
+              return CustomPaint(
+                size: Size(constraints.maxWidth, constraints.maxHeight),
+                painter: _ScanFramePainter(side),
+              );
+            },
           ),
           Align(
             alignment: Alignment.bottomCenter,
@@ -505,12 +515,16 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen>
 }
 
 class _ScanFramePainter extends CustomPainter {
+  const _ScanFramePainter(this.side);
+
+  final double side;
+
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Rect.fromCenter(
       center: Offset(size.width / 2, size.height / 2),
-      width: 260,
-      height: 260,
+      width: side,
+      height: side,
     );
     final border = Paint()
       ..color = Colors.white

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/app_state.dart';
 import '../utils/format.dart';
+import '../utils/responsive.dart';
 import '../theme/app_theme.dart';
 
 /// Manage registered customers and their saved plays.
@@ -109,6 +110,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
+        insetPadding: Responsive.dialogInsets(c),
         title: const Text('Add customer / إضافة عميل'),
         content: SingleChildScrollView(
           child: Column(
@@ -187,6 +189,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        insetPadding: Responsive.dialogInsets(ctx),
         title: Text('Edit customer / تعديل عميل\n${c['name'] ?? ''}'),
         content: SingleChildScrollView(
           child: Column(
@@ -249,6 +252,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        insetPadding: Responsive.dialogInsets(ctx),
         title: const Text('Delete customer / حذف عميل'),
         content: Text(
           'Delete "${c['name'] ?? ''}"? Their tickets will be reassigned to the default customer.',
@@ -294,6 +298,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialog) => AlertDialog(
+          insetPadding: Responsive.dialogInsets(ctx),
           title: Text('Add play / إضافة لعبة — ${c['name'] ?? ''}'),
           content: SingleChildScrollView(
             child: Column(
@@ -474,32 +479,42 @@ class _CustomersScreenState extends State<CustomersScreen> {
     showDialog<dynamic>(
       context: context,
       builder: (ctx) => AlertDialog(
+        insetPadding: Responsive.dialogInsets(ctx),
         title: Text('Choose a play / اختر لعبة — ${c['name'] ?? ''}'),
         content: SizedBox(
           width: double.maxFinite,
-          child: ListView.separated(
-            shrinkWrap: true,
-            itemCount: plays.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (ctx, index) {
-              final p = plays[index];
-              return ListTile(
-                dense: true,
-                title: Text(
-                  '${p['numbers'] ?? ''} • ${p['betType'] ?? ''} • '
-                  '${fmtMoney(asDouble(p['amount']))}',
-                ),
-                subtitle: Text(
-                  '${p['gameName'] ?? ''}'
-                  '${p['drawType'] != null && '${p['drawType']}'.isNotEmpty ? '  •  ${p['drawType']}' : ''}',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppTheme.textMuted,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: Responsive.dialogContentMaxHeight(ctx),
+            ),
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: plays.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (ctx, index) {
+                final p = plays[index];
+                return ListTile(
+                  dense: true,
+                  title: Text(
+                    '${p['numbers'] ?? ''} • ${p['betType'] ?? ''} • '
+                    '${fmtMoney(asDouble(p['amount']))}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                onTap: () => Navigator.pop(ctx, p),
-              );
-            },
+                  subtitle: Text(
+                    '${p['gameName'] ?? ''}'
+                    '${p['drawType'] != null && '${p['drawType']}'.isNotEmpty ? '  •  ${p['drawType']}' : ''}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppTheme.textMuted,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onTap: () => Navigator.pop(ctx, p),
+                );
+              },
+            ),
           ),
         ),
         actions: [
@@ -546,11 +561,15 @@ class _CustomersScreenState extends State<CustomersScreen> {
           title: Text(
             '${p['gameName'] ?? ''}  •  ${p['numbers'] ?? ''}',
             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           subtitle: Text(
             '${p['betType'] ?? ''}  •  ${fmtMoney(asDouble(p['amount']))}'
             '${draw.isNotEmpty ? '  •  $draw' : ''}',
             style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           trailing: IconButton(
             icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
@@ -578,77 +597,89 @@ class _CustomersScreenState extends State<CustomersScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ListTile(
-            onTap: () => setState(() {
-              if (expanded) {
-                _expanded.remove(id);
-              } else {
-                _expanded.add(id);
-              }
-            }),
-            leading: CircleAvatar(
-              backgroundColor: isDefault
-                  ? Colors.grey.shade200
-                  : AppTheme.greenSoft,
-              child: Icon(
-                isDefault ? Icons.person_outline : Icons.person,
-                color: isDefault ? Colors.grey.shade600 : green,
-              ),
-            ),
-            title: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '${c['name'] ?? ''}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
+          // ListTile paints its ink on the nearest Material ancestor; the
+          // decorated card Container would hide the splash (debug assertion).
+          Material(
+            color: Colors.transparent,
+            child: ListTile(
+              onTap: () => setState(() {
+                if (expanded) {
+                  _expanded.remove(id);
+                } else {
+                  _expanded.add(id);
+                }
+              }),
+              leading: CircleAvatar(
+                backgroundColor: isDefault
+                    ? Colors.grey.shade200
+                    : AppTheme.greenSoft,
+                child: Icon(
+                  isDefault ? Icons.person_outline : Icons.person,
+                  color: isDefault ? Colors.grey.shade600 : green,
                 ),
-                if (isDefault)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade200,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Text(
-                      'Default / افتراضي',
-                      style: TextStyle(fontSize: 10, color: Colors.black54),
-                    ),
-                  )
-                else if (isSelected)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppTheme.greenSoft,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Text(
-                      'Selected / محدد',
-                      style: TextStyle(fontSize: 10, color: green),
+              ),
+              title: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${c['name'] ?? ''}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-              ],
-            ),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                '${phone.isEmpty ? '—' : phone}'
-                '  •  ${plays.length} saved play(s)',
-                style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                  if (isDefault)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        'Default / افتراضي',
+                        style: TextStyle(fontSize: 10, color: Colors.black54),
+                      ),
+                    )
+                  else if (isSelected)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppTheme.greenSoft,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        'Selected / محدد',
+                        style: TextStyle(fontSize: 10, color: green),
+                      ),
+                    ),
+                ],
               ),
-            ),
-            trailing: Icon(
-              expanded ? Icons.expand_less : Icons.expand_more,
-              color: green,
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '${phone.isEmpty ? '—' : phone}'
+                  '  •  ${plays.length} saved play(s)',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppTheme.textMuted,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              trailing: Icon(
+                expanded ? Icons.expand_less : Icons.expand_more,
+                color: green,
+              ),
             ),
           ),
           Padding(
@@ -703,7 +734,10 @@ class _CustomersScreenState extends State<CustomersScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Customers / العملاء'),
+        title: const Text(
+          'Customers / العملاء',
+          overflow: TextOverflow.ellipsis,
+        ),
         backgroundColor: green,
         foregroundColor: Colors.white,
         actions: [
@@ -755,31 +789,48 @@ class _CustomersScreenState extends State<CustomersScreen> {
             )
           : RefreshIndicator(
               onRefresh: _load,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 88),
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 4),
-                    child: Text(
-                      'All customers / كل العملاء',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.textMuted,
-                      ),
-                    ),
+              child: Center(
+                child: ConstrainedBox(
+                  // On wide screens keep the card column readable instead of
+                  // stretching every ListTile across the whole viewport.
+                  constraints: BoxConstraints(
+                    maxWidth: Responsive.contentMaxWidth(context),
                   ),
-                  const SizedBox(height: 8),
-                  if (_customers.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Center(
-                        child: Text('No customers yet / لا يوجد عملاء'),
+                  child: ListView(
+                    padding: EdgeInsets.fromLTRB(
+                      Responsive.horizontalPadding(context),
+                      12,
+                      Responsive.horizontalPadding(context),
+                      88,
+                    ),
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 4),
+                        child: Text(
+                          'All customers / كل العملاء',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.textMuted,
+                          ),
+                        ),
                       ),
-                    )
-                  else
-                    ..._customers.map(_customerCard),
-                ],
+                      const SizedBox(height: 8),
+                      if (_customers.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Center(
+                            child: Text(
+                              'No customers yet / لا يوجد عملاء',
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        )
+                      else
+                        ..._customers.map(_customerCard),
+                    ],
+                  ),
+                ),
               ),
             ),
     );

@@ -117,7 +117,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
                       Responsive.isTablet(context) ||
                           Responsive.isDesktop(context)
                       ? 1.1
-                      : 1.0,
+                      : 0.70,
                   children: [
                     _hubCard(
                       context,
@@ -276,11 +276,15 @@ class _ConfigScreenState extends State<ConfigScreen> {
             Text(
               title,
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 2),
             Text(
               subtitle,
               style: const TextStyle(fontSize: 11, color: Colors.black54),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 8),
             Container(

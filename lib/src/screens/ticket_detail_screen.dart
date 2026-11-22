@@ -529,21 +529,38 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                                                     ),
                                                   ),
                                                   const SizedBox(width: 8),
-                                                  Text(
-                                                    (l['numbers'] as String)
-                                                        .replaceAll(',', ' '),
-                                                    style: TextStyle(
-                                                      fontSize: 16,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      letterSpacing: 2,
-                                                      decoration: isVoid
-                                                          ? TextDecoration
-                                                                .lineThrough
-                                                          : null,
-                                                      color: isVoid
-                                                          ? Colors.red.shade700
-                                                          : Colors.black,
+                                                  Flexible(
+                                                    child: Text(
+                                                      (l['numbers'] as String)
+                                                          .replaceAll(',', ' '),
+                                                      style: TextStyle(
+                                                        fontSize:
+                                                            Responsive.isMobile(
+                                                              ctx,
+                                                            )
+                                                            ? 12
+                                                            : 16,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        letterSpacing:
+                                                            Responsive.isMobile(
+                                                              ctx,
+                                                            )
+                                                            ? 0.5
+                                                            : 2,
+                                                        decoration: isVoid
+                                                            ? TextDecoration
+                                                                  .lineThrough
+                                                            : null,
+                                                        color: isVoid
+                                                            ? Colors
+                                                                  .red
+                                                                  .shade700
+                                                            : Colors.black,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
                                                     ),
                                                   ),
                                                   if (isVoid)
@@ -575,47 +592,57 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                                                       ),
                                                     ),
                                                   const Spacer(),
-                                                  Container(
-                                                    padding:
-                                                        const EdgeInsets.symmetric(
-                                                          horizontal: 6,
-                                                          vertical: 2,
-                                                        ),
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.white,
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            4,
+                                                  Flexible(
+                                                    child: Container(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 6,
+                                                            vertical: 2,
                                                           ),
-                                                      border: Border.all(
-                                                        color: Colors
-                                                            .grey
-                                                            .shade300,
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.white,
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              4,
+                                                            ),
+                                                        border: Border.all(
+                                                          color: Colors
+                                                              .grey
+                                                              .shade300,
+                                                        ),
                                                       ),
-                                                    ),
-                                                    child: Text(
-                                                      _dispBet(l['betType']),
-                                                      style: const TextStyle(
-                                                        fontSize: 9,
-                                                        fontWeight:
-                                                            FontWeight.w600,
+                                                      child: Text(
+                                                        _dispBet(l['betType']),
+                                                        style: const TextStyle(
+                                                          fontSize: 9,
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                        ),
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
                                                       ),
                                                     ),
                                                   ),
                                                   const SizedBox(width: 6),
-                                                  Text(
-                                                    fmtMoney(l['amount']),
-                                                    style: TextStyle(
-                                                      fontSize: 10,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      decoration: isVoid
-                                                          ? TextDecoration
-                                                                .lineThrough
-                                                          : null,
-                                                      color: isVoid
-                                                          ? Colors.red
-                                                          : Colors.black,
+                                                  Flexible(
+                                                    child: Text(
+                                                      fmtMoney(l['amount']),
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        decoration: isVoid
+                                                            ? TextDecoration
+                                                                  .lineThrough
+                                                            : null,
+                                                        color: isVoid
+                                                            ? Colors.red
+                                                            : Colors.black,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
                                                     ),
                                                   ),
                                                   const SizedBox(width: 4),
@@ -676,34 +703,43 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                                               fontSize: 12,
                                             ),
                                           ),
-                                          Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.end,
-                                            children: [
-                                              Text(
-                                                fmtMoney(
-                                                  t['total'] ?? t['amount'],
-                                                ),
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 14,
-                                                  color: green,
-                                                ),
-                                              ),
-                                              if (_lines.any(
-                                                (e) =>
-                                                    (e['periodStatus']
-                                                        as String?) ==
-                                                    'cancelled',
-                                              ))
+                                          Flexible(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.end,
+                                              children: [
                                                 Text(
-                                                  'بعد الإلغاء — الأصلي كان ${fmtMoney(_lines.fold<double>(0, (s, e) => s + asDouble(e['amount'])))}',
-                                                  style: const TextStyle(
-                                                    fontSize: 9,
-                                                    color: Colors.black54,
+                                                  fmtMoney(
+                                                    t['total'] ?? t['amount'],
                                                   ),
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 14,
+                                                    color: green,
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
                                                 ),
-                                            ],
+                                                if (_lines.any(
+                                                  (e) =>
+                                                      (e['periodStatus']
+                                                          as String?) ==
+                                                      'cancelled',
+                                                ))
+                                                  Text(
+                                                    'بعد الإلغاء — الأصلي كان ${fmtMoney(_lines.fold<double>(0, (s, e) => s + asDouble(e['amount'])))}',
+                                                    style: const TextStyle(
+                                                      fontSize: 9,
+                                                      color: Colors.black54,
+                                                    ),
+                                                    textAlign: TextAlign.end,
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                              ],
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -750,9 +786,15 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                                               (t['numbers'] as String)
                                                   .replaceAll(',', '  '),
                                               style: TextStyle(
-                                                fontSize: 26,
+                                                fontSize:
+                                                    Responsive.isMobile(context)
+                                                    ? 20
+                                                    : 26,
                                                 fontWeight: FontWeight.bold,
-                                                letterSpacing: 4,
+                                                letterSpacing:
+                                                    Responsive.isMobile(context)
+                                                    ? 1.5
+                                                    : 4,
                                                 decoration: isSingleVoid
                                                     ? TextDecoration.lineThrough
                                                     : null,
@@ -760,6 +802,9 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                                                     ? Colors.red
                                                     : Colors.black,
                                               ),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              textAlign: TextAlign.center,
                                             ),
                                             if (isSingleVoid)
                                               Container(
@@ -808,7 +853,12 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                                                       ? 'PAID • ${fmtMoney(t['prizeAmount'] ?? 0)}'
                                                       : 'WINNER • ${fmtMoney(t['prizeAmount'] ?? 0)}',
                                                   style: TextStyle(
-                                                    fontSize: 12,
+                                                    fontSize:
+                                                        Responsive.isMobile(
+                                                          context,
+                                                        )
+                                                        ? 10
+                                                        : 12,
                                                     fontWeight: FontWeight.bold,
                                                     color: isPaid
                                                         ? Colors.green.shade700
@@ -816,6 +866,9 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                                                               .orange
                                                               .shade700,
                                                   ),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
                                                 ),
                                               ),
                                             if (isActive &&

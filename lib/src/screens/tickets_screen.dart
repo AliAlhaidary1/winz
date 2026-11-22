@@ -876,6 +876,8 @@ class _TicketsScreenState extends State<TicketsScreen> {
                                               fontSize: 11,
                                               color: AppTheme.textMuted,
                                             ),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
                                           ),
                                           const SizedBox(height: 2),
                                           Text(
@@ -889,24 +891,35 @@ class _TicketsScreenState extends State<TicketsScreen> {
                                           const SizedBox(height: 6),
                                           Row(
                                             children: [
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 8,
-                                                      vertical: 4,
+                                              // Long number lists must shrink
+                                              // instead of pushing the amount
+                                              // off narrow phone screens.
+                                              Flexible(
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: AppTheme.bg,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          8,
+                                                        ),
+                                                  ),
+                                                  child: Text(
+                                                    (t['numbers'] as String)
+                                                        .replaceAll(',', '  '),
+                                                    style: const TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight:
+                                                          FontWeight.w900,
+                                                      letterSpacing: 1,
                                                     ),
-                                                decoration: BoxDecoration(
-                                                  color: AppTheme.bg,
-                                                  borderRadius:
-                                                      BorderRadius.circular(8),
-                                                ),
-                                                child: Text(
-                                                  (t['numbers'] as String)
-                                                      .replaceAll(',', '  '),
-                                                  style: const TextStyle(
-                                                    fontSize: 11,
-                                                    fontWeight: FontWeight.w900,
-                                                    letterSpacing: 1,
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
                                                   ),
                                                 ),
                                               ),
@@ -937,13 +950,19 @@ class _TicketsScreenState extends State<TicketsScreen> {
                                                   ),
                                                 ),
                                               const Spacer(),
-                                              Text(
-                                                fmtMoney(
-                                                  t['total'] ?? t['amount'],
-                                                ),
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w800,
+                                              Flexible(
+                                                child: Text(
+                                                  fmtMoney(
+                                                    t['total'] ?? t['amount'],
+                                                  ),
+                                                  style: const TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w800,
+                                                  ),
+                                                  textAlign: TextAlign.right,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
                                                 ),
                                               ),
                                             ],

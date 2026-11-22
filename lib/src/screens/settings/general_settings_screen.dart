@@ -196,6 +196,8 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
         title: Text(
           key,
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
         ),
         content: TextField(
           controller: ctrl,
@@ -380,21 +382,25 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
                             ),
                           ),
                           if (_defaultPrinterName != null)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: green.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                'Default: $_defaultPrinterName',
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  color: green,
+                            Flexible(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: green.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  'Default: $_defaultPrinterName',
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: green,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ),
@@ -567,6 +573,8 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
                                   fontSize: 9,
                                   color: Colors.black54,
                                 ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                               ),
                               secondary: Icon(
                                 p.isBluetooth ? Icons.bluetooth : Icons.print,
@@ -693,6 +701,8 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         subtitle: Text(
                           '${e['value']}\n${_desc(e['key'])}',
@@ -700,6 +710,8 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
                             fontSize: 11,
                             color: Colors.black54,
                           ),
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         isThreeLine: true,
                         trailing: IconButton(

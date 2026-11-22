@@ -69,10 +69,14 @@ class _ShareScreenState extends State<ShareScreen> {
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         subtitle: Text(
                           '${t['numbers']} • ${fmtMoney(t['amount'])}',
                           style: const TextStyle(fontSize: 10),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         trailing: IconButton(
                           icon: const Icon(Icons.share, size: 18),

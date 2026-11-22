@@ -38,40 +38,42 @@ class _WorkersScreenState extends State<WorkersScreen> {
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Add Worker'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: userCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Username',
-                border: OutlineInputBorder(),
-                isDense: true,
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: userCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Username',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: passCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Password',
-                border: OutlineInputBorder(),
-                isDense: true,
+              const SizedBox(height: 8),
+              TextField(
+                controller: passCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Password',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: commCtrl,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
+              const SizedBox(height: 8),
+              TextField(
+                controller: commCtrl,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Commission %',
+                  hintText: '5.0',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
               ),
-              decoration: const InputDecoration(
-                labelText: 'Commission %',
-                hintText: '5.0',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -124,7 +126,11 @@ class _WorkersScreenState extends State<WorkersScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: Text('Commission for ${w['username']}'),
+        title: Text(
+          'Commission for ${w['username']}',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
         content: TextField(
           controller: ctrl,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -238,10 +244,14 @@ class _WorkersScreenState extends State<WorkersScreen> {
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     subtitle: Text(
                       'Commission ${w["commission"] ?? 0}% - ${w["status"]}',
                       style: const TextStyle(fontSize: 11),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
