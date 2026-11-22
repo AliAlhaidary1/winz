@@ -397,8 +397,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<List<Map<String, dynamic>>> getCustomers() async =>
-      _asMapList(await _call('state', 'getCustomers'));
+  Future<List<Map<String, dynamic>>> getCustomers() => db.getCustomers();
 
   Future<String> addCustomer({
     required String name,
@@ -445,11 +444,8 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getCustomerPlays(
-    String customerId,
-  ) async => _asMapList(
-    await _call('state', 'getCustomerPlays', {'customerId': customerId}),
-  );
+  Future<List<Map<String, dynamic>>> getCustomerPlays(String customerId) =>
+      db.getCustomerPlays(customerId);
 
   /// Add one saved play for a customer (numbers + type + amount).
   Future<void> addCustomerPlay(
