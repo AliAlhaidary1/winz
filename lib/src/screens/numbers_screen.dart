@@ -702,13 +702,6 @@ class _NumbersScreenState extends State<NumbersScreen> {
         );
         setState(() => _digits = '');
         _isQuickPick = false;
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Added to cart — now press SALE to print ticket'),
-            backgroundColor: AppTheme.green,
-          ),
-        );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(

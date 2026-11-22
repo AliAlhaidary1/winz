@@ -368,12 +368,6 @@ class _WinzScreenState extends State<WinzScreen> {
         amount: cartAmount,
       );
       setState(() => _digits = '');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Added to cart — press SALE to print'),
-          backgroundColor: AppTheme.orange,
-        ),
-      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

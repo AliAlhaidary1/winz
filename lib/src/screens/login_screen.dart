@@ -38,7 +38,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       setState(() => _loading = false);
       if (ok) {
-        Navigator.of(context).pushReplacementNamed('/numbers');
+        Navigator.of(context).pushReplacementNamed('/home');
       } else {
         setState(() => _error = 'Invalid credentials');
       }

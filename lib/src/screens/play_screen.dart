@@ -336,14 +336,6 @@ class _PlayScreenState extends State<PlayScreen> {
         amount: cartAmount,
       );
       setState(() => _digits = '');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Added \$${cartAmount.toStringAsFixed(2)} to cart — press SALE',
-          ),
-          backgroundColor: AppTheme.green,
-        ),
-      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
