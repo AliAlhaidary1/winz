@@ -265,7 +265,7 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         Expanded(
           child: Text(
-            'مرحباً، $username  •  $date',
+            'Hello, $username  •  $date',
             style: const TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w800,
@@ -447,7 +447,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             const Expanded(
               child: Text(
-                'Customers / العملاء',
+                'Customers',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
@@ -484,7 +484,7 @@ class _HomeScreenState extends State<HomeScreen> {
             itemBuilder: (ctx, i) {
               if (i == 0) {
                 return _customerChip(
-                  label: 'Cash / افتراضي',
+                  label: 'Cash (Default)',
                   isDefault: true,
                   onTap: () =>
                       _onCustomerTap(AppState.defaultCustomerId, 'Cash'),
@@ -654,7 +654,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const Text(
-                          'Customer / العميل',
+                          'Customer',
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w700,
@@ -701,7 +701,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     onPressed: () => Navigator.pushNamed(context, '/customers'),
                     icon: const Icon(Icons.people_outline, size: 14),
                     label: const Text(
-                      'Manage / إدارة',
+                      'Manage',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
@@ -728,7 +728,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     onPressed: _onCardPlay,
                     icon: const Icon(Icons.play_arrow_rounded, size: 15),
                     label: const Text(
-                      'Play / لعب',
+                      'Play',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
@@ -777,7 +777,7 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (c) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         insetPadding: Responsive.dialogInsets(c),
-        title: const Text('Add customer / إضافة عميل'),
+        title: const Text('Add customer'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -786,8 +786,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 controller: nameCtrl,
                 textCapitalization: TextCapitalization.words,
                 decoration: const InputDecoration(
-                  labelText: 'Name / الاسم',
-                  hintText: 'e.g. Ahmad / أحمد',
+                  labelText: 'Name',
+                  hintText: 'e.g. Ahmad',
                 ),
               ),
               const SizedBox(height: 10),
@@ -795,8 +795,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 controller: phoneCtrl,
                 keyboardType: TextInputType.phone,
                 decoration: const InputDecoration(
-                  labelText: 'Phone / الهاتف',
-                  hintText: 'Optional / اختياري',
+                  labelText: 'Phone',
+                  hintText: 'Optional',
                 ),
               ),
             ],
@@ -805,11 +805,11 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(c, false),
-            child: const Text('Cancel / إلغاء'),
+            child: const Text('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(c, true),
-            child: const Text('Add / إضافة'),
+            child: const Text('Add'),
           ),
         ],
       ),
@@ -817,16 +817,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (ok != true || !mounted) return;
     final name = nameCtrl.text.trim();
     if (name.isEmpty) {
-      _snack(
-        'Customer name is required / الاسم مطلوب',
-        background: AppTheme.red,
-      );
+      _snack('Customer name is required', background: AppTheme.red);
       return;
     }
     try {
       await app.addCustomer(name: name, phone: phoneCtrl.text.trim());
       await _load();
-      _snack('Customer added / تمت الإضافة');
+      _snack('Customer added');
     } catch (e) {
       _snack('$e', background: AppTheme.red);
     }
@@ -858,7 +855,7 @@ class _HomeScreenState extends State<HomeScreen> {
             borderRadius: BorderRadius.circular(16),
           ),
           insetPadding: Responsive.dialogInsets(c),
-          title: Text('Saved plays / المحفوظة\n$name'),
+          title: Text('Saved plays\n$name'),
           content: SizedBox(
             width: double.maxFinite,
             child: ConstrainedBox(
@@ -900,7 +897,7 @@ class _HomeScreenState extends State<HomeScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(c),
-              child: const Text('Cancel / إلغاء'),
+              child: const Text('Cancel'),
             ),
           ],
         ),

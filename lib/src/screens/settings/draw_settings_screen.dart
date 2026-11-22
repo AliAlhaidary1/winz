@@ -129,7 +129,7 @@ class _DrawSettingsScreenState extends State<DrawSettingsScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Text(
-                  'اختر الوقت بنظام 12 ساعة — سيُحفظ تلقائياً ويُطبق على الفترات القادمة',
+                  'Choose the time in 12-hour format — it is saved automatically and applied to future periods',
                   style: TextStyle(fontSize: 10, color: Colors.black54),
                 ),
                 const SizedBox(height: 10),
@@ -140,7 +140,7 @@ class _DrawSettingsScreenState extends State<DrawSettingsScreen> {
                     color: Colors.deepPurple,
                   ),
                   label: Text(
-                    'إغلاق البيع: ${_todTo12(salesClose)}',
+                    'Sales Close: ${_todTo12(salesClose)}',
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   onPressed: () async {
@@ -164,7 +164,7 @@ class _DrawSettingsScreenState extends State<DrawSettingsScreen> {
                     color: Colors.deepPurple,
                   ),
                   label: Text(
-                    'وقت السحب: ${_todTo12(drawTime)}',
+                    'Draw Time: ${_todTo12(drawTime)}',
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   onPressed: () async {
@@ -188,7 +188,7 @@ class _DrawSettingsScreenState extends State<DrawSettingsScreen> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    'المعاينة 12h:\nSales Close ${_todTo12(salesClose)}  •  Draw ${_todTo12(drawTime)}',
+                    '12h preview:\nSales Close ${_todTo12(salesClose)}  •  Draw ${_todTo12(drawTime)}',
                     style: const TextStyle(fontSize: 11),
                   ),
                 ),
@@ -396,9 +396,7 @@ class _DrawSettingsScreenState extends State<DrawSettingsScreen> {
                               ),
                             ),
                             title: Text(
-                              type == 'MIDDAY'
-                                  ? 'Midday — صباحي'
-                                  : 'Evening — مسائي',
+                              type == 'MIDDAY' ? 'Midday' : 'Evening',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
@@ -408,7 +406,7 @@ class _DrawSettingsScreenState extends State<DrawSettingsScreen> {
                               ),
                             ),
                             subtitle: Text(
-                              'إغلاق: ${_fmt12(cfg['salesClose'])} • السحب: ${_fmt12(cfg['drawTime'])} • ${cfg['resultMode']}',
+                              'Close: ${_fmt12(cfg['salesClose'])} • Draw: ${_fmt12(cfg['drawTime'])} • ${cfg['resultMode']}',
                               style: const TextStyle(
                                 fontSize: 10,
                                 color: Colors.black54,

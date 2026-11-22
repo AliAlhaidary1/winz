@@ -276,7 +276,7 @@ class _ReportScreenState extends State<ReportScreen> {
     final totalPrize = _prizeMidday + _prizeEvening;
     final totalComm = _commMidday + _commEvening;
     final balanceTotal = _balanceLedger;
-    // مطلوب طباعة التقرير بنفس حجم الفواتير (58mm thermal Roll80) وليس A4
+    // The report must be printed at the same size as invoices (58mm thermal Roll80), not A4
     final db = context.read<AppDatabase>();
     final cfg = await db.getAppConfig();
     final map = {for (var c in cfg) c['key'] as String: c['value'] as String};

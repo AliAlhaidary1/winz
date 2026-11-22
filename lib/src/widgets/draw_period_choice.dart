@@ -16,11 +16,7 @@ Future<String?> showDrawPeriodChoice(
   if (!morningOpen && !eveningOpen) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          arabic
-              ? 'لا توجد فترة مفتوحة للبيع الآن'
-              : 'No open period to play now',
-        ),
+        content: const Text('No open period to play now'),
         backgroundColor: Colors.red,
       ),
     );
@@ -30,19 +26,17 @@ Future<String?> showDrawPeriodChoice(
     context: context,
     builder: (c) => AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      title: Text(
-        arabic ? 'اختر فترة اللعب' : 'When do you want to play?',
-        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+      title: const Text(
+        'When do you want to play?',
+        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
       ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            arabic
-                ? 'الفترة المغلقة لا يمكن اختيارها. إذا انتهى الصباحي يمكنك لعب المسائي فقط.'
-                : 'A closed period cannot be selected. If Morning has ended you can play Evening only.',
-            style: const TextStyle(fontSize: 11),
+          const Text(
+            'A closed period cannot be selected. If Morning has ended you can play Evening only.',
+            style: TextStyle(fontSize: 11),
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
@@ -52,7 +46,7 @@ Future<String?> showDrawPeriodChoice(
               color: morningOpen ? const Color(0xFF0B8A3E) : Colors.grey,
             ),
             label: Text(
-              arabic ? 'صباحي (Morning) — 14:30' : 'Morning — 14:30',
+              'Morning — 14:30',
               style: TextStyle(
                 fontSize: 12,
                 color: morningOpen ? const Color(0xFF0B8A3E) : Colors.grey,
@@ -68,7 +62,7 @@ Future<String?> showDrawPeriodChoice(
               color: eveningOpen ? AppTheme.blue : Colors.grey,
             ),
             label: Text(
-              arabic ? 'مسائي (Evening) — 22:30' : 'Evening — 22:30',
+              'Evening — 22:30',
               style: TextStyle(
                 fontSize: 12,
                 color: eveningOpen ? AppTheme.blue : Colors.grey,
@@ -79,9 +73,9 @@ Future<String?> showDrawPeriodChoice(
           const SizedBox(height: 6),
           ElevatedButton.icon(
             icon: const Icon(Icons.copy_all, size: 16),
-            label: Text(
-              arabic ? 'الاثنين معا — Both' : 'Both periods — two copies',
-              style: const TextStyle(fontSize: 12),
+            label: const Text(
+              'Both periods — two copies',
+              style: TextStyle(fontSize: 12),
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor: bothOpen ? const Color(0xFF0B8A3E) : Colors.grey,
@@ -94,7 +88,7 @@ Future<String?> showDrawPeriodChoice(
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(c),
-          child: Text(arabic ? 'إلغاء' : 'Cancel'),
+          child: const Text('Cancel'),
         ),
       ],
     ),

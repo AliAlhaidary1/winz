@@ -284,7 +284,7 @@ class AppDrawer extends StatelessWidget {
           const Divider(),
           ListTile(
             leading: const Icon(Icons.people_alt, color: Color(0xFF0B8A3E)),
-            title: const Text('العملاء — Customers'),
+            title: const Text('Customers'),
             onTap: () {
               Navigator.pop(context);
               Navigator.pushNamed(context, '/customers');

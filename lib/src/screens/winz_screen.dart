@@ -63,7 +63,7 @@ class _WinzScreenState extends State<WinzScreen> {
         'No draws',
         style: TextStyle(color: Colors.white, fontSize: 13),
       );
-    // قائمة منسدلة كبيرة وواضحة لكبار السن
+    // Large, clear dropdown for elderly users
     return Container(
       height: 50,
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -661,9 +661,9 @@ class _WinzScreenState extends State<WinzScreen> {
                           : 'Evening';
                       String extra = '';
                       if (skipped.isNotEmpty)
-                        extra += ' — ${skipped.length} محذوف';
+                        extra += ' — ${skipped.length} deleted';
                       if (trimmed.isNotEmpty)
-                        extra += ' — ${trimmed.length} مقلّل';
+                        extra += ' — ${trimmed.length} trimmed';
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
@@ -681,7 +681,7 @@ class _WinzScreenState extends State<WinzScreen> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             title: const Text(
-                              'تم النسخ مع تعديلات',
+                              'Copied with adjustments',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
@@ -692,13 +692,13 @@ class _WinzScreenState extends State<WinzScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'تم نسخ $count → $label',
+                                    'Copied $count → $label',
                                     style: const TextStyle(fontSize: 11),
                                   ),
                                   if (skipped.isNotEmpty) ...[
                                     const SizedBox(height: 8),
                                     const Text(
-                                      '⚠️ محذوف (Sold Out):',
+                                      '⚠️ Deleted (Sold Out):',
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.bold,
@@ -715,7 +715,7 @@ class _WinzScreenState extends State<WinzScreen> {
                                   if (trimmed.isNotEmpty) ...[
                                     const SizedBox(height: 8),
                                     const Text(
-                                      '✂️ مقلّل للحد المتبقي:',
+                                      '✂️ Trimmed to remaining:',
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.bold,
@@ -735,7 +735,7 @@ class _WinzScreenState extends State<WinzScreen> {
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.pop(c),
-                                child: const Text('حسناً'),
+                                child: const Text('OK'),
                               ),
                             ],
                           ),

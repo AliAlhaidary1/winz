@@ -31,7 +31,7 @@ String ticketDisplayBet(String raw) {
 bool is80mmPrinter(String? printerType) =>
     normalizePrinterType(printerType) == kPrinter80;
 
-/// مقاسات مطابقة لنقاط الطابعة الحرارية 203 DPI:
+/// Sizes matching 203 DPI thermal printer dots:
 /// 58mm printable ≈ 48mm = 384 dots — 80mm printable ≈ 72mm = 576 dots
 class ThermalStyle {
   final bool mm80;
@@ -257,7 +257,7 @@ pw.Widget buildTicketPdfWidget(
     final hasMid = mid.isNotEmpty;
     final hasEve = eve.isNotEmpty;
     final hasOther = other.isNotEmpty;
-    // حالة كل الخطوط غير مصنفة -> اعرضها بدون ترويسة (fallback قديم)
+    // When all lines are uncategorized -> show them without a header (legacy fallback)
     if (!hasMid && !hasEve) {
       return pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.stretch,
@@ -493,7 +493,7 @@ pw.Widget buildTicketPdfWidget(
       pw.SizedBox(height: 2),
       pw.Divider(thickness: 0.6, color: PdfColors.black),
       pw.SizedBox(height: s.gap),
-      // رقم الفاتورة + التاريخ مباشرة تحت sales report
+      // Invoice number + date directly under the sales report
       invoiceMeta(),
       pw.SizedBox(height: s.gap),
       pw.Divider(thickness: 0.4, color: PdfColors.grey300),
@@ -541,7 +541,7 @@ pw.Widget buildTicketPdfWidget(
   );
 }
 
-/// يحاول الطباعة المباشرة على الطابعة الافتراضية إن وجدت — يرجع null إذا لا توجد طابعة
+/// Attempts direct printing on the default printer if present — returns null if no printer exists
 Future<PrintJobResult?> tryDirectPrintTicket(
   BuildContext context,
   Map<String, dynamic> ticket,

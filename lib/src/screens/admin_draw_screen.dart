@@ -91,7 +91,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
       final hasPending4 = r4 == null || r4.trim().isEmpty;
       if (!hasPending3 && !hasPending4) return false; // both already published
       if (_winningRestricted && !_canEnterPeriod(p)) return false;
-      // فقط حق هذا اليوم — كما طلب العميل: لا تعرض أربعة لتواريخ مختلفة
+      // Only for this day — as requested by the client: do not show four for different dates
       try {
         final d = DateTime.parse(p['drawDate'] as String);
         final nowWall = MarketTimezone.wallTimeFromEpoch(
@@ -100,7 +100,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
         );
         final today = DateTime(nowWall.year, nowWall.month, nowWall.day);
         final diff = d.difference(today).inDays;
-        if (diff != 0) return false; // اليوم فقط
+        if (diff != 0) return false; // today only
       } catch (_) {}
       return true;
     }).toList()..sort(
@@ -155,7 +155,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                         ),
                         const SizedBox(height: 12),
                         const Text(
-                          'لا توجد فترة متاحة الآن',
+                          'No period available now',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
@@ -163,7 +163,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'الوقت الآن $now12 — النافذة تفتح فقط خلال [إغلاق البيع — السحب + 2 ساعة]',
+                          'Current time $now12 — the window opens only during [Sales Close — Draw + 2 hours]',
                           style: const TextStyle(
                             fontSize: 11,
                             color: Colors.black54,
@@ -192,7 +192,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                               child: Column(
                                 children: [
                                   const Text(
-                                    'فترات اليوم (12h):',
+                                    "Today's periods (12h):",
                                     style: TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold,
@@ -201,7 +201,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                   const SizedBox(height: 6),
                                   if (todayPeriods.isEmpty)
                                     const Text(
-                                      'لا توجد فترات لليوم',
+                                      'No periods for today',
                                       style: TextStyle(
                                         fontSize: 10,
                                         color: Colors.black54,
@@ -239,7 +239,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                           const SizedBox(width: 6),
                                           Expanded(
                                             child: Text(
-                                              '${type == 'MIDDAY' ? 'صباحي' : 'مسائي'} — $sc → $dr • ${p['status']}${done ? ' • تم' : ' • متاح ${r3.isEmpty ? '3' : ''}${r3.isEmpty && r4.isEmpty ? ' & ' : ''}${r4.isEmpty ? '4' : ''}'}',
+                                              '${type == 'MIDDAY' ? 'Midday' : 'Evening'} — $sc → $dr • ${p['status']}${done ? ' • Done' : ' • Available ${r3.isEmpty ? '3' : ''}${r3.isEmpty && r4.isEmpty ? ' & ' : ''}${r4.isEmpty ? '4' : ''}'}',
                                               style: const TextStyle(
                                                 fontSize: 10,
                                               ),
@@ -257,7 +257,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                         const SizedBox(height: 12),
                         ElevatedButton.icon(
                           icon: const Icon(Icons.refresh, size: 16),
-                          label: const Text('تحديث'),
+                          label: const Text('Refresh'),
                           onPressed: _loadDraws,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF0B8A3E),
@@ -290,7 +290,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                         const SizedBox(width: 8),
                         const Expanded(
                           child: Text(
-                            'التعديل مسموح طالما النافذة مفتوحة. بمجرد انتهاء [السحب + 2 ساعة] يُغلق التعديل تلقائياً.',
+                            'Editing is allowed while the window is open. Once [Draw + 2 hours] ends, editing closes automatically.',
                             style: TextStyle(
                               fontSize: 11,
                               color: Colors.black87,
@@ -342,14 +342,14 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'إدخال الفائز — حصرياً هنا (12h)',
+                              'Winner Entry — Exclusively Here (12h)',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 13,
                               ),
                             ),
                             Text(
-                              'تظهر فقط الفترة المتاحة الآن. الفترات الأخرى مخفية لتسهيل تجربة المستخدم.',
+                              'Only the currently available period is shown. Other periods are hidden to simplify the user experience.',
                               style: TextStyle(
                                 fontSize: 10,
                                 color: Colors.black54,
@@ -368,7 +368,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
-                          '${available.length} متاحة',
+                          '${available.length} available',
                           style: const TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
@@ -435,14 +435,14 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    '${type == 'MIDDAY' ? 'صباحي — Morning' : 'مسائي — Evening'} • ${p['drawDate']}',
+                                    '${type == 'MIDDAY' ? 'Morning' : 'Evening'} • ${p['drawDate']}',
                                     style: const TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 13,
                                     ),
                                   ),
                                   Text(
-                                    'إغلاق: $sc12 • سحب: $dr12',
+                                    'Close: $sc12 • Draw: $dr12',
                                     style: const TextStyle(
                                       fontSize: 11,
                                       color: Colors.black87,
@@ -450,7 +450,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                     ),
                                   ),
                                   Text(
-                                    'النافذة: ${_windowLabelPeriod(p)}',
+                                    'Window: ${_windowLabelPeriod(p)}',
                                     style: TextStyle(
                                       fontSize: 9,
                                       color: isLocked
@@ -473,7 +473,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
-                                isLocked ? 'مغلق' : status,
+                                isLocked ? 'Locked' : status,
                                 style: TextStyle(
                                   fontSize: 9,
                                   fontWeight: FontWeight.bold,
@@ -501,7 +501,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                 const SizedBox(width: 6),
                                 Expanded(
                                   child: Text(
-                                    'انتهت فترة الإدخال — التعديل مغلق حتى الفترة القادمة',
+                                    'Entry period ended — editing is locked until the next period',
                                     style: TextStyle(
                                       fontSize: 10,
                                       color: Colors.red.shade700,
@@ -540,7 +540,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                   ),
                                   const SizedBox(width: 8),
                                   const Text(
-                                    'فائز 3 أرقام',
+                                    '3-digit Winner',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 12,
@@ -558,7 +558,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                         borderRadius: BorderRadius.circular(6),
                                       ),
                                       child: Text(
-                                        'حالي: $r3',
+                                        'Current: $r3',
                                         style: const TextStyle(
                                           fontSize: 11,
                                           color: Colors.green,
@@ -588,7 +588,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                       decoration: InputDecoration(
                                         isDense: true,
                                         border: const OutlineInputBorder(),
-                                        labelText: '3 أرقام (مثال 123)',
+                                        labelText: '3 digits (e.g. 123)',
                                         counterText: '',
                                         suffixIcon:
                                             _ctrl3[id]!.text.isNotEmpty &&
@@ -616,8 +616,8 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                     ),
                                     label: Text(
                                       (r3 != null && r3.isNotEmpty)
-                                          ? 'تصحيح'
-                                          : 'حفظ',
+                                          ? 'Correct'
+                                          : 'Save',
                                       style: const TextStyle(fontSize: 11),
                                     ),
                                     style: ElevatedButton.styleFrom(
@@ -634,7 +634,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                 Padding(
                                   padding: const EdgeInsets.only(top: 4),
                                   child: Text(
-                                    'مغلق — سيفتح عند $sc12',
+                                    'Locked — opens at $sc12',
                                     style: const TextStyle(
                                       fontSize: 10,
                                       color: Colors.red,
@@ -673,7 +673,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                   ),
                                   const SizedBox(width: 8),
                                   const Text(
-                                    'فائز 4 أرقام',
+                                    '4-digit Winner',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 12,
@@ -691,7 +691,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                         borderRadius: BorderRadius.circular(6),
                                       ),
                                       child: Text(
-                                        'حالي: $r4',
+                                        'Current: $r4',
                                         style: const TextStyle(
                                           fontSize: 11,
                                           color: Colors.indigo,
@@ -721,7 +721,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                       decoration: InputDecoration(
                                         isDense: true,
                                         border: const OutlineInputBorder(),
-                                        labelText: '4 أرقام (مثال 1234)',
+                                        labelText: '4 digits (e.g. 1234)',
                                         counterText: '',
                                         suffixIcon:
                                             _ctrl4[id]!.text.isNotEmpty &&
@@ -749,8 +749,8 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                     ),
                                     label: Text(
                                       (r4 != null && r4.isNotEmpty)
-                                          ? 'تصحيح'
-                                          : 'حفظ',
+                                          ? 'Correct'
+                                          : 'Save',
                                       style: const TextStyle(fontSize: 11),
                                     ),
                                     style: ElevatedButton.styleFrom(
@@ -767,7 +767,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                 Padding(
                                   padding: const EdgeInsets.only(top: 4),
                                   child: Text(
-                                    'مغلق — سيفتح عند $sc12',
+                                    'Locked — opens at $sc12',
                                     style: const TextStyle(
                                       fontSize: 10,
                                       color: Colors.red,
@@ -802,7 +802,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                       const SizedBox(width: 8),
                       const Expanded(
                         child: Text(
-                          'التعديل مسموح طالما النافذة مفتوحة. بعد انتهاء [السحب + 2 ساعة] يُغلق تلقائياً وتختفي الفترة من هنا وتظهر في السجل.',
+                          'Editing is allowed while the window is open. After [Draw + 2 hours] ends, it closes automatically and the period disappears from here and appears in the history.',
                           style: TextStyle(fontSize: 11),
                         ),
                       ),
@@ -825,7 +825,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                       const SizedBox(width: 8),
                       const Expanded(
                         child: Text(
-                          'التعديل مسموح طالما النافذة مفتوحة. بعد انتهاء [السحب + 2 ساعة] يُغلق تلقائياً وتختفي الفترة من هنا وتظهر في السجل.',
+                          'Editing is allowed while the window is open. After [Draw + 2 hours] ends, it closes automatically and the period disappears from here and appears in the history.',
                           style: TextStyle(fontSize: 11),
                         ),
                       ),
@@ -863,7 +863,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
     if (!RegExp(r'^[0-9]{3}$').hasMatch(raw)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('فائز 3 أرقام يجب أن يكون 3 أرقام (0-9)'),
+          content: Text('3-digit winner must be 3 digits (0-9)'),
           backgroundColor: Colors.red,
         ),
       );
@@ -877,7 +877,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
     if (_winningRestricted && !_canEnterPeriod(period)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('انتهت نافذة الإدخال — ${_windowLabelPeriod(period)}'),
+          content: Text('Entry window ended — ${_windowLabelPeriod(period)}'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -898,7 +898,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'تم حفظ فائز 3 أرقام $raw — رابحون: ${res['winningCount']} • جوائز: ${fmtMoney(res['totalPrize'])}',
+            '3-digit winner $raw saved — Winners: ${res['winningCount']} • Prizes: ${fmtMoney(res['totalPrize'])}',
           ),
           backgroundColor: const Color(0xFF0B8A3E),
         ),
@@ -921,7 +921,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
     if (!RegExp(r'^[0-9]{4}$').hasMatch(raw)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('فائز 4 أرقام يجب أن يكون 4 أرقام (0-9)'),
+          content: Text('4-digit winner must be 4 digits (0-9)'),
           backgroundColor: Colors.red,
         ),
       );
@@ -935,7 +935,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
     if (_winningRestricted && !_canEnterPeriod(period)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('انتهت نافذة الإدخال — ${_windowLabelPeriod(period)}'),
+          content: Text('Entry window ended — ${_windowLabelPeriod(period)}'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -956,7 +956,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'تم حفظ فائز 4 أرقام $raw — رابحون: ${res['winningCount']} • جوائز: ${fmtMoney(res['totalPrize'])}',
+            '4-digit winner $raw saved — Winners: ${res['winningCount']} • Prizes: ${fmtMoney(res['totalPrize'])}',
           ),
           backgroundColor: Colors.indigo,
         ),
@@ -1247,7 +1247,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                  'انتهت فترة التعديل لـ $pid — النافذة كانت حتى ${_fmt12FromMs(dr + window)}',
+                  'Editing period for $pid has ended — the window was open until ${_fmt12FromMs(dr + window)}',
                 ),
                 backgroundColor: Colors.red,
               ),
@@ -1263,7 +1263,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: Text(' Winner — ${draw['name']}'),
+        title: Text('Winner — ${draw['name']}'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1278,7 +1278,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
               keyboardType: TextInputType.number,
               maxLength: gid == 'g_numbers' ? 4 : 4,
               decoration: InputDecoration(
-                labelText: ' Winner',
+                labelText: 'Winner',
                 hintText: gid == 'g_winz' ? '0123' : '123',
                 border: const OutlineInputBorder(),
                 counterText: '',
@@ -1286,7 +1286,9 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
             ),
             const SizedBox(height: 6),
             Text(
-              gid == 'g_numbers' ? '3  4 ' : '4  ',
+              gid == 'g_numbers'
+                  ? 'Enter 3 or 4 digits'
+                  : 'Enter exactly 4 digits',
               style: const TextStyle(fontSize: 10, color: Colors.black54),
             ),
             const SizedBox(height: 8),
@@ -1324,18 +1326,23 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
     if (ok != true) return;
     final raw = ctrl.text.trim().replaceAll(',', '').replaceAll(' ', '');
     if (raw.isEmpty || !RegExp(r'^[0-9]+$').hasMatch(raw)) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('  ')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter a valid winning number (digits 0-9)'),
+        ),
+      );
       return;
     }
     if (gid == 'g_winz' && raw.length != 4) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Win 4  4 ')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Win 4 requires exactly 4 digits')),
+      );
       return;
     }
     if (gid == 'g_numbers' && raw.length != 3 && raw.length != 4) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Numbers 3  4 ')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Numbers requires 3 or 4 digits')),
+      );
       return;
     }
     final existingWin =
@@ -1377,7 +1384,9 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
       await _loadWinningPreview();
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('  $raw — ${res['winningCount']} Winner')),
+          SnackBar(
+            content: Text('Saved $raw — ${res['winningCount']} winner(s)'),
+          ),
         );
     } catch (e) {
       if (mounted)
@@ -1451,7 +1460,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
       body: TabBarView(
         controller: _tabCtrl,
         children: [
-          // TAB 1: Winner exclusive — available period only (12h) — الفترة المتاحة فقط
+          // TAB 1: Winner exclusive — available period only (12h)
           _buildExclusiveWinnerTab(),
           // TAB 2: History
           // TAB 2: History —  All
@@ -1469,7 +1478,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                         Row(
                           children: [
                             const Text(
-                              ' ',
+                              'Filters',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 12,
@@ -1477,7 +1486,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                             ),
                             const Spacer(),
                             Text(
-                              '${_filteredHistory.length}/${_draws.length} ',
+                              '${_filteredHistory.length}/${_draws.length} shown',
                               style: const TextStyle(
                                 fontSize: 11,
                                 color: Colors.black54,
@@ -1548,7 +1557,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                 decoration: const InputDecoration(
                                   isDense: true,
                                   prefixIcon: Icon(Icons.search, size: 16),
-                                  hintText: '   ID   Winner',
+                                  hintText: 'Search name, ID, or winner',
                                   border: OutlineInputBorder(),
                                   hintStyle: TextStyle(fontSize: 11),
                                 ),
@@ -1571,7 +1580,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                 ),
                                 label: Text(
                                   _historyDate == null
-                                      ? ' '
+                                      ? 'Any date'
                                       : '${_historyDate!.year}/${_historyDate!.month.toString().padLeft(2, '0')}/${_historyDate!.day.toString().padLeft(2, '0')}',
                                   style: const TextStyle(fontSize: 11),
                                 ),
@@ -1629,7 +1638,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                     child: _filteredHistory.isEmpty
                         ? const Center(
                             child: Text(
-                              '    ',
+                              'No draws found',
                               style: TextStyle(color: Colors.black54),
                             ),
                           )
@@ -1794,7 +1803,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                                     CrossAxisAlignment.start,
                                                 children: [
                                                   const Text(
-                                                    ' Winner',
+                                                    'Winner',
                                                     style: TextStyle(
                                                       fontSize: 10,
                                                       color: Colors.black54,
@@ -1806,7 +1815,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                                             ',',
                                                             ' ',
                                                           )
-                                                        : '—    —',
+                                                        : '— No winner —',
                                                     style: TextStyle(
                                                       fontSize: hasWinner
                                                           ? 16
@@ -1843,9 +1852,9 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                                 label: Text(
                                                   hasWinner
                                                       ? (canEditHistory
-                                                            ? ''
-                                                            : 'مغلق')
-                                                      : '',
+                                                            ? 'Correct'
+                                                            : 'Locked')
+                                                      : 'Enter',
                                                   style: const TextStyle(
                                                     fontSize: 11,
                                                   ),
@@ -1875,8 +1884,8 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                               if (hasWinner)
                                                 Text(
                                                   canEditHistory
-                                                      ? 'Tap '
-                                                      : 'مغلق',
+                                                      ? 'Tap to edit'
+                                                      : 'Locked',
                                                   style: TextStyle(
                                                     fontSize: 9,
                                                     color: canEditHistory

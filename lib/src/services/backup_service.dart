@@ -41,14 +41,14 @@ class BackupService {
   static const keyCustomDir = 'backup_custom_dir';
   static const keyCustomLastSave = 'backup_custom_last_save';
 
-  // Arabic labels for UI
+  // English labels for UI
   static const intervals = <String, String>{
-    'never': 'إيقاف',
-    'hourly': 'كل ساعة',
-    '6h': 'كل 6 ساعات',
-    '12h': 'كل 12 ساعة',
-    'daily': 'يومياً (افتراضي)',
-    'weekly': 'أسبوعياً',
+    'never': 'Off',
+    'hourly': 'Hourly',
+    '6h': 'Every 6 hours',
+    '12h': 'Every 12 hours',
+    'daily': 'Daily (default)',
+    'weekly': 'Weekly',
   };
 
   static const intervalDurations = <String, Duration>{
@@ -153,7 +153,7 @@ class BackupService {
     return false;
   }
 
-  /// Android 11+: يحتاج "الوصول لكل الملفات" للكتابة في Downloads أو أي مجلد يختاره المستخدم
+  /// Android 11+: needs "All files access" to write to Downloads or any folder the user chooses
   Future<bool> ensureStorageAccess({bool prompt = true}) async {
     if (!Platform.isAndroid) return true;
     try {
@@ -203,7 +203,7 @@ class BackupService {
     }
   }
 
-  /// مجلد داخلي للتطبيق — يُحذف مع إلغاء التثبيت على Android
+  /// Internal app folder — deleted on uninstall on Android
   Future<Directory> _internalBackupDir() async {
     Directory base;
     try {
@@ -221,14 +221,14 @@ class BackupService {
     return dir;
   }
 
-  /// المجلد الأساسي: Downloads/YeLotteryBackups إن أمكن الكتابة، وإلا المجلد الداخلي
+  /// Primary folder: Downloads/YeLotteryBackups if writable, otherwise the internal folder
   Future<Directory> _backupDir() async {
     final vis = await getVisibleExportDir(requestPermission: false);
     if (vis != null) return vis;
     return await _internalBackupDir();
   }
 
-  /// مجلد مرئي يبقى بعد حذف التطبيق قدر الإمكان (Downloads/Documents)
+  /// Visible folder that persists after app uninstall where possible (Downloads/Documents)
   Future<Directory?> getVisibleExportDir({
     bool requestPermission = false,
   }) async {
@@ -329,10 +329,11 @@ class BackupService {
   /// Decode a JSON backup file into a map.
   Future<Map<String, dynamic>> _readBackupMap(String backupPath) async {
     final f = File(backupPath);
-    if (!await f.exists()) throw Exception('ملف النسخة غير موجود: $backupPath');
+    if (!await f.exists())
+      throw Exception('Backup file not found: $backupPath');
     final decoded = jsonDecode(await f.readAsString());
     if (decoded is! Map<String, dynamic>) {
-      throw Exception('الملف ليس نسخة YeLottery JSON صالحة');
+      throw Exception('File is not a valid YeLottery JSON backup');
     }
     return decoded;
   }
@@ -348,7 +349,7 @@ class BackupService {
   }
 
   /// Perform a backup now. Returns the most user-visible saved path.
-  /// يحفظ نسخة أساسية + نسخة مرئية + نسخة المجلد المخصص إن وُجد
+  /// Saves a primary copy + a visible copy + a custom-folder copy if configured
   Future<String> performBackup({
     String reason = 'manual',
     bool requestPermission = true,
@@ -401,12 +402,12 @@ class BackupService {
             saved.add(customPath);
             await db.upsertConfig(keyCustomLastSave, customPath, 'local');
           } else {
-            customError = 'تعذر الكتابة في المجلد المختار. على Android امنح صلاحية "الوصول لكل الملفات" ثم أعد المحاولة.';
+            customError = 'Cannot write to the selected folder. On Android, grant "All files access" permission, then try again.';
           }
         }
       }
     } catch (e) {
-      customError = 'تعذر الكتابة في المجلد المختار: $e';
+      customError = 'Cannot write to the selected folder: $e';
     }
 
     final primary = customPath ?? visiblePath ?? destPath;
@@ -441,7 +442,7 @@ class BackupService {
     };
   }
 
-  /// اسم ملف مقترح للحفظ عبر FilePicker — الكتابة الفعلية تتم من الواجهة
+  /// Suggested file name for saving via FilePicker — the actual write is done by the UI
   Future<String> saveBackupToPickedFile({String? reason}) async {
     final now = DateTime.now();
     final ts =
@@ -453,7 +454,7 @@ class BackupService {
   Future<String> exportBackupToPath(String sourcePath, String destPath) async {
     final src = File(sourcePath);
     if (!await src.exists())
-      throw Exception('ملف المصدر غير موجود: $sourcePath');
+      throw Exception('Source file not found: $sourcePath');
     final bytes = await src.readAsBytes();
     final dest = File(destPath);
     await dest.parent.create(recursive: true);
@@ -564,35 +565,37 @@ class BackupService {
 
   // ============ RESTORE ============
 
-  /// Validate that the file is a usable YeLottery JSON backup — يتحقق من كااافة الجداول بدون استثناء
+  /// Validate that the file is a usable YeLottery JSON backup — checks all tables without exceptions
   Future<Map<String, dynamic>> validateBackupFile(String backupPath) async {
     final f = File(backupPath);
-    if (!await f.exists()) throw Exception('ملف النسخة غير موجود: $backupPath');
+    if (!await f.exists())
+      throw Exception('Backup file not found: $backupPath');
     final len = await f.length();
-    if (len < 16) throw Exception('ملف النسخة تالف أو فارغ (حجم $len بايت)');
+    if (len < 16)
+      throw Exception('Backup file is corrupt or empty (size $len bytes)');
 
     Map<String, dynamic> decoded;
     try {
       decoded = await _readBackupMap(backupPath);
     } catch (e) {
-      if (e.toString().contains('ملف النسخة') ||
-          e.toString().contains('نسخة YeLottery'))
+      if (e.toString().contains('Backup file not found') ||
+          e.toString().contains('not a valid YeLottery JSON backup'))
         rethrow;
-      throw Exception('الملف ليس نسخة YeLottery JSON صالحة: $e');
+      throw Exception('File is not a valid YeLottery JSON backup: $e');
     }
     if (decoded['format'] != _backupFormat) {
-      throw Exception('الملف ليس نسخة YeLottery JSON صالحة');
+      throw Exception('File is not a valid YeLottery JSON backup');
     }
     final tables = decoded['tables'];
     if (tables is! Map<String, dynamic>) {
-      throw Exception('الملف ليس نسخة YeLottery JSON صالحة');
+      throw Exception('File is not a valid YeLottery JSON backup');
     }
     final missing = _requiredTables
         .where((t) => !tables.containsKey(t))
         .toList();
     if (missing.isNotEmpty) {
       throw Exception(
-        'النسخة ناقصة — جداول مفقودة: ${missing.join(', ')} — قد تكون نسخة قديمة أو ملف خاطئ',
+        'Incomplete backup — missing tables: ${missing.join(', ')} — it may be an old backup or the wrong file',
       );
     }
     // A backup without the sequence keys resets ticket/serial numbering on
@@ -611,7 +614,7 @@ class BackupService {
             .toList();
         if (missingKeys.isNotEmpty) {
           throw Exception(
-            'النسخة لا تحتوي على مفاتيح التسلسل: ${missingKeys.join(', ')} — قد تنتج أرقام تذاكر مكررة عند الاستعادة',
+            'Backup is missing sequence keys: ${missingKeys.join(', ')} — may produce duplicate ticket numbers on restore',
           );
         }
       }
@@ -763,7 +766,7 @@ class BackupService {
   }
 
   /// Execute restore by POSTing the JSON backup to the Laravel API.
-  /// لا يتم استبدال ملف محلي — الخادم يعيد بناء البيانات من الـ JSON.
+  /// No local file is replaced — the server rebuilds the data from the JSON.
   /// Returns safety backup path if created.
   /// NOTE: After calling this, the app MUST be restarted — data is reloaded
   /// from the server on next launch.
@@ -798,10 +801,12 @@ class BackupService {
         final ok = body['ok'] ?? body['success'];
         final err = body['error'] ?? body['message'];
         if (ok == false) {
-          throw Exception('فشل الاستيراد من الخادم: ${err ?? response.body}');
+          throw Exception(
+            'Import failed on the server: ${err ?? response.body}',
+          );
         }
         if (ok == null && err != null) {
-          throw Exception('فشل الاستيراد من الخادم: $err');
+          throw Exception('Import failed on the server: $err');
         }
       }
     } else {
@@ -815,7 +820,9 @@ class BackupService {
               response.body;
         }
       } catch (_) {}
-      throw Exception('فشل الاستيراد من الخادم (${response.statusCode}): $msg');
+      throw Exception(
+        'Import failed on the server (${response.statusCode}): $msg',
+      );
     }
     return safetyPath;
   }

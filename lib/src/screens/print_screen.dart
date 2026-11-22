@@ -380,7 +380,7 @@ class _PrintScreenState extends State<PrintScreen> {
                                       height: 12,
                                       color: Colors.black,
                                     ),
-                                    // رقم الفاتورة والتاريخ مباشرة تحت SALES REPORT
+                                    // Invoice number and date directly under SALES REPORT
                                     Row(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
@@ -533,7 +533,7 @@ class _PrintScreenState extends State<PrintScreen> {
                                           final hasOther =
                                               otherLines.isNotEmpty;
                                           if (!hasMid && !hasEve) {
-                                            // fallback: لا يوجد تصنيف -> عرض بدون ترويسة مثل السابق
+                                            // fallback: no classification -> show without a header as before
                                             return Column(
                                               children: [
                                                 for (
@@ -706,7 +706,7 @@ class _PrintScreenState extends State<PrintScreen> {
                                               ],
                                             );
                                           }
-                                          // حالة Mid فقط أو Eve فقط أو Both أو مختلط
+                                          // Case: Mid only, Eve only, Both, or mixed
                                           return Column(
                                             children: [
                                               if (hasMid)

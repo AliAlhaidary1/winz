@@ -98,24 +98,24 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
       context: context,
       builder: (c) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: Text(isMulti ? 'إلغاء الفاتورة كاملة؟' : 'إلغاء التذكرة؟'),
+        title: Text(isMulti ? 'Cancel the whole invoice?' : 'Cancel ticket?'),
         content: Text(
           isMulti
-              ? 'هذه الفاتورة فيها ${_lines.length} ألعاب. هل تريد إلغاء كل الألعاب المتبقية؟\nيمكنك أيضاً إلغاء لعبة واحدة فقط بالضغط على زر الحذف بجانب كل رقم.'
-              : 'هل تريد إلغاء هذه التذكرة واسترداد المبلغ؟',
+              ? 'This invoice has ${_lines.length} plays. Do you want to cancel all remaining plays?\nYou can also cancel a single play by tapping the delete button next to each number.'
+              : 'Do you want to cancel this ticket and refund the amount?',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(c, false),
-            child: const Text('إبقاء'),
+            child: const Text('Keep'),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(c, true),
             child: Text(
               isMulti
-                  ? 'إلغاء الكل (${_lines.where((e) => (e['periodStatus'] as String?) != 'cancelled').length} Plays)'
-                  : 'إلغاء التذكرة',
+                  ? 'Cancel all (${_lines.where((e) => (e['periodStatus'] as String?) != 'cancelled').length} Plays)'
+                  : 'Cancel ticket',
             ),
           ),
         ],
@@ -130,7 +130,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('تم إلغاء الفاتورة — استرداد ${fmtMoney(refund)}'),
+            content: Text('Invoice cancelled — refund ${fmtMoney(refund)}'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -168,7 +168,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
       builder: (c) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         title: const Text(
-          'إلغاء هذا الرقم؟',
+          'Cancel this number?',
           style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
         ),
         content: Column(
@@ -176,10 +176,10 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'الرقم: $numbers',
+              'Number: $numbers',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            Text('النوع: $bet  •  المبلغ: $amt'),
+            Text('Type: $bet  •  Amount: $amt'),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(8),
@@ -188,7 +188,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Text(
-                'سيتم إلغاء هذا السطر فقط، وسيُسترد المبلغ للعميل، وتبقى بقية الألعاب في الفاتورة. لا يمكن الإلغاء بعد إغلاق السحب أو نشر النتيجة.',
+                'Only this line will be cancelled and the amount refunded to the customer; the other plays in the invoice remain. Cancellation is not possible after the draw closes or the result is published.',
                 style: TextStyle(fontSize: 11),
               ),
             ),
@@ -197,12 +197,12 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(c, false),
-            child: const Text('تراجع'),
+            child: const Text('Back'),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(c, true),
-            child: const Text('إلغاء الرقم'),
+            child: const Text('Cancel number'),
           ),
         ],
       ),
@@ -217,7 +217,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('تم إلغاء $numbers — استرداد ${fmtMoney(refund)}'),
+            content: Text('Cancelled $numbers — refund ${fmtMoney(refund)}'),
             backgroundColor: Colors.green,
           ),
         );
@@ -233,7 +233,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   }
 
   Future<String?> _askDrawChoice() =>
-      showDrawPeriodChoice(context, arabic: true);
+      showDrawPeriodChoice(context, arabic: false);
 
   Future<void> _replay() async {
     final id = _ticket!['id'] as String;
@@ -249,19 +249,19 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
       final skipped = (res['skipped'] as List).cast<String>();
       final trimmed = (res['trimmed'] as List).cast<String>();
       final label = choice == 'BOTH'
-          ? 'كلا السحبين (مضاعف)'
+          ? 'Both draws (double)'
           : choice == 'MIDDAY'
-          ? 'الصباحي فقط'
-          : 'المسائي فقط';
+          ? 'Morning only'
+          : 'Evening only';
       String hint = '';
       if (skipped.isNotEmpty)
-        hint += '\n\n⚠️ محذوف (وصل للحد):\n${skipped.join('\n')}';
+        hint += '\n\n⚠️ Skipped (reached the limit):\n${skipped.join('\n')}';
       if (trimmed.isNotEmpty)
-        hint += '\n\n✂️ تم تقليله للحد المتبقي:\n${trimmed.join('\n')}';
+        hint += '\n\n✂️ Trimmed to the remaining limit:\n${trimmed.join('\n')}';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'تم النسخ $count لعبة → $label — اذهب لـ SALE لطباعة التذكرة الجديدة${skipped.isNotEmpty ? ' — ${skipped.length} محذوف' : ''}${trimmed.isNotEmpty ? ' — ${trimmed.length} مقلّل' : ''}',
+            'Copied $count plays → $label — go to SALE to print the new ticket${skipped.isNotEmpty ? ' — ${skipped.length} skipped' : ''}${trimmed.isNotEmpty ? ' — ${trimmed.length} trimmed' : ''}',
           ),
           backgroundColor: const Color(0xFF0B8A3E),
           duration: Duration(
@@ -277,19 +277,19 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
             borderRadius: BorderRadius.circular(14),
           ),
           title: const Text(
-            'تم النسخ — Re-play',
+            'Copied — Re-play',
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
           ),
           content: SingleChildScrollView(
             child: Text(
-              '$count لعبة نُسخت إلى السلة ($label).$hint\n\nهل تريد الانتقال لشاشة البيع؟',
+              '$count plays copied to the cart ($label).$hint\n\nGo to the sales screen?',
               style: const TextStyle(fontSize: 11),
             ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(c),
-              child: const Text('البقاء'),
+              child: const Text('Stay'),
             ),
             ElevatedButton(
               onPressed: () {
@@ -582,7 +582,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                                                             ),
                                                       ),
                                                       child: const Text(
-                                                        'ملغي',
+                                                        'VOIDED',
                                                         style: TextStyle(
                                                           fontSize: 8,
                                                           color: Colors.white,
@@ -728,7 +728,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                                                       'cancelled',
                                                 ))
                                                   Text(
-                                                    'بعد الإلغاء — الأصلي كان ${fmtMoney(_lines.fold<double>(0, (s, e) => s + asDouble(e['amount'])))}',
+                                                    'After cancellation — original was ${fmtMoney(_lines.fold<double>(0, (s, e) => s + asDouble(e['amount'])))}',
                                                     style: const TextStyle(
                                                       fontSize: 9,
                                                       color: Colors.black54,
@@ -822,7 +822,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                                                       BorderRadius.circular(6),
                                                 ),
                                                 child: const Text(
-                                                  'ملغي — Voided',
+                                                  'Voided',
                                                   style: TextStyle(
                                                     fontSize: 10,
                                                     color: Colors.white,
@@ -885,7 +885,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                                                     color: Colors.red,
                                                   ),
                                                   label: const Text(
-                                                    'إلغاء هذا الرقم',
+                                                    'Cancel this number',
                                                     style: TextStyle(
                                                       fontSize: 11,
                                                       color: Colors.red,
@@ -939,7 +939,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                               _row('Draw', t['drawName'] ?? '-'),
                               _row('Date', fmtDate(t['createdAt'])),
                               _row('Operator', t['operatorName']),
-                              _row('Customer / العميل', customerName),
+                              _row('Customer', customerName),
                               _row('Barcode', t['barcode'] ?? t['id']),
                               if (t['prizeAmount'] != null)
                                 _row(

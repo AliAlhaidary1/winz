@@ -743,7 +743,7 @@ class _WinningTicketsScreenState extends State<WinningTicketsScreen> {
                                   child: OutlinedButton.icon(
                                     icon: const Icon(Icons.copy, size: 14),
                                     label: const Text(
-                                      'نسخ التذكرة للعب مرة أخرى — اختر الفترة',
+                                      'Copy ticket to play again — choose period',
                                       style: TextStyle(fontSize: 11),
                                     ),
                                     onPressed: _copyWithChoice,
@@ -751,7 +751,7 @@ class _WinningTicketsScreenState extends State<WinningTicketsScreen> {
                                 ),
                                 const SizedBox(height: 4),
                                 const Text(
-                                  'يمكن النسخ برقم التذكرة (ID) أو السيريال أو الباركود — ستختار: صباحي / مسائي / الاثنين',
+                                  'You can copy by ticket number (ID), serial, or barcode — you will choose: Midday / Evening / Both',
                                   style: TextStyle(
                                     fontSize: 9,
                                     color: Colors.black45,

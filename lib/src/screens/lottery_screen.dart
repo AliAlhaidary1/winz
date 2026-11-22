@@ -29,7 +29,7 @@ class LotteryScreen extends StatelessWidget {
               details: r'Numbers unified: 3-Digit & 4-Digit • Straight/Box/Combo/ST/BOX/Pairs • $0.50 - $10.00 • Midday 2:30 / Evening 10:30',
             ),
             const SizedBox(height: 12),
-            // Win 4 مدمج داخل Numbers (3D/4D) — تم إلغاء الصفحة المنفصلة
+            // Win 4 is integrated into Numbers (3D/4D) — the separate page was removed
           ],
         ),
       ),

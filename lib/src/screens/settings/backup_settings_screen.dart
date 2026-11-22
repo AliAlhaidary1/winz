@@ -78,21 +78,21 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
           context: context,
           builder: (c) => AlertDialog(
             title: const Text(
-              'صلاحية الملفات مطلوبة',
+              'File permission required',
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
             ),
             content: const Text(
-              'على Android 11+ يجب تفعيل "السماح بالوصول لكل الملفات" لهذا التطبيق حتى يتم الحفظ في Downloads أو أي مجلد تختاره.',
+              'On Android 11+, you must enable "Allow access to all files" for this app to save to Downloads or any folder you choose.',
               style: TextStyle(fontSize: 12),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(c, false),
-                child: const Text('لاحقاً'),
+                child: const Text('Later'),
               ),
               ElevatedButton(
                 onPressed: () => Navigator.pop(c, true),
-                child: const Text('فتح الإعدادات'),
+                child: const Text('Open Settings'),
               ),
             ],
           ),
@@ -108,7 +108,8 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
       final svc = BackupService(context.read<AppDatabase>());
       await svc.ensureStorageAccess(prompt: true);
       final dir = await FilePicker.platform.getDirectoryPath(
-        dialogTitle: 'اختر مجلد النسخ الافتراضي — يبقى بعد حذف التطبيق',
+        dialogTitle:
+            'Choose default backup folder — persists after app uninstall',
       );
       if (dir == null) return;
       final writable = await svc.canWritePath(dir);
@@ -117,7 +118,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'تعذر الكتابة في هذا المجلد. فعّل صلاحية "الوصول لكل الملفات" من إعدادات التطبيق ثم أعد الاختيار.',
+                'Cannot write to this folder. Enable "All files access" permission in the app settings, then choose again.',
               ),
               backgroundColor: Colors.red,
               duration: Duration(seconds: 6),
@@ -133,7 +134,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'تم حفظ المجلد الافتراضي: $dir\nسيتم نسخ كل نسخة تلقائية/يدوية هناك أيضاً',
+              'Default folder saved: $dir\nEvery automatic/manual backup will also be copied there',
             ),
             backgroundColor: const Color(0xFF0B8A3E),
             duration: const Duration(seconds: 4),
@@ -143,7 +144,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('فشل اختيار المجلد: $e'),
+            content: Text('Failed to choose folder: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -158,7 +159,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'تم حذف المجلد المخصص — سيتم استخدام المجلدات الافتراضية فقط',
+            'Custom folder removed — only default folders will be used',
           ),
         ),
       );
@@ -173,9 +174,9 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
       String? picked;
       var saveUnsupported = false;
       try {
-        // على Android يجب تمرير bytes وإلا يفشل فوراً قبل فتح النافذة
+        // On Android the bytes must be passed or it fails immediately before the dialog opens
         picked = await FilePicker.platform.saveFile(
-          dialogTitle: 'احفظ النسخة في أي مكان تريده',
+          dialogTitle: 'Save the backup anywhere you like',
           fileName: suggested,
           bytes: bytes,
           type: FileType.any,
@@ -185,7 +186,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
       }
       if ((picked == null || picked.isEmpty) && saveUnsupported) {
         final dir = await FilePicker.platform.getDirectoryPath(
-          dialogTitle: 'اختر مجلد الحفظ',
+          dialogTitle: 'Choose save folder',
         );
         if (dir != null) {
           picked = '$dir\\$suggested';
@@ -196,7 +197,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
         if (mounted)
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('تم إلغاء الاختيار'),
+              content: Text('Selection cancelled'),
               backgroundColor: Colors.orange,
             ),
           );
@@ -209,7 +210,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('تم الحفظ ✅\n$picked'),
+            content: Text('Saved ✅\n$picked'),
             backgroundColor: const Color(0xFF0B8A3E),
             duration: const Duration(seconds: 5),
           ),
@@ -218,7 +219,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('فشل الحفظ المخصص: $e'),
+            content: Text('Custom save failed: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -236,7 +237,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            v ? 'تم تفعيل النسخ التلقائي' : 'تم إيقاف النسخ التلقائي',
+            v ? 'Automatic backup enabled' : 'Automatic backup disabled',
           ),
           backgroundColor: const Color(0xFF0B8A3E),
         ),
@@ -251,7 +252,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
     if (mounted)
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('تم تغيير الفترة إلى: ${BackupService.intervals[v]}'),
+          content: Text('Interval changed to: ${BackupService.intervals[v]}'),
           backgroundColor: const Color(0xFF0B8A3E),
         ),
       );
@@ -274,7 +275,9 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
         context: context,
         builder: (c) => AlertDialog(
           title: Text(
-            customError == null ? 'تم النسخ بنجاح ✅' : 'تم النسخ مع تنبيه',
+            customError == null
+                ? 'Backup successful ✅'
+                : 'Backup completed with a warning',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.bold,
@@ -288,7 +291,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'تم الحفظ في:',
+                'Saved to:',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 6),
@@ -317,7 +320,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(c),
-              child: const Text('حسناً'),
+              child: const Text('OK'),
             ),
           ],
         ),
@@ -325,7 +328,10 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
     } catch (e) {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('فشل النسخ: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Backup failed: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
     } finally {
       if (mounted) setState(() => _backingUp = false);
@@ -346,7 +352,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('فشل اختيار الملف: $e'),
+            content: Text('Failed to pick file: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -378,7 +384,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                 Icon(Icons.error, color: Colors.red),
                 SizedBox(width: 6),
                 Text(
-                  'ملف غير صالح',
+                  'Invalid file',
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                 ),
               ],
@@ -387,7 +393,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(c),
-                child: const Text('حسناً'),
+                child: const Text('OK'),
               ),
             ],
           ),
@@ -426,7 +432,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                 const SizedBox(width: 8),
                 const Expanded(
                   child: Text(
-                    'تأكيد الاستيراد — سيتم استبدال البيانات',
+                    'Confirm import — data will be replaced',
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.bold,
@@ -457,7 +463,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Text(
-                                    'البيانات الحالية',
+                                    'Current data',
                                     style: TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold,
@@ -466,11 +472,11 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    'تذاكر: ${cur['tickets']}  •  أسطر: ${cur['lines']}  •  حسابات: ${cur['accounts']}',
+                                    'Tickets: ${cur['tickets']}  •  Lines: ${cur['lines']}  •  Accounts: ${cur['accounts']}',
                                     style: const TextStyle(fontSize: 11),
                                   ),
                                   Text(
-                                    'حجم: ${asInt(cur['size']) / 1024 > 0 ? (asInt(cur['size']) / 1024).toStringAsFixed(1) : '0'} KB',
+                                    'Size: ${asInt(cur['size']) / 1024 > 0 ? (asInt(cur['size']) / 1024).toStringAsFixed(1) : '0'} KB',
                                     style: TextStyle(
                                       fontSize: 10,
                                       color: Colors.grey.shade600,
@@ -489,7 +495,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Text(
-                                    'النسخة المختارة',
+                                    'Selected backup',
                                     style: TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold,
@@ -498,11 +504,11 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    'تذاكر: ${bak['tickets']}  •  أسطر: ${bak['lines']}  •  حسابات: ${bak['accounts']}',
+                                    'Tickets: ${bak['tickets']}  •  Lines: ${bak['lines']}  •  Accounts: ${bak['accounts']}',
                                     style: const TextStyle(fontSize: 11),
                                   ),
                                   Text(
-                                    'حجم: ${asInt(bak['size']) / 1024 > 0 ? (asInt(bak['size']) / 1024).toStringAsFixed(1) : '0'} KB',
+                                    'Size: ${asInt(bak['size']) / 1024 > 0 ? (asInt(bak['size']) / 1024).toStringAsFixed(1) : '0'} KB',
                                     style: TextStyle(
                                       fontSize: 10,
                                       color: Colors.grey.shade600,
@@ -538,7 +544,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                           SizedBox(width: 6),
                           Expanded(
                             child: Text(
-                              'يوجد بيانات حالية — سيتم إنشاء نسخة أمان تلقائية (before_restore) قبل الاستبدال حتى لا تفقد أي شيء.',
+                              'Current data exists — a safety backup (before_restore) will be created automatically before replacement so nothing is lost.',
                               style: TextStyle(
                                 fontSize: 11,
                                 color: Colors.black87,
@@ -569,8 +575,8 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                           Expanded(
                             child: Text(
                               isSame
-                                  ? 'تنبيه ذكي: هذه هي نفس النسخة التي أنشأتها للتو (آخر نسخ) — استيرادها لن يغير شيئاً وقد يكون بلا فائدة. هل أنت متأكد أنك تريد المتابعة؟'
-                                  : 'تنبيه ذكي: محتوى النسخة مطابق تقريباً للبيانات الحالية — الاستيراد قد لا يكون ضرورياً.',
+                                  ? 'Smart warning: this is the same backup you just created (last backup) — importing it will change nothing and may be pointless. Are you sure you want to continue?'
+                                  : 'Smart warning: the backup content is almost identical to the current data — importing may not be necessary.',
                               style: const TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
@@ -589,7 +595,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Text(
-                      '⚠️ بعد الاستيراد سيتم إغلاق قاعدة البيانات ويجب إعادة تشغيل التطبيق. البيانات الحالية سيتم استبدالها بالكامل.',
+                      '⚠️ After import, the database will be closed and the app must be restarted. Current data will be completely replaced.',
                       style: TextStyle(
                         fontSize: 11,
                         color: Colors.red,
@@ -615,7 +621,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                     dense: true,
                     contentPadding: EdgeInsets.zero,
                     title: const Text(
-                      'أفهم أن البيانات الحالية سيتم استبدالها',
+                      'I understand that the current data will be replaced',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
@@ -630,7 +636,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                       dense: true,
                       contentPadding: EdgeInsets.zero,
                       title: const Text(
-                        'أفهم أن هذه نفس النسخة وقد لا يكون الاستيراد ضرورياً',
+                        'I understand this is the same backup and importing may not be necessary',
                         style: TextStyle(fontSize: 11),
                       ),
                       controlAffinity: ListTileControlAffinity.leading,
@@ -650,7 +656,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(c, false),
-                child: const Text('إلغاء'),
+                child: const Text('Cancel'),
               ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
@@ -662,7 +668,9 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                   if (!checked || (needSecond && !understoodDumb)) {
                     ScaffoldMessenger.of(ctx).showSnackBar(
                       const SnackBar(
-                        content: Text('يجب تأكيد الفهم قبل المتابعة'),
+                        content: Text(
+                          'You must confirm understanding before continuing',
+                        ),
                         backgroundColor: Colors.orange,
                       ),
                     );
@@ -670,7 +678,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                   }
                   Navigator.pop(c, true);
                 },
-                child: const Text('استيراد الآن'),
+                child: const Text('Import Now'),
               ),
             ],
           );
@@ -691,7 +699,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
               const CircularProgressIndicator(color: Color(0xFF0B8A3E)),
               const SizedBox(height: 12),
               const Text(
-                'جاري الاستيراد...',
+                'Importing...',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 4),
@@ -721,7 +729,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
               Icon(Icons.check_circle, color: Color(0xFF0B8A3E)),
               SizedBox(width: 6),
               Text(
-                'تم الاستيراد بنجاح ✅',
+                'Import successful ✅',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.bold,
@@ -735,7 +743,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'تم استبدال قاعدة البيانات بالنسخة المختارة.',
+                'The database has been replaced with the selected backup.',
                 style: TextStyle(fontSize: 12),
               ),
               const SizedBox(height: 8),
@@ -756,7 +764,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          'نسخة الأمان محفوظة:\n${safety.split('/').last.split('\\').last}',
+                          'Safety backup saved:\n${safety.split('/').last.split('\\').last}',
                           style: const TextStyle(fontSize: 10),
                           maxLines: 3,
                           overflow: TextOverflow.ellipsis,
@@ -773,7 +781,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Text(
-                  'يجب إعادة تشغيل التطبيق الآن لتطبيق التغييرات.',
+                  'You must restart the app now to apply the changes.',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
@@ -786,7 +794,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(c),
-              child: const Text('إغلاق (أعد التشغيل يدوياً)'),
+              child: const Text('Close (restart manually)'),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
@@ -800,7 +808,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                   () => exit(0),
                 );
               },
-              child: const Text('إنهاء التطبيق الآن'),
+              child: const Text('Exit app now'),
             ),
           ],
         ),
@@ -810,7 +818,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('فشل الاستيراد: $e'),
+            content: Text('Import failed: $e'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 5),
           ),
@@ -825,15 +833,14 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
       await SharePlus.instance.share(
         ShareParams(
           files: [XFile(path)],
-          text:
-              'نسخة احتياطية YeLottery — ${path.split('/').last.split('\\').last}',
+          text: 'YeLottery backup — ${path.split('/').last.split('\\').last}',
         ),
       );
     } catch (e) {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('فشل المشاركة: $e'),
+            content: Text('Share failed: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -845,7 +852,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
     if (mounted)
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('تم نسخ المسار'),
+          content: Text('Path copied'),
           backgroundColor: Color(0xFF0B8A3E),
         ),
       );
@@ -859,7 +866,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
         if (mounted)
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('تم إنشاء المجلد: $dir'),
+              content: Text('Folder created: $dir'),
               backgroundColor: Colors.orange,
             ),
           );
@@ -871,7 +878,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
         if (mounted)
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('تم فتح المجلد: $dir'),
+              content: Text('Folder opened: $dir'),
               backgroundColor: const Color(0xFF0B8A3E),
             ),
           );
@@ -881,7 +888,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
         if (mounted)
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('المسار: $dir — تم النسخ، استخدم مدير ملفات'),
+              content: Text('Path: $dir — copied, use a file manager'),
               backgroundColor: Colors.blue,
             ),
           );
@@ -894,7 +901,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('تعذر فتح المجلد: $e — تم نسخ المسار'),
+            content: Text('Cannot open folder: $e — path copied'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -907,14 +914,14 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
       final svc = BackupService(context.read<AppDatabase>());
       await svc.ensureStorageAccess(prompt: true);
       final destDir = await svc.getVisibleExportDir(requestPermission: false);
-      if (destDir == null) throw Exception('لا يوجد مجلد تصدير');
+      if (destDir == null) throw Exception('No export folder available');
       final name = path.split('/').last.split('\\').last;
       final dest = File('${destDir.path}/$name');
       await File(path).copy(dest.path);
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('تم التصدير إلى: ${dest.path}'),
+            content: Text('Exported to: ${dest.path}'),
             backgroundColor: const Color(0xFF0B8A3E),
             duration: const Duration(seconds: 4),
           ),
@@ -923,7 +930,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('فشل التصدير: $e — استخدم مشاركة'),
+            content: Text('Export failed: $e — use Share'),
             backgroundColor: Colors.red,
           ),
         );
@@ -935,11 +942,11 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
       context: context,
       builder: (c) => AlertDialog(
         title: const Text(
-          'حذف النسخة؟',
+          'Delete backup?',
           style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
         ),
         content: Text(
-          'هل تريد حذف ${path.split('/').last.split('\\').last} ؟',
+          'Delete ${path.split('/').last.split('\\').last}?',
           style: const TextStyle(fontSize: 12),
           maxLines: 3,
           overflow: TextOverflow.ellipsis,
@@ -947,12 +954,12 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(c, false),
-            child: const Text('إلغاء'),
+            child: const Text('Cancel'),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(c, true),
-            child: const Text('حذف'),
+            child: const Text('Delete'),
           ),
         ],
       ),
@@ -965,20 +972,23 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('تم الحذف'),
+            content: Text('Deleted'),
             backgroundColor: Color(0xFF0B8A3E),
           ),
         );
     } catch (e) {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('فشل الحذف: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Delete failed: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
     }
   }
 
   String _fmt(int? ms) {
-    if (ms == null) return 'لم يتم بعد';
+    if (ms == null) return 'Never';
     return DateFormat('yyyy-MM-dd HH:mm:ss')
         .format(DateTime.fromMillisecondsSinceEpoch(ms));
   }
@@ -1002,7 +1012,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
         backgroundColor: green,
         foregroundColor: Colors.white,
         title: const Text(
-          'النسخ الاحتياطي — Backup',
+          'Backup',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
         actions: [
@@ -1041,7 +1051,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                               ),
                               const SizedBox(height: 8),
                               const Text(
-                                'نسخ احتياطي يدوي',
+                                'Manual backup',
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,
@@ -1050,7 +1060,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                               ),
                               const SizedBox(height: 4),
                               const Text(
-                                'اضغط للنسخ في أي وقت — سيتم حفظ قاعدة البيانات كاملة',
+                                'Tap to back up anytime — the entire database will be saved',
                                 style: TextStyle(
                                   color: Colors.white70,
                                   fontSize: 11,
@@ -1085,9 +1095,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                         )
                                       : const Icon(Icons.cloud_upload),
                                   label: Text(
-                                    _backingUp
-                                        ? 'جاري النسخ...'
-                                        : 'نسخ الآن — Backup Now',
+                                    _backingUp ? 'Backing up...' : 'Backup Now',
                                     style: const TextStyle(
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -1116,7 +1124,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                       : _saveAnywhere,
                                   icon: const Icon(Icons.save_alt, size: 18),
                                   label: const Text(
-                                    'حفظ في مكان مخصص — اختر أي ملف/مجلد',
+                                    'Save to a custom location — choose any file/folder',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 11,
@@ -1126,7 +1134,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                               ),
                               const SizedBox(height: 6),
                               const Text(
-                                'يحفظ نسخة داخلية + يفتح نافذة اختيار ملف لحفظ نسخة ثانية في أي مكان تريده (يبقى بعد حذف التطبيق/تغيير الجهاز)',
+                                'Saves an internal backup + opens a file picker to save a second copy anywhere you like (persists after app uninstall/device change)',
                                 style: TextStyle(
                                   color: Colors.white70,
                                   fontSize: 9,
@@ -1159,7 +1167,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                     SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
-                                        'صلاحية الملفات غير مفعّلة',
+                                        'File permission is not enabled',
                                         style: TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 13,
@@ -1171,7 +1179,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                 ),
                                 const SizedBox(height: 8),
                                 const Text(
-                                  'بدون هذه الصلاحية لا يمكن الحفظ في Download أو المجلد الذي تختاره. اضغط الزر ثم فعّل "السماح بالوصول لكل الملفات".',
+                                  'Without this permission you cannot save to Download or your chosen folder. Tap the button, then enable "Allow access to all files".',
                                   style: TextStyle(fontSize: 11),
                                 ),
                                 const SizedBox(height: 10),
@@ -1183,7 +1191,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                   onPressed: _requestStorageAccess,
                                   icon: const Icon(Icons.lock_open, size: 16),
                                   label: const Text(
-                                    'منح صلاحية الملفات',
+                                    'Grant file permission',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -1195,7 +1203,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                         ),
                       ],
                       const SizedBox(height: 14),
-                      // Custom default folder — يبقى بعد حذف التطبيق
+                      // Custom default folder — persists after uninstall
                       Card(
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
@@ -1231,14 +1239,14 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          'مجلد النسخ الافتراضي — يبقى بعد الحذف',
+                                          'Default backup folder — persists after uninstall',
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 13,
                                           ),
                                         ),
                                         Text(
-                                          'اختر أي مجلد (Downloads/ Documents/ USB)',
+                                          'Choose any folder (Downloads / Documents / USB)',
                                           style: TextStyle(
                                             fontSize: 10,
                                             color: Colors.black54,
@@ -1262,8 +1270,8 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                 child: SelectableText(
                                   _customDir == null
                                       ? (_visibleDir == null
-                                            ? 'لم يتم الاختيار — سيتم استخدام المجلد الافتراضي المرئي إن وُجد'
-                                            : 'لم يتم الاختيار — الافتراضي: $_visibleDir')
+                                            ? 'Not selected — the visible default folder will be used if available'
+                                            : 'Not selected — default: $_visibleDir')
                                       : _wrappablePath(_customDir!),
                                   style: TextStyle(
                                     fontSize: 10,
@@ -1299,7 +1307,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                         size: 16,
                                       ),
                                       label: const Text(
-                                        'اختيار مجلد',
+                                        'Choose folder',
                                         style: TextStyle(
                                           fontSize: 11,
                                           fontWeight: FontWeight.bold,
@@ -1311,7 +1319,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                   OutlinedButton.icon(
                                     icon: const Icon(Icons.clear, size: 16),
                                     label: const Text(
-                                      'مسح',
+                                      'Clear',
                                       style: TextStyle(fontSize: 11),
                                     ),
                                     onPressed: _customDir == null
@@ -1336,7 +1344,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                     ),
                                   ),
                                   child: const Text(
-                                    'هذا المجلد محفوظ لكن التطبيق لا يستطيع الكتابة فيه. فعّل صلاحية الوصول لكل الملفات ثم أعد اختيار المجلد.',
+                                    'This folder is saved but the app cannot write to it. Enable all-files access permission, then choose the folder again.',
                                     style: TextStyle(
                                       fontSize: 10,
                                       color: Colors.red,
@@ -1352,7 +1360,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: const Text(
-                                  '• كل نسخة يدوية/تلقائية سيتم نسخها تلقائياً إلى هذا المجلد أيضاً — المجلد الخارجي لا يُحذف عند حذف التطبيق أو تغيير الجهاز، ويمكن نسخه للجهاز الجديد واستيراده.',
+                                  '• Every manual/automatic backup will also be copied here automatically — the external folder is not deleted when the app is uninstalled or the device changes, and can be copied to the new device and imported.',
                                   style: TextStyle(
                                     fontSize: 10,
                                     color: Colors.black87,
@@ -1398,14 +1406,14 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          'استيراد نسخة احتياطية',
+                                          'Import a backup',
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 13,
                                           ),
                                         ),
                                         Text(
-                                          'استعادة البيانات المحذوفة',
+                                          'Restore deleted data',
                                           style: TextStyle(
                                             fontSize: 10,
                                             color: Colors.black54,
@@ -1444,7 +1452,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                       : _pickAndRestore,
                                   icon: const Icon(Icons.file_open, size: 18),
                                   label: const Text(
-                                    'استيراد من ملف خارجي',
+                                    'Import from external file',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 12,
@@ -1460,7 +1468,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: const Text(
-                                  '• يدعم استيراد أي ملف ‎.sqlite صالح — سيتم التحقق تلقائياً وفحص السلامة. • إذا كانت هناك بيانات حالية سيتم إنشاء نسخة أمان قبل الاستبدال. • بعد الاستيراد يجب إعادة تشغيل التطبيق.',
+                                  '• Supports importing any valid .sqlite file — it is verified and checked automatically. • If current data exists, a safety backup is created before replacement. • After import you must restart the app.',
                                   style: TextStyle(
                                     fontSize: 10,
                                     color: Colors.black87,
@@ -1500,7 +1508,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                   const SizedBox(width: 8),
                                   const Expanded(
                                     child: Text(
-                                      'النسخ التلقائي',
+                                      'Automatic backup',
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 13,
@@ -1518,7 +1526,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                               ),
                               const Divider(height: 16),
                               const Text(
-                                'الفترة — كل كم يتم النسخ',
+                                'Interval — how often to back up',
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: Colors.black54,
@@ -1571,8 +1579,8 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                     Expanded(
                                       child: Text(
                                         _interval == 'never' || !_enabled
-                                            ? 'النسخ التلقائي متوقف — استخدم الزر أعلاه للنسخ اليدوي'
-                                            : 'الافتراضي: يومياً — سيتم النسخ تلقائياً عند فتح التطبيق وبشكل دوري',
+                                            ? 'Automatic backup is off — use the button above for a manual backup'
+                                            : 'Default: Daily — backups run automatically when the app opens and periodically',
                                         style: const TextStyle(
                                           fontSize: 11,
                                           color: Colors.black87,
@@ -1598,7 +1606,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                'الحالة',
+                                'Status',
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 12,
@@ -1606,23 +1614,23 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                               ),
                               const SizedBox(height: 8),
                               _row(
-                                'آخر نسخ:',
+                                'Last backup:',
                                 _fmt(_lastAt),
                                 Icons.history,
                                 Colors.blue,
                               ),
                               const SizedBox(height: 6),
                               _row(
-                                'النسخ القادم:',
+                                'Next backup:',
                                 _enabled && _interval != 'never'
                                     ? _fmtDt(_nextAt)
-                                    : 'متوقف',
+                                    : 'Off',
                                 Icons.timer,
                                 Colors.orange,
                               ),
                               const SizedBox(height: 6),
                               _row(
-                                'مجلد النسخ:',
+                                'Backup folder:',
                                 _dirPath ?? '—',
                                 Icons.folder,
                                 Colors.green,
@@ -1632,7 +1640,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                   _visibleDir != _dirPath) ...[
                                 const SizedBox(height: 6),
                                 _row(
-                                  'المجلد المرئي:',
+                                  'Visible folder:',
                                   _visibleDir!,
                                   Icons.download,
                                   Colors.teal,
@@ -1642,7 +1650,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                               if (_customDir != null) ...[
                                 const SizedBox(height: 6),
                                 _row(
-                                  'المجلد المخصص:',
+                                  'Custom folder:',
                                   _customDir!,
                                   Icons.folder_special,
                                   Colors.teal,
@@ -1659,7 +1667,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                         size: 14,
                                       ),
                                       label: const Text(
-                                        'فتح المجلد',
+                                        'Open folder',
                                         style: TextStyle(fontSize: 11),
                                       ),
                                       onPressed: _dirPath == null
@@ -1676,7 +1684,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                     child: OutlinedButton.icon(
                                       icon: const Icon(Icons.copy, size: 14),
                                       label: const Text(
-                                        'نسخ المسار',
+                                        'Copy path',
                                         style: TextStyle(fontSize: 11),
                                       ),
                                       onPressed: _dirPath == null
@@ -1693,7 +1701,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                               if (_lastPath != null) ...[
                                 const SizedBox(height: 6),
                                 _row(
-                                  'آخر ملف:',
+                                  'Last file:',
                                   _lastPath!.split('/').last.split('\\').last,
                                   Icons.insert_drive_file,
                                   Colors.grey,
@@ -1706,7 +1714,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                       child: OutlinedButton.icon(
                                         icon: const Icon(Icons.copy, size: 12),
                                         label: const Text(
-                                          'نسخ مسار الملف',
+                                          'Copy file path',
                                           style: TextStyle(fontSize: 10),
                                         ),
                                         onPressed: () => _copyPath(_lastPath!),
@@ -1720,7 +1728,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                           size: 12,
                                         ),
                                         label: const Text(
-                                          'تصدير للـ Downloads',
+                                          'Export to Downloads',
                                           style: TextStyle(fontSize: 10),
                                         ),
                                         onPressed: () =>
@@ -1739,8 +1747,8 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                 ),
                                 child: Text(
                                   Platform.isWindows
-                                      ? 'على Windows تُحفظ النسخ في مجلد Downloads\\YeLotteryBackups (أو Documents إن تعذر Downloads) ويمكن فتحه مباشرة من الزر أعلاه.'
-                                      : 'على Android تُحفظ نسخة في Download/YeLotteryBackups إن سُمح بالتخزين، وإلا في مجلد التطبيق. اختر مجلداً مخصصاً أو استخدم مشاركة للاحتفاظ بنسخة بعد حذف التطبيق.',
+                                      ? 'On Windows, backups are saved in the Downloads\\YeLotteryBackups folder (or Documents if Downloads is unavailable) and can be opened directly from the button above.'
+                                      : 'On Android, a copy is saved to Download/YeLotteryBackups if storage is allowed, otherwise in the app folder. Choose a custom folder or use Share to keep a backup after uninstalling the app.',
                                   style: const TextStyle(
                                     fontSize: 10,
                                     color: Colors.black54,
@@ -1758,7 +1766,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                           const Icon(Icons.list_alt, size: 16, color: green),
                           const SizedBox(width: 6),
                           Text(
-                            'النسخ المحفوظة (${_backups.length})',
+                            'Saved backups (${_backups.length})',
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
@@ -1768,7 +1776,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                           const Spacer(),
                           if (_backups.isNotEmpty)
                             Text(
-                              'الاحتفاظ بآخر 10',
+                              'Keep last 10',
                               style: TextStyle(
                                 fontSize: 10,
                                 color: Colors.grey.shade600,
@@ -1791,7 +1799,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    'لا يوجد نسخ بعد — اضغط "نسخ الآن"',
+                                    'No backups yet — tap "Backup Now"',
                                     style: TextStyle(
                                       color: Colors.grey.shade600,
                                       fontSize: 12,
@@ -1850,7 +1858,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     subtitle: Text(
-                                      '${DateFormat('yyyy-MM-dd HH:mm').format(stat.modified)} • ${sizeKB} KB${isSafety ? ' • نسخة أمان' : ''}',
+                                      '${DateFormat('yyyy-MM-dd HH:mm').format(stat.modified)} • ${sizeKB} KB${isSafety ? ' • Safety backup' : ''}',
                                       style: const TextStyle(
                                         fontSize: 10,
                                         color: Colors.black54,
@@ -1894,7 +1902,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                                   size: 14,
                                                 ),
                                                 label: const Text(
-                                                  'استيراد',
+                                                  'Import',
                                                   style: TextStyle(
                                                     fontSize: 11,
                                                     fontWeight: FontWeight.bold,
@@ -1922,7 +1930,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                                 size: 14,
                                               ),
                                               label: const Text(
-                                                'مشاركة',
+                                                'Share',
                                                 style: TextStyle(fontSize: 11),
                                               ),
                                             ),
@@ -1950,7 +1958,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                                 context: context,
                                                 builder: (c) => AlertDialog(
                                                   title: const Text(
-                                                    'مسار النسخة',
+                                                    'Backup path',
                                                     style: TextStyle(
                                                       fontSize: 13,
                                                     ),
@@ -1966,7 +1974,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                                       onPressed: () =>
                                                           Navigator.pop(c),
                                                       child: const Text(
-                                                        'إغلاق',
+                                                        'Close',
                                                       ),
                                                     ),
                                                   ],
@@ -1985,7 +1993,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                                   size: 12,
                                                 ),
                                                 label: const Text(
-                                                  'نسخ المسار',
+                                                  'Copy path',
                                                   style: TextStyle(
                                                     fontSize: 10,
                                                   ),
@@ -2002,7 +2010,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                                   size: 12,
                                                 ),
                                                 label: const Text(
-                                                  'تصدير مرئي',
+                                                  'Visible export',
                                                   style: TextStyle(
                                                     fontSize: 10,
                                                   ),
@@ -2039,7 +2047,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                               const SizedBox(width: 8),
                               const Expanded(
                                 child: Text(
-                                  'النسخ يحفظ قاعدة البيانات كاملة (تذاكر، حسابات، جوائز) — يُحفظ في مجلد backups ويمكن نسخه يدوياً إلى خارج الجهاز. الاستيراد ذكي: يتحقق من الملف، ينشئ نسخة أمان، ويطلب تأكيداً مزدوجاً إذا كانت النسخة مطابقة للحالية.',
+                                  'Backup saves the entire database (tickets, accounts, prizes) — stored in the backups folder and can be copied manually outside the device. Import is smart: it verifies the file, creates a safety backup, and asks for double confirmation if the backup matches the current one.',
                                   style: TextStyle(fontSize: 11),
                                 ),
                               ),

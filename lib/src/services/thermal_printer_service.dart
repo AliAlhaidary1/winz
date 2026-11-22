@@ -236,7 +236,7 @@ Future<List<int>> buildTicketEscPos({
     ),
   );
   bytes.addAll(g.hr(ch: '='));
-  // رقم الفاتورة والتاريخ مباشرة تحت SALES REPORT
+  // Invoice number and date directly under SALES REPORT
   final idEarly = '${ticket['barcode'] ?? ticket['id']}';
   bytes.addAll(
     g.text(

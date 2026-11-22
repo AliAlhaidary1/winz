@@ -114,7 +114,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
     if (!RegExp(r'^[0-9]{3}$').hasMatch(raw)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('فائز 3 أرقام يجب أن يكون 3 أرقام (0-9)'),
+          content: Text('3-digit winner must be 3 digits (0-9)'),
           backgroundColor: Colors.red,
         ),
       );
@@ -125,7 +125,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'غير مسموح الآن — النافذة ${_windowLabel(_periods.firstWhere((e) => e['id'] == periodId))} فقط',
+            'Not allowed now — only during the window ${_windowLabel(_periods.firstWhere((e) => e['id'] == periodId))}',
           ),
           backgroundColor: Colors.orange,
         ),
@@ -149,7 +149,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'تم حفظ فائز 3 أرقام $raw — رابحون: ${res['winningCount']} • جوائز: ${fmtMoney(res['totalPrize'])}',
+            '3-digit winner $raw saved — Winners: ${res['winningCount']} • Prizes: ${fmtMoney(res['totalPrize'])}',
           ),
           backgroundColor: const Color(0xFF0B8A3E),
         ),
@@ -169,7 +169,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
     if (!RegExp(r'^[0-9]{4}$').hasMatch(raw)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('فائز 4 أرقام يجب أن يكون 4 أرقام (0-9)'),
+          content: Text('4-digit winner must be 4 digits (0-9)'),
           backgroundColor: Colors.red,
         ),
       );
@@ -180,7 +180,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'غير مسموح الآن — النافذة ${_windowLabel(_periods.firstWhere((e) => e['id'] == periodId))} فقط',
+            'Not allowed now — only during the window ${_windowLabel(_periods.firstWhere((e) => e['id'] == periodId))}',
           ),
           backgroundColor: Colors.orange,
         ),
@@ -203,7 +203,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'تم حفظ فائز 4 أرقام $raw — رابحون: ${res['winningCount']} • جوائز: ${fmtMoney(res['totalPrize'])}',
+            '4-digit winner $raw saved — Winners: ${res['winningCount']} • Prizes: ${fmtMoney(res['totalPrize'])}',
           ),
           backgroundColor: const Color(0xFF0B8A3E),
         ),
@@ -231,7 +231,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
         backgroundColor: green,
         foregroundColor: Colors.white,
         title: const Text(
-          'الفائز — Winner Settings',
+          'Winner Settings',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
         ),
         actions: [
@@ -281,7 +281,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                                   const SizedBox(width: 8),
                                   const Expanded(
                                     child: Text(
-                                      'المكان الوحيد لإدخال الفائزين',
+                                      'The only place to enter winners',
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 13,
@@ -292,7 +292,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                               ),
                               const SizedBox(height: 8),
                               const Text(
-                                'هنا تُدخل فائز 3 أرقام وفائز 4 أرقام لكل فترة (صباحي / مسائي). النظام يتبع إعدادات الوقت في (Draw Schedule) ويعرض الساعة بنظام 12 ساعة AM/PM.',
+                                'Here you enter the 3-digit and 4-digit winners for each period (Morning / Evening). The system follows the time settings in Draw Schedule and displays the clock in 12-hour AM/PM format.',
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: Colors.black54,
@@ -322,8 +322,8 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                                     Expanded(
                                       child: Text(
                                         _winningRestricted
-                                            ? 'مقيد بالوقت: يُسمح بالإدخال فقط خلال [إغلاق البيع — السحب + 2 ساعة]'
-                                            : 'حر: يُسمح بالإدخال في أي وقت، وتُغلق الفترة فور الإدخال',
+                                            ? 'Time-restricted: entry is only allowed during [Sales Close — Draw + 2 hours]'
+                                            : 'Unrestricted: entry is allowed at any time, and the period closes immediately after entry',
                                         style: TextStyle(
                                           fontSize: 11,
                                           color: _winningRestricted
@@ -337,7 +337,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                               ),
                               const SizedBox(height: 6),
                               const Text(
-                                'غيّر الوقت من: الإعدادات → Draw Schedule → Sales Close / Draw Time (12h). أي تغيير يُطبق تلقائياً على الفترات القادمة.',
+                                'Change the time via: Settings → Draw Schedule → Sales Close / Draw Time (12h). Any change is applied automatically to future periods.',
                                 style: TextStyle(
                                   fontSize: 10,
                                   color: Colors.black54,
@@ -386,7 +386,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                                       size: 12,
                                     ),
                                     label: const Text(
-                                      'أمس',
+                                      'Yesterday',
                                       style: TextStyle(fontSize: 11),
                                     ),
                                     onPressed: () {
@@ -400,7 +400,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                                   OutlinedButton.icon(
                                     icon: const Icon(Icons.today, size: 12),
                                     label: const Text(
-                                      'اليوم',
+                                      'Today',
                                       style: TextStyle(fontSize: 11),
                                     ),
                                     onPressed: () {
@@ -416,7 +416,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                                       size: 12,
                                     ),
                                     label: const Text(
-                                      'غداً',
+                                      'Tomorrow',
                                       style: TextStyle(fontSize: 11),
                                     ),
                                     onPressed: () {
@@ -492,21 +492,21 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                                             CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            '${type == 'MIDDAY' ? 'صباحي — Morning' : 'مسائي — Evening'}  •  ${p['drawDate']}',
+                                            '${type == 'MIDDAY' ? 'Morning' : 'Evening'}  •  ${p['drawDate']}',
                                             style: const TextStyle(
                                               fontWeight: FontWeight.bold,
                                               fontSize: 13,
                                             ),
                                           ),
                                           Text(
-                                            'إغلاق البيع: $sc12  •  السحب: $dr12  •  $status',
+                                            'Sales Close: $sc12  •  Draw: $dr12  •  $status',
                                             style: TextStyle(
                                               fontSize: 10,
                                               color: Colors.black54,
                                             ),
                                           ),
                                           Text(
-                                            'النافذة: ${_windowLabel(p)}',
+                                            'Window: ${_windowLabel(p)}',
                                             style: TextStyle(
                                               fontSize: 9,
                                               color: can ? green : Colors.red,
@@ -562,7 +562,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                                     const SizedBox(width: 8),
                                     Flexible(
                                       child: Text(
-                                        'فائز 3 أرقام',
+                                        '3-digit Winner',
                                         style: const TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 12,
@@ -586,7 +586,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                                             ),
                                           ),
                                           child: Text(
-                                            'حالي: $r3',
+                                            'Current: $r3',
                                             style: const TextStyle(
                                               fontSize: 11,
                                               color: Colors.green,
@@ -610,7 +610,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                                         decoration: InputDecoration(
                                           isDense: true,
                                           border: const OutlineInputBorder(),
-                                          labelText: '3 أرقام (مثال 123)',
+                                          labelText: '3 digits (e.g. 123)',
                                           counterText: '',
                                           suffixIcon:
                                               _ctrl3[id]!.text.isNotEmpty
@@ -633,8 +633,8 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                                       icon: const Icon(Icons.save, size: 14),
                                       label: Text(
                                         (r3 != null && r3.isNotEmpty)
-                                            ? 'تصحيح'
-                                            : 'حفظ',
+                                            ? 'Correct'
+                                            : 'Save',
                                         style: const TextStyle(fontSize: 11),
                                       ),
                                       style: ElevatedButton.styleFrom(
@@ -649,7 +649,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                                   Padding(
                                     padding: const EdgeInsets.only(top: 4),
                                     child: Text(
-                                      'مغلق — سيفتح عند $sc12',
+                                      'Locked — opens at $sc12',
                                       style: const TextStyle(
                                         fontSize: 10,
                                         color: Colors.red,
@@ -679,7 +679,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                                     const SizedBox(width: 8),
                                     Flexible(
                                       child: Text(
-                                        'فائز 4 أرقام',
+                                        '4-digit Winner',
                                         style: const TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 12,
@@ -703,7 +703,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                                             ),
                                           ),
                                           child: Text(
-                                            'حالي: $r4',
+                                            'Current: $r4',
                                             style: const TextStyle(
                                               fontSize: 11,
                                               color: Colors.indigo,
@@ -727,7 +727,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                                         decoration: InputDecoration(
                                           isDense: true,
                                           border: const OutlineInputBorder(),
-                                          labelText: '4 أرقام (مثال 1234)',
+                                          labelText: '4 digits (e.g. 1234)',
                                           counterText: '',
                                           suffixIcon:
                                               _ctrl4[id]!.text.isNotEmpty
@@ -750,8 +750,8 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                                       icon: const Icon(Icons.save, size: 14),
                                       label: Text(
                                         (r4 != null && r4.isNotEmpty)
-                                            ? 'تصحيح'
-                                            : 'حفظ',
+                                            ? 'Correct'
+                                            : 'Save',
                                         style: const TextStyle(fontSize: 11),
                                       ),
                                       style: ElevatedButton.styleFrom(
@@ -766,7 +766,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                                   Padding(
                                     padding: const EdgeInsets.only(top: 4),
                                     child: Text(
-                                      'مغلق — سيفتح عند $sc12',
+                                      'Locked — opens at $sc12',
                                       style: const TextStyle(
                                         fontSize: 10,
                                         color: Colors.red,
@@ -793,7 +793,7 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                               const SizedBox(width: 8),
                               const Expanded(
                                 child: Text(
-                                  'نصيحة: غيّر وقت الإغلاق من Draw Schedule وسيُطبق على كل الفترات القادمة تلقائياً. شاشة Winner هي المكان الوحيد لإدخال الفائز.',
+                                  'Tip: Change the close time in Draw Schedule and it will apply to all future periods automatically. The Winner screen is the only place to enter winners.',
                                   style: TextStyle(fontSize: 11),
                                 ),
                               ),

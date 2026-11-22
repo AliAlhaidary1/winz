@@ -112,7 +112,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       context: context,
       builder: (c) => AlertDialog(
         insetPadding: Responsive.dialogInsets(c),
-        title: const Text('Add customer / إضافة عميل'),
+        title: const Text('Add customer'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -121,8 +121,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
                 controller: nameCtrl,
                 textCapitalization: TextCapitalization.words,
                 decoration: const InputDecoration(
-                  labelText: 'Name / الاسم',
-                  hintText: 'e.g. Ahmad / أحمد',
+                  labelText: 'Name',
+                  hintText: 'e.g. Ahmad',
                 ),
               ),
               const SizedBox(height: 10),
@@ -130,8 +130,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
                 controller: phoneCtrl,
                 keyboardType: TextInputType.phone,
                 decoration: const InputDecoration(
-                  labelText: 'Phone / الهاتف',
-                  hintText: 'Optional / اختياري',
+                  labelText: 'Phone',
+                  hintText: 'Optional',
                 ),
               ),
               const SizedBox(height: 10),
@@ -139,8 +139,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
                 controller: notesCtrl,
                 maxLines: 2,
                 decoration: const InputDecoration(
-                  labelText: 'Notes / ملاحظات',
-                  hintText: 'Optional / اختياري',
+                  labelText: 'Notes',
+                  hintText: 'Optional',
                 ),
               ),
             ],
@@ -149,11 +149,11 @@ class _CustomersScreenState extends State<CustomersScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(c, false),
-            child: const Text('Cancel / إلغاء'),
+            child: const Text('Cancel'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(c, true),
-            child: const Text('Add / إضافة'),
+            child: const Text('Add'),
           ),
         ],
       ),
@@ -161,7 +161,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
     if (ok != true) return;
     final name = nameCtrl.text.trim();
     if (name.isEmpty) {
-      _snack('Customer name is required / الاسم مطلوب', background: Colors.red);
+      _snack('Customer name is required', background: Colors.red);
       return;
     }
     try {
@@ -176,7 +176,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       if (id.isNotEmpty && !_customers.any((c) => '${c['id']}' == id)) {
         throw Exception('Customer saved but not shown — please refresh');
       }
-      _snack('Customer added / تمت الإضافة');
+      _snack('Customer added');
     } catch (e) {
       _snack(e.toString(), background: Colors.red);
     }
@@ -191,7 +191,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         insetPadding: Responsive.dialogInsets(ctx),
-        title: Text('Edit customer / تعديل عميل\n${c['name'] ?? ''}'),
+        title: Text('Edit customer\n${c['name'] ?? ''}'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -199,19 +199,19 @@ class _CustomersScreenState extends State<CustomersScreen> {
               TextField(
                 controller: nameCtrl,
                 textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(labelText: 'Name / الاسم'),
+                decoration: const InputDecoration(labelText: 'Name'),
               ),
               const SizedBox(height: 10),
               TextField(
                 controller: phoneCtrl,
                 keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(labelText: 'Phone / الهاتف'),
+                decoration: const InputDecoration(labelText: 'Phone'),
               ),
               const SizedBox(height: 10),
               TextField(
                 controller: notesCtrl,
                 maxLines: 2,
-                decoration: const InputDecoration(labelText: 'Notes / ملاحظات'),
+                decoration: const InputDecoration(labelText: 'Notes'),
               ),
             ],
           ),
@@ -219,11 +219,11 @@ class _CustomersScreenState extends State<CustomersScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel / إلغاء'),
+            child: const Text('Cancel'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Save / حفظ'),
+            child: const Text('Save'),
           ),
         ],
       ),
@@ -231,7 +231,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
     if (ok != true) return;
     final name = nameCtrl.text.trim();
     if (name.isEmpty) {
-      _snack('Customer name is required / الاسم مطلوب', background: Colors.red);
+      _snack('Customer name is required', background: Colors.red);
       return;
     }
     try {
@@ -242,7 +242,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
         notes: notesCtrl.text.trim(),
       );
       await _load();
-      _snack('Customer updated / تم التحديث');
+      _snack('Customer updated');
     } catch (e) {
       _snack(e.toString(), background: Colors.red);
     }
@@ -254,19 +254,19 @@ class _CustomersScreenState extends State<CustomersScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         insetPadding: Responsive.dialogInsets(ctx),
-        title: const Text('Delete customer / حذف عميل'),
+        title: const Text('Delete customer'),
         content: Text(
           'Delete "${c['name'] ?? ''}"? Their tickets will be reassigned to the default customer.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel / إلغاء'),
+            child: const Text('Cancel'),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete / حذف'),
+            child: const Text('Delete'),
           ),
         ],
       ),
@@ -276,7 +276,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       await state.deleteCustomer(c['id'] as String);
       _expanded.remove(c['id']);
       await _load();
-      _snack('Customer deleted / تم الحذف');
+      _snack('Customer deleted');
     } catch (e) {
       _snack(e.toString(), background: Colors.red);
     }
@@ -307,31 +307,31 @@ class _CustomersScreenState extends State<CustomersScreen> {
     String? validationError() {
       final numbers = numbersCtrl.text.trim();
       if (numbers.length != digitCount) {
-        return 'Enter exactly $digitCount digits / أدخل $digitCount أرقام';
+        return 'Enter exactly $digitCount digits';
       }
       final amount = double.tryParse(amountCtrl.text.trim());
       if (amount == null || amount <= 0) {
-        return 'Enter an amount above \$0 / أدخل مبلغاً أكبر من صفر';
+        return 'Enter an amount above \$0';
       }
       if ((amount * 100).round() % 50 != 0) {
-        return 'Amount must be in \$0.50 steps / المبلغ بخطوات 0.50\$';
+        return 'Amount must be in \$0.50 steps';
       }
       final isCombo = betType == 'Combo';
       final isBox = betType == 'Box';
       final isStBox = betType == 'ST/BOX';
       if (isCombo && amount > 10 + 1e-9) {
-        return 'Combo max \$10 per combo / 10\$ لكل تركيبة كحد أقصى';
+        return 'Combo max \$10 per combo';
       }
       if (isBox && amount > 50 + 1e-9) {
-        return 'Box max \$50 / 50\$ كحد أقصى';
+        return 'Box max \$50';
       }
       if (isStBox && amount > (digitCount == 4 ? 25 : 50) + 1e-9) {
-        return 'ST/BOX max \$${digitCount == 4 ? 25 : 50} / حد أقصى';
+        return 'ST/BOX max \$${digitCount == 4 ? 25 : 50}';
       }
       if (!isCombo && !isBox && !isStBox) {
         final maxStraight = digitCount == 4 ? 10.0 : 100.0;
         if (amount > maxStraight + 1e-9) {
-          return 'Straight max \$${maxStraight.toStringAsFixed(0)} / حد أقصى';
+          return 'Straight max \$${maxStraight.toStringAsFixed(0)}';
         }
       }
       return null;
@@ -345,14 +345,14 @@ class _CustomersScreenState extends State<CustomersScreen> {
             final error = validationError();
             return AlertDialog(
               insetPadding: Responsive.dialogInsets(ctx),
-              title: Text('Add play / إضافة لعبة — ${c['name'] ?? ''}'),
+              title: Text('Add play — ${c['name'] ?? ''}'),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const Text(
-                      'Digits / عدد الأرقام',
+                      'Digits',
                       style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                     ),
                     const SizedBox(height: 6),
@@ -384,7 +384,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                       maxLength: digitCount,
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       decoration: InputDecoration(
-                        labelText: 'Numbers / الأرقام',
+                        labelText: 'Numbers',
                         hintText: digitCount == 4 ? '1234' : '123',
                         counterText: '',
                       ),
@@ -411,9 +411,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                       // initialValue.
                       key: ValueKey('betType-$digitCount'),
                       initialValue: betType,
-                      decoration: const InputDecoration(
-                        labelText: 'Bet type / نوع الرهان',
-                      ),
+                      decoration: const InputDecoration(labelText: 'Bet type'),
                       items: betTypesFor(digitCount)
                           .map(
                             (t) => DropdownMenuItem(value: t, child: Text(t)),
@@ -429,7 +427,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                         decimal: true,
                       ),
                       decoration: const InputDecoration(
-                        labelText: 'Amount / المبلغ',
+                        labelText: 'Amount',
                         hintText: '0.50',
                       ),
                       onChanged: (_) => setDialog(() {}),
@@ -438,7 +436,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                     DropdownButtonFormField<String>(
                       initialValue: drawType,
                       decoration: const InputDecoration(
-                        labelText: 'Draw type / نوع السحب (optional)',
+                        labelText: 'Draw type (optional)',
                       ),
                       items: drawTypes
                           .map(
@@ -465,13 +463,13 @@ class _CustomersScreenState extends State<CustomersScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Cancel / إلغاء'),
+                  child: const Text('Cancel'),
                 ),
                 ElevatedButton(
                   onPressed: error == null
                       ? () => Navigator.pop(ctx, true)
                       : null,
-                  child: const Text('Save / حفظ'),
+                  child: const Text('Save'),
                 ),
               ],
             );
@@ -554,7 +552,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
   void _playCustomer(Map<String, dynamic> c) {
     final plays = _plays['${c['id'] ?? ''}'] ?? const <Map<String, dynamic>>[];
     if (plays.isEmpty) {
-      _snack('No saved plays yet — add a play first / أضف لعبة أولاً');
+      _snack('No saved plays yet — add a play first');
       return;
     }
     if (plays.length == 1) {
@@ -566,7 +564,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         insetPadding: Responsive.dialogInsets(ctx),
-        title: Text('Choose a play / اختر لعبة — ${c['name'] ?? ''}'),
+        title: Text('Choose a play — ${c['name'] ?? ''}'),
         content: SizedBox(
           width: double.maxFinite,
           child: ConstrainedBox(
@@ -606,7 +604,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel / إلغاء'),
+            child: const Text('Cancel'),
           ),
         ],
       ),
@@ -625,7 +623,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       return const Padding(
         padding: EdgeInsets.fromLTRB(16, 4, 16, 12),
         child: Text(
-          'No saved plays yet / لا توجد ألعاب محفوظة',
+          'No saved plays yet',
           style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
         ),
       );
@@ -659,7 +657,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
           ),
           trailing: IconButton(
             icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
-            tooltip: 'Delete play / حذف اللعبة',
+            tooltip: 'Delete play',
             onPressed: () => _deletePlay('${p['id'] ?? ''}'),
           ),
         );
@@ -728,7 +726,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Text(
-                        'Default / افتراضي',
+                        'Default',
                         style: TextStyle(fontSize: 10, color: Colors.black54),
                       ),
                     )
@@ -743,7 +741,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Text(
-                        'Selected / محدد',
+                        'Selected',
                         style: TextStyle(fontSize: 10, color: green),
                       ),
                     ),
@@ -777,18 +775,18 @@ class _CustomersScreenState extends State<CustomersScreen> {
                 TextButton.icon(
                   onPressed: () => _playCustomer(c),
                   icon: const Icon(Icons.play_circle_outline, size: 16),
-                  label: const Text('Play / لعب'),
+                  label: const Text('Play'),
                 ),
                 TextButton.icon(
                   onPressed: () => _addPlay(c),
                   icon: const Icon(Icons.add_circle_outline, size: 16),
-                  label: const Text('+ Play / لعبة'),
+                  label: const Text('+ Play'),
                 ),
                 if (!isDefault)
                   TextButton.icon(
                     onPressed: () => _editCustomer(c),
                     icon: const Icon(Icons.edit_outlined, size: 16),
-                    label: const Text('Edit / تعديل'),
+                    label: const Text('Edit'),
                   ),
                 if (!isDefault)
                   TextButton.icon(
@@ -799,7 +797,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                       color: Colors.red,
                     ),
                     label: const Text(
-                      'Delete / حذف',
+                      'Delete',
                       style: TextStyle(color: Colors.red),
                     ),
                   ),
@@ -820,23 +818,20 @@ class _CustomersScreenState extends State<CustomersScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Customers / العملاء',
-          overflow: TextOverflow.ellipsis,
-        ),
+        title: const Text('Customers', overflow: TextOverflow.ellipsis),
         backgroundColor: green,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh / تحديث',
+            tooltip: 'Refresh',
             onPressed: _load,
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         icon: const Icon(Icons.person_add),
-        label: const Text('Add customer / عميل'),
+        label: const Text('Add customer'),
         backgroundColor: green,
         onPressed: _addCustomer,
       ),
@@ -867,7 +862,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                     ElevatedButton.icon(
                       onPressed: _load,
                       icon: const Icon(Icons.refresh),
-                      label: const Text('Retry / إعادة'),
+                      label: const Text('Retry'),
                     ),
                   ],
                 ),
@@ -893,7 +888,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 4),
                         child: Text(
-                          'All customers / كل العملاء',
+                          'All customers',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
@@ -907,7 +902,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                           padding: EdgeInsets.all(24),
                           child: Center(
                             child: Text(
-                              'No customers yet / لا يوجد عملاء',
+                              'No customers yet',
                               textAlign: TextAlign.center,
                             ),
                           ),

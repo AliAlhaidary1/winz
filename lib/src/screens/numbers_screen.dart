@@ -60,7 +60,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
 
   /// Apply the optional prefill payload passed by callers via
   /// `Navigator.pushNamed(context, '/numbers', arguments: {...})`.
-  /// No user feedback is shown â€” this only seeds the input controls.
+  /// No user feedback is shown — this only seeds the input controls.
   void _applyRoutePrefill() {
     final args = ModalRoute.of(context)?.settings.arguments;
     if (args is! Map) return;
@@ -102,16 +102,16 @@ class _NumbersScreenState extends State<NumbersScreen> {
     await db.refreshPeriodStatuses();
     final allDraws = await db.getDrawsByGame('g_numbers');
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-    // ظپظ„طھط±ط© legacy draws: ظپظ‚ط· ط§ظ„ظ…ط³طھظ‚ط¨ظ„ظٹط© + ط§ظ„ظ…ظپطھظˆط­ط© ط­ط³ط¨ draw_periods
+    // Filtered legacy draws: only upcoming + open per draw_periods
     final openPeriods = await db.getOpenPeriods();
     final openIds = openPeriods.map((p) => p['id'] as String).toSet();
-    // draws ط§ظ„طھظٹ طھطھظˆط§ظپظ‚ ظ…ط¹ ظپطھط±ط© OPEN ظˆ drawTime ظپظٹ ط§ظ„ظ…ط³طھظ‚ط¨ظ„ (5 ط¯ظ‚ط§ط¦ظ‚ ط³ظ…ط§ط­)
+    // draws matching an OPEN period with drawTime in the future (5-minute allowance)
     final List<Map<String, dynamic>> draws =
         allDraws.where((d) {
           if (d['status'] != 'open') return false;
           final dt = asInt(d['drawTime']);
-          if (dt <= nowMs - 5 * 60 * 1000) return false; // ظ…ظ†طھظ‡ظٹط©
-          // طھط­ظ‚ظ‚ ظ…ظ† ط§ظ„ظپطھط±ط© ط§ظ„ظ…ظ‚ط§ط¨ظ„ط©
+          if (dt <= nowMs - 5 * 60 * 1000) return false; // expired
+          // check the matching period
           final name = d['name'] as String;
           final isMidday = name.contains('Midday') || name.contains('Morning');
           final type = isMidday ? 'MIDDAY' : 'EVENING';
@@ -125,8 +125,8 @@ class _NumbersScreenState extends State<NumbersScreen> {
     final List<Map<String, dynamic>> finalDraws = draws;
     final periods = await db.getAllPeriods();
     if (!mounted) return;
-    // ط§ظ„ط³ظ…ط§ط­ ط¨ط§ظ„ط®ظ„ط·: ظ„ط§ ظ†ط­طھط§ط¬ ظ„ط§ط´طھظ‚ط§ظ‚ ط§ظ„ظپطھط±ط© ظ…ظ† ط§ظ„ط³ظ„ط© (ظ…ط¹ط·ظ‘ظ„)
-    // final cart = context.read<AppState>().cart; // ط؛ظٹط± ظ…ط³طھط®ط¯ظ… ط§ظ„ط¢ظ†
+    // Allow mixing: no need to derive the period from the cart (disabled)
+    // final cart = context.read<AppState>().cart; // not used now
     setState(() {
       _draws = finalDraws;
       if (_draws.isNotEmpty) {
@@ -136,9 +136,9 @@ class _NumbersScreenState extends State<NumbersScreen> {
       }
       _periods = periods;
       _loadingDraws = false;
-      // ط§ظ„ط³ظ…ط§ط­ ط¨ط§ظ„ط®ظ„ط·: ظ„ط§ ظ†ظپط±ط¶ طھط؛ظٹظٹط± ط§ظ„ظپطھط±ط© ط­ط³ط¨ ط§ظ„ط³ظ„ط© ط¹ظ†ط¯ ظˆط¬ظˆط¯ ط®ظ„ط· ظٹط¯ظˆظٹ
-      // ظ†ط­طھظپط¸ ط¨ط§ط®طھظٹط§ط± ط§ظ„ظ…ط³طھط®ط¯ظ… ط§ظ„ط­ط§ظ„ظٹطŒ ظپظ‚ط· ظ†ط·ط¨ظ‚ ظ‚ظٹظˆط¯ ط§ظ„ط¥ط؛ظ„ط§ظ‚
-      // if (modeFromCart != null) _drawMode = modeFromCart; // ظ…ط¹ط·ظ‘ظ„ ظ„ظ„ط³ظ…ط§ط­ ط¨ظ€ Midday + Evening + Both ط¨ظ†ظپط³ ط§ظ„ظپط§طھظˆط±ط©
+      // Allow mixing: don't force a period change based on the cart when a manual mix exists
+      // keep the user's current choice; only apply closing constraints
+      // if (modeFromCart != null) _drawMode = modeFromCart; // disabled to allow Midday + Evening + Both in the same invoice
       _applySellableDrawMode();
     });
   }
@@ -305,7 +305,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
     if (low.contains('combo') && _digits.length >= 3) {
       final combos = _comboCount(_digits.split(''));
       if (combos <= 1)
-        return 'Invalid Combo â€” 100% repeating digits (e.g. 111)';
+        return 'Invalid Combo — 100% repeating digits (e.g. 111)';
       final total = amt * combos;
       if (isBoth) return 'Amount Due: \$${(total * 2).toStringAsFixed(2)}';
       return 'Amount Due: \$${total.toStringAsFixed(2)}';
@@ -431,10 +431,10 @@ class _NumbersScreenState extends State<NumbersScreen> {
               _drawMode = v;
               _syncDrawModeToPeriods();
             });
-            // ط§ظ„ط³ظ…ط§ط­ ط¨ط§ظ„ط®ظ„ط· ظپظٹ ظ†ظپط³ ط§ظ„ظپط§طھظˆط±ط©: ظ„ط§ ظ†ط¹ظٹط¯ طھط­ظˆظٹظ„ ط§ظ„ط³ظ„ط© ط§ظ„ظ‚ط¯ظٹظ…ط©
-            // ط¹ظ†ط¯ طھط؛ظٹظٹط± ط§ظ„ظپطھط±ط©طŒ طھط¨ظ‚ظ‰ ط§ظ„ط¹ظ†ط§طµط± ط§ظ„ط³ط§ط¨ظ‚ط© ظƒظ…ط§ ظ‡ظٹ (طµط¨ط§ط­ظٹ/ظ…ط³ط§ط¦ظٹ/Both)
-            // ظˆط§ظ„ط¹ظ†ط§طµط± ط§ظ„ط¬ط¯ظٹط¯ط© ظپظ‚ط· ط³طھظڈط¶ط§ظپ ط¨ط§ظ„ظپطھط±ط© ط§ظ„ط¬ط¯ظٹط¯ط© â€” ظ‡ط°ط§ ظٹط­ظ‚ظ‚ ط·ظ„ط¨ ط§ظ„ظ…ط³طھط®ط¯ظ…
-            // "ط§ظ„ط¹ط¨ طµط¨ط§ط­ظٹ ظˆظ…ط³ط§ط¦ظٹ ظˆ Both ط¨ظ†ظپط³ ط§ظ„ظ„ط¹ط¨ط© ط¨ظ†ظپط³ ط§ظ„ظپط§طھظˆط±ط©"
+            // Allow mixing in the same invoice: do not convert the existing cart
+            // when changing the period, existing items remain as-is (Morning/Evening/Both)
+            // and new items are added with the new period — this fulfills the user's request
+            // "play Morning and Evening and Both in the same game in the same invoice"
           },
           selectedItemBuilder: (ctx) {
             final labels = <String, String>{
@@ -545,12 +545,12 @@ class _NumbersScreenState extends State<NumbersScreen> {
     );
   }
 
-  // ADD to cart (before SALE, removable) â€” supports Both (Spec آ§13-14)
+  // ADD to cart (before SALE, removable) — supports Both (Spec §13-14)
   Future<void> _addToCart() async {
     if (_drawId == null || _draws.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('No open draw available â€” sales are closed'),
+          content: Text('No open draw available — sales are closed'),
           backgroundColor: Colors.red,
         ),
       );
@@ -562,7 +562,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Both is not available â€” a period is closed. Play the open period only.',
+            'Both is not available — a period is closed. Play the open period only.',
           ),
           backgroundColor: Colors.red,
         ),
@@ -573,7 +573,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
     if (_drawMode == 'Midday' && !morningOpen) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Morning is closed â€” Evening only'),
+          content: Text('Morning is closed — Evening only'),
           backgroundColor: Colors.red,
         ),
       );
@@ -621,7 +621,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Repeated digits like $_digits are allowed in Straight only â€” choose Straight or change the number',
+            'Repeated digits like $_digits are allowed in Straight only — choose Straight or change the number',
           ),
           backgroundColor: Colors.red,
         ),
@@ -665,13 +665,13 @@ class _NumbersScreenState extends State<NumbersScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Combo not valid for $_digits â€” requires distinct permutations',
+              'Combo not valid for $_digits — requires distinct permutations',
             ),
           ),
         );
         return;
       }
-      // ط§ظ„ظ…ط¨ظ„ط؛ ط§ظ„ظ…ط¯ط®ظ„ ظ‡ظˆ ظ„ظ„طھط±ظƒظٹط¨ط© ط§ظ„ظˆط§ط­ط¯ط© â€” ط§ظ„ط¥ط¬ظ…ط§ظ„ظٹ = amt أ— combos
+      // the entered amount is per single combo — total = amt × combos
       if (amt < 0.5 - 1e-9) {
         ScaffoldMessenger.of(
           context,
@@ -720,13 +720,12 @@ class _NumbersScreenState extends State<NumbersScreen> {
       int? comboCount;
       if (isCombo) {
         comboCount = _comboCount(_digits.split(''));
-        cartAmount =
-            amt * comboCount; // ط§ظ„ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ظ…ط·ظ„ظˆط¨ ط¯ظپط¹ظ‡
+        cartAmount = amt * comboCount; // total amount due
       } else if (isAll) {
-        cartAmount = amt * 2; // All = $1 Straight + $1 Box = $2 ظ„ظƒظ„ ط³ط­ط¨
+        cartAmount = amt * 2; // All = $1 Straight + $1 Box = $2 per draw
       }
       if (_drawMode == 'Both') {
-        // Both: amountPerDraw ظ‡ظˆ ط§ظ„ط¥ط¬ظ…ط§ظ„ظٹ ظ„ظ„ط³ط­ط¨ ط§ظ„ظˆط§ط­ط¯طŒ ط§ظ„ط¥ط¬ظ…ط§ظ„ظٹ ظ„ظ„ط§ط«ظ†ظٹظ† = amountPerDraw*2
+        // Both: amountPerDraw is the total for one draw, total for both = amountPerDraw*2
         await context.read<AppState>().addBothToCart(
           gameId: 'g_numbers',
           gameName: 'Numbers',
@@ -735,31 +734,8 @@ class _NumbersScreenState extends State<NumbersScreen> {
           amountPerDraw: cartAmount,
           isQuickPick: _isQuickPick,
         );
-        final savedAmt = amt;
-        final savedCombos = comboCount;
-        final savedTotal = cartAmount;
         setState(() => _digits = '');
         _isQuickPick = false;
-        if (!mounted) return;
-        if (isCombo && savedCombos != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Added BOTH COMBO: \$${savedAmt.toStringAsFixed(2)}أ—$savedCombos = \$${savedTotal.toStringAsFixed(2)} per draw â€¢ total \$${(savedTotal * 2).toStringAsFixed(2)}',
-              ),
-              backgroundColor: AppTheme.green,
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Added BOTH: ${cartAmount.toStringAsFixed(2)} Midday + ${cartAmount.toStringAsFixed(2)} Evening = \$${(cartAmount * 2).toStringAsFixed(2)}',
-              ),
-              backgroundColor: AppTheme.green,
-            ),
-          );
-        }
       } else {
         final draw = _draws.firstWhere(
           (d) => d['id'] == _drawId,
@@ -804,7 +780,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
         color: AppTheme.green,
       );
       await _load();
-      // ط¥ط°ط§ طھظˆط¬ط¯ ط·ط§ط¨ط¹ط© ط§ظپطھط±ط§ط¶ظٹط© â€” ط§ط·ط¨ط¹ ظ…ط¨ط§ط´ط±ط© ط¨ط¯ظˆظ† ط§ظ†طھظ‚ط§ظ„ ظ„ظ„طµظپط­ط©
+      // if there is a default printer — print directly without navigating to a page
       final lines =
           (ticket['lines'] as List?)?.cast<Map<String, dynamic>>() ?? [];
       final printed = await tryDirectPrintTicket(context, ticket, lines);
@@ -842,7 +818,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
         ),
         content: Text(
-          'Delete all items (${app.cartCount} plays â€¢ ${fmtMoney(app.cartTotal)})?',
+          'Delete all items (${app.cartCount} plays • ${fmtMoney(app.cartTotal)})?',
           style: const TextStyle(fontSize: 12),
         ),
         actions: [
@@ -885,7 +861,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
           child: Row(
             children: [
-              // CLEAR â€” ظٹط­ط°ظپ ط§ظ„ظپط§طھظˆط±ط©/ظƒظ„ ط§ظ„ط¹ظ†ط§طµط±
+              // CLEAR — deletes the invoice/all items
               SizedBox(
                 height: 44,
                 child: OutlinedButton.icon(
@@ -932,7 +908,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                         const SizedBox(width: 8),
                         Flexible(
                           child: Text(
-                            'SALE â€¢ ${fmtMoney(app.cartTotal)} (${cart.length})',
+                            'SALE • ${fmtMoney(app.cartTotal)} (${cart.length})',
                             style: const TextStyle(
                               fontWeight: FontWeight.w900,
                               fontSize: 13,
@@ -971,7 +947,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
               final combos = _comboCount(item.numbers);
               final per = combos > 0 ? item.amount / combos : item.amount;
               subText =
-                  '${combos}أ—\$${per.toStringAsFixed(2)} = ${fmtMoney(item.amount)}';
+                  '${combos}×\$${per.toStringAsFixed(2)} = ${fmtMoney(item.amount)}';
             } else if (_isStBoxBet(item.betType)) {
               final perSide = item.amount / 2;
               subText =
@@ -1158,7 +1134,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                               const SizedBox(width: 4),
                               Expanded(
                                 child: Text(
-                                  '${item.drawName ?? '-'} â€¢ ${item.gameName} â€¢ ${fmtMoney(item.amount)}',
+                                  '${item.drawName ?? '-'} • ${item.gameName} • ${fmtMoney(item.amount)}',
                                   style: const TextStyle(
                                     fontSize: 10,
                                     color: AppTheme.textMuted,
@@ -1398,7 +1374,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                         ),
                       )
                     : Text(
-                        'â€”',
+                        '—',
                         style: TextStyle(
                           fontSize: 16,
                           color: Colors.grey.shade400,
@@ -1543,7 +1519,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
   }
 
   /// Single-line ADD button used when the keypad actions are stacked under the
-  /// grid on narrow phones â€” a full-height button would overflow the column.
+  /// grid on narrow phones — a full-height button would overflow the column.
   Widget _addToCartButtonCompact() {
     final enabled = _canAdd;
     return InkWell(
@@ -1649,7 +1625,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
-              'Enter Ticket ID or Serial â€” e.g. 000001 or 00000001',
+              'Enter Ticket ID or Serial — e.g. 000001 or 00000001',
               style: TextStyle(fontSize: 11),
             ),
             const SizedBox(height: 10),
@@ -1691,7 +1667,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Ticket not found: $code â€” try the barcode or serial number',
+            'Ticket not found: $code — try the barcode or serial number',
           ),
           backgroundColor: Colors.red,
         ),
@@ -1731,7 +1707,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Text(
-                  'PAID â€” no re-sale',
+                  'PAID — no re-sale',
                   style: TextStyle(
                     fontSize: 9,
                     fontWeight: FontWeight.bold,
@@ -1747,7 +1723,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Text(
-                  'CANCELLED â€” no re-sale',
+                  'CANCELLED — no re-sale',
                   style: TextStyle(
                     fontSize: 9,
                     fontWeight: FontWeight.bold,
@@ -1947,7 +1923,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
           ElevatedButton.icon(
             icon: const Icon(Icons.copy, size: 16),
             label: const Text(
-              'Copy â€” choose period',
+              'Copy — choose period',
               style: TextStyle(fontSize: 11),
             ),
             style: ElevatedButton.styleFrom(
@@ -1962,7 +1938,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                     if (choice == null) return;
                     try {
                       // validateTicket already resolved formatted payloads (e.g.
-                      // "Ticket:000123") to the real ticket â€” replay must use that id.
+                      // "Ticket:000123") to the real ticket — replay must use that id.
                       final tid = ticket['id'] as String;
                       final res = await app.replayTicketToCartWithChoice(
                         tid,
@@ -1973,19 +1949,19 @@ class _NumbersScreenState extends State<NumbersScreen> {
                       final skipped = (res['skipped'] as List).cast<String>();
                       final trimmed = (res['trimmed'] as List).cast<String>();
                       final label = choice == 'BOTH'
-                          ? 'Both (أ—2)'
+                          ? 'Both (×2)'
                           : choice == 'MIDDAY'
                           ? 'Midday only'
                           : 'Evening only';
                       String extra = '';
                       if (skipped.isNotEmpty)
-                        extra += ' â€” ${skipped.length} ظ…ط­ط°ظˆظپ';
+                        extra += ' — ${skipped.length} deleted';
                       if (trimmed.isNotEmpty)
-                        extra += ' â€” ${trimmed.length} ظ…ظ‚ظ„ظ‘ظ„';
+                        extra += ' — ${trimmed.length} trimmed';
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
-                            'Copied $count play(s) â†’ $label â€” tap SALE to print$extra',
+                            'Copied $count play(s) → $label — tap SALE to print$extra',
                           ),
                           backgroundColor: AppTheme.green,
                           duration: Duration(seconds: extra.isNotEmpty ? 5 : 3),
@@ -1999,7 +1975,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             title: const Text(
-                              'طھظ… ط§ظ„ظ†ط³ط® ظ…ط¹ طھط¹ط¯ظٹظ„ط§طھ',
+                              'Copied with adjustments',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
@@ -2010,13 +1986,13 @@ class _NumbersScreenState extends State<NumbersScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'طھظ… ظ†ط³ط® $count â†’ $label',
+                                    'Copied $count → $label',
                                     style: const TextStyle(fontSize: 11),
                                   ),
                                   if (skipped.isNotEmpty) ...[
                                     const SizedBox(height: 8),
                                     const Text(
-                                      'âڑ ï¸ڈ ظ…ط­ط°ظˆظپ (Sold Out):',
+                                      '⚠️ Deleted (Sold Out):',
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.bold,
@@ -2025,7 +2001,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                                     ),
                                     ...skipped.map(
                                       (s) => Text(
-                                        'â€¢ $s',
+                                        '• $s',
                                         style: const TextStyle(fontSize: 10),
                                       ),
                                     ),
@@ -2033,7 +2009,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                                   if (trimmed.isNotEmpty) ...[
                                     const SizedBox(height: 8),
                                     const Text(
-                                      'âœ‚ï¸ڈ ظ…ظ‚ظ„ظ‘ظ„ ظ„ظ„ط­ط¯ ط§ظ„ظ…طھط¨ظ‚ظٹ:',
+                                      '✂️ Trimmed to remaining:',
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.bold,
@@ -2042,7 +2018,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                                     ),
                                     ...trimmed.map(
                                       (s) => Text(
-                                        'â€¢ $s',
+                                        '• $s',
                                         style: const TextStyle(fontSize: 10),
                                       ),
                                     ),
@@ -2053,7 +2029,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.pop(c),
-                                child: const Text('ط­ط³ظ†ط§ظ‹'),
+                                child: const Text('OK'),
                               ),
                             ],
                           ),
@@ -2186,7 +2162,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
-                              '${app.cartCount} â€¢ ${fmtMoney(app.cartTotal)}',
+                              '${app.cartCount} • ${fmtMoney(app.cartTotal)}',
                               style: const TextStyle(
                                 color: AppTheme.green,
                                 fontWeight: FontWeight.w800,
@@ -2269,7 +2245,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
     final dt = DateTime.fromMillisecondsSinceEpoch(asInt(d['drawTime']));
     final time =
         '${dt.hour > 12 ? dt.hour - 12 : dt.hour}:${dt.minute.toString().padLeft(2, '0')} ${dt.hour >= 12 ? 'PM' : 'AM'}';
-    return '$period â€¢ $time';
+    return '$period • $time';
   }
 
   Widget _empty() {
@@ -2298,7 +2274,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
             ),
             const SizedBox(height: 4),
             const Text(
-              'Enter digits â†’ ADD to cart â†’ SALE to print one ticket',
+              'Enter digits → ADD to cart → SALE to print one ticket',
               style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
               textAlign: TextAlign.center,
             ),
@@ -2307,7 +2283,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
               builder: (_, app, __) => app.isCartEmpty
                   ? const SizedBox()
                   : Text(
-                      'Cart: ${app.cartCount} plays â€¢ ${fmtMoney(app.cartTotal)}',
+                      'Cart: ${app.cartCount} plays • ${fmtMoney(app.cartTotal)}',
                       style: TextStyle(
                         fontSize: 11,
                         color: AppTheme.green,

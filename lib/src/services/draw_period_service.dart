@@ -270,7 +270,7 @@ class DrawPeriodService {
             'timezone': tz,
           });
         } else {
-          // إذا غيّر الوقت وقد كان مغلقاً — أعد فتحه من اليوم نفسه كما طلب العميل
+          // If the time changed and it was closed — reopen it from the same day, as requested by the client
           final hasResult =
               (existing['result3'] != null &&
                   (existing['result3'] as String).isNotEmpty) ||
@@ -283,7 +283,7 @@ class DrawPeriodService {
                 '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
               ) >=
               0;
-          // حدّث الوقت دائماً إذا لم يُنشر فائز بعد ويوم اليوم أو بعده — يعيد فتح الفترة المغلقة
+          // Always update the time if no winner has been published yet and the day is today or later — reopens a closed period
           if (!hasResult && isTodayOrFuture) {
             await db.updatePeriodTimes(
               id,
@@ -327,7 +327,7 @@ class DrawPeriodService {
           status == DrawStatus.suspended) {
         continue;
       }
-      // إذا يوجد فائز بالفعل — لا تعيد فتحه، فقط ترقية إلى منشور/مكتمل
+      // If a winner already exists — do not reopen it, only upgrade to published/completed
       if (hasResult) {
         if (status == DrawStatus.resultPending ||
             status == DrawStatus.salesClosed ||
@@ -343,7 +343,7 @@ class DrawPeriodService {
         }
         continue;
       }
-      // بدون فائز — احسب الحالة المطلوبة من الوقت (يسمح بإعادة الفتح كما طلب العميل)
+      // No winner — compute the desired status from the time (allows reopening, as requested by the client)
       String desired;
       if (now < salesOpen) {
         desired = DrawStatus.scheduled;
@@ -354,14 +354,14 @@ class DrawPeriodService {
       } else {
         desired = DrawStatus.resultPending;
       }
-      // ترقية تدريجية عبر drawing إذا لزم الأمر
+      // Gradual upgrade through drawing if needed
       if (desired == DrawStatus.resultPending &&
           status == DrawStatus.salesClosed) {
-        // سيمر عبر drawing أولاً لكن نسمح بالقفز مباشرة
+        // It would pass through drawing first, but we allow jumping directly
         desired = DrawStatus.resultPending;
       }
       if (desired != status) {
-        // السماح بإعادة الفتح: SALES_CLOSED/RESULT_PENDING → OPEN إذا الوقت عاد قبل salesClose
+        // Allow reopening: SALES_CLOSED/RESULT_PENDING → OPEN if the time goes back before salesClose
         await db.updatePeriodStatus(p['id'] as String, desired);
       }
     }

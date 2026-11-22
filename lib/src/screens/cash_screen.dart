@@ -111,9 +111,9 @@ class _CashScreenState extends State<CashScreen> {
   Future<void> _openSession() async {
     final amt = double.tryParse(_openCtrl.text.trim());
     if (amt == null || amt < 0) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('أدخل مبلغ افتتاحي صحيح')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid opening amount')),
+      );
       return;
     }
     await context.read<AppState>().openCashSession(amt);
@@ -122,7 +122,7 @@ class _CashScreenState extends State<CashScreen> {
     if (mounted)
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('تم فتح الجلسة: ${fmtMoney(amt)}'),
+          content: Text('Session opened: ${fmtMoney(amt)}'),
           backgroundColor: AppTheme.green,
         ),
       );
@@ -134,22 +134,22 @@ class _CashScreenState extends State<CashScreen> {
       builder: (c) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
-          'إغلاق الجلسة؟',
+          'Close session?',
           style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
         ),
         content: Text(
-          'رصيد الإغلاق: ${fmtMoney(_cash)}\nسيتم إغلاق جلسة الكاش الحالية.',
+          'Closing balance: ${fmtMoney(_cash)}\nThe current cash session will be closed.',
           style: const TextStyle(fontSize: 11),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(c, false),
-            child: const Text('إلغاء'),
+            child: const Text('Cancel'),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.red),
             onPressed: () => Navigator.pop(c, true),
-            child: const Text('إغلاق'),
+            child: const Text('Close'),
           ),
         ],
       ),
@@ -159,7 +159,7 @@ class _CashScreenState extends State<CashScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('تم إغلاق الجلسة'),
+        content: Text('Session closed'),
         backgroundColor: AppTheme.green,
       ),
     );
@@ -170,7 +170,7 @@ class _CashScreenState extends State<CashScreen> {
     final amt = double.tryParse(_adjCtrl.text.trim());
     if (amt == null || amt <= 0) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('أدخل مبلغ صحيح')));
+          .showSnackBar(const SnackBar(content: Text('Enter a valid amount')));
       return;
     }
     final db = context.read<AppDatabase>();
@@ -274,7 +274,7 @@ class _CashScreenState extends State<CashScreen> {
     return Scaffold(
       backgroundColor: AppTheme.bg,
       appBar: AppBar(
-        title: const Text('Cash — الصندوق'),
+        title: const Text('Cash'),
         backgroundColor: AppTheme.green,
         foregroundColor: Colors.white,
         actions: [
@@ -323,7 +323,7 @@ class _CashScreenState extends State<CashScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                'Period Net — صافي الفترة',
+                                'Period Net',
                                 style: TextStyle(
                                   color: Colors.white70,
                                   fontSize: 10,
@@ -352,7 +352,7 @@ class _CashScreenState extends State<CashScreen> {
                                 Padding(
                                   padding: const EdgeInsets.only(top: 2),
                                   child: Text(
-                                    'افتتاح: ${fmtMoney(asDouble(_session!['openingAmount']))} • ${fmtDate(asInt(_session!['openedAt']))}',
+                                    'Opening: ${fmtMoney(asDouble(_session!['openingAmount']))} • ${fmtDate(asInt(_session!['openedAt']))}',
                                     style: const TextStyle(
                                       color: Colors.white70,
                                       fontSize: 9,
@@ -365,7 +365,7 @@ class _CashScreenState extends State<CashScreen> {
                                 const Padding(
                                   padding: EdgeInsets.only(top: 2),
                                   child: Text(
-                                    'لا توجد جلسة مفتوحة — افتح جلسة للبدء',
+                                    'No open session — open a session to begin',
                                     style: TextStyle(
                                       color: Colors.white70,
                                       fontSize: 9,
@@ -391,7 +391,7 @@ class _CashScreenState extends State<CashScreen> {
                                     ),
                                   ),
                                   child: const Text(
-                                    'إغلاق',
+                                    'Close',
                                     style: TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold,
@@ -462,7 +462,7 @@ class _CashScreenState extends State<CashScreen> {
                                           ),
                                         ),
                                         child: const Text(
-                                          'فتح',
+                                          'Open',
                                           style: TextStyle(
                                             fontSize: 11,
                                             fontWeight: FontWeight.bold,
@@ -509,7 +509,7 @@ class _CashScreenState extends State<CashScreen> {
                 Row(
                   children: [
                     _miniStat(
-                      'الداخل IN',
+                      'IN',
                       fmtMoney(totalIn),
                       Icons.arrow_downward,
                       AppTheme.green,
@@ -517,7 +517,7 @@ class _CashScreenState extends State<CashScreen> {
                     ),
                     const SizedBox(width: 8),
                     _miniStat(
-                      'الخارج OUT',
+                      'OUT',
                       fmtMoney(totalOut),
                       Icons.arrow_upward,
                       AppTheme.red,
@@ -525,7 +525,7 @@ class _CashScreenState extends State<CashScreen> {
                     ),
                     const SizedBox(width: 8),
                     _miniStat(
-                      'الصافي NET',
+                      'NET',
                       fmtMoney(net),
                       net >= 0 ? Icons.trending_up : Icons.trending_down,
                       net >= 0 ? AppTheme.green : AppTheme.red,
@@ -557,7 +557,7 @@ class _CashScreenState extends State<CashScreen> {
                           ),
                           const SizedBox(width: 8),
                           const Text(
-                            'حركة سريعة',
+                            'Quick movement',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 11,
@@ -597,28 +597,28 @@ class _CashScreenState extends State<CashScreen> {
                                 DropdownMenuItem(
                                   value: 'deposit',
                                   child: Text(
-                                    'إيداع Deposit',
+                                    'Deposit',
                                     style: TextStyle(fontSize: 11),
                                   ),
                                 ),
                                 DropdownMenuItem(
                                   value: 'withdrawal',
                                   child: Text(
-                                    'سحب Withdraw',
+                                    'Withdrawal',
                                     style: TextStyle(fontSize: 11),
                                   ),
                                 ),
                                 DropdownMenuItem(
                                   value: 'adjustment_in',
                                   child: Text(
-                                    'تسوية +',
+                                    'Adjustment +',
                                     style: TextStyle(fontSize: 11),
                                   ),
                                 ),
                                 DropdownMenuItem(
                                   value: 'adjustment_out',
                                   child: Text(
-                                    'تسوية -',
+                                    'Adjustment -',
                                     style: TextStyle(fontSize: 11),
                                   ),
                                 ),
@@ -640,7 +640,7 @@ class _CashScreenState extends State<CashScreen> {
                                 fontWeight: FontWeight.bold,
                               ),
                               decoration: const InputDecoration(
-                                hintText: 'المبلغ Amount',
+                                hintText: 'Amount',
                                 prefixText: '\$',
                                 isDense: true,
                               ),
@@ -657,7 +657,7 @@ class _CashScreenState extends State<CashScreen> {
                                 ),
                               ),
                               child: const Text(
-                                'إضافة',
+                                'Add',
                                 style: TextStyle(fontSize: 11),
                               ),
                             ),
@@ -678,7 +678,7 @@ class _CashScreenState extends State<CashScreen> {
                       Row(
                         children: [
                           const Text(
-                            'الفترة',
+                            'Period',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 11,
@@ -686,7 +686,7 @@ class _CashScreenState extends State<CashScreen> {
                           ),
                           const Spacer(),
                           Text(
-                            'عرض ${_ledger.length} من ${_ledgerAll.length}',
+                            'Showing ${_ledger.length} of ${_ledgerAll.length}',
                             style: const TextStyle(
                               fontSize: 10,
                               color: AppTheme.textMuted,
@@ -700,11 +700,11 @@ class _CashScreenState extends State<CashScreen> {
                         child: Row(
                           children: [
                             for (final e in [
-                              {'l': 'الكل', 'v': 'all'},
-                              {'l': 'اليوم', 'v': 'today'},
-                              {'l': 'أمس', 'v': 'yesterday'},
-                              {'l': 'أسبوع', 'v': 'week'},
-                              {'l': 'مخصص', 'v': 'custom'},
+                              {'l': 'All', 'v': 'all'},
+                              {'l': 'Today', 'v': 'today'},
+                              {'l': 'Yesterday', 'v': 'yesterday'},
+                              {'l': 'Week', 'v': 'week'},
+                              {'l': 'Custom', 'v': 'custom'},
                             ])
                               Padding(
                                 padding: const EdgeInsets.only(right: 6),
@@ -749,7 +749,7 @@ class _CashScreenState extends State<CashScreen> {
                                   size: 12,
                                 ),
                                 label: Text(
-                                  'من: ${_fmtShort(_from)}',
+                                  'From: ${_fmtShort(_from)}',
                                   style: const TextStyle(fontSize: 10),
                                 ),
                                 style: OutlinedButton.styleFrom(
@@ -781,7 +781,7 @@ class _CashScreenState extends State<CashScreen> {
                                   size: 12,
                                 ),
                                 label: Text(
-                                  'إلى: ${_fmtShort(_to)}',
+                                  'To: ${_fmtShort(_to)}',
                                   style: const TextStyle(fontSize: 10),
                                 ),
                                 style: OutlinedButton.styleFrom(
@@ -843,7 +843,7 @@ class _CashScreenState extends State<CashScreen> {
                             const SizedBox(width: 6),
                             const Flexible(
                               child: Text(
-                                'الحركات — Transactions',
+                                'Transactions',
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 11,
@@ -857,8 +857,8 @@ class _CashScreenState extends State<CashScreen> {
                             Flexible(
                               child: Text(
                                 _ledger.isEmpty
-                                    ? 'لا يوجد'
-                                    : '${_ledger.length} حركة',
+                                    ? 'None'
+                                    : '${_ledger.length} transactions',
                                 style: const TextStyle(
                                   fontSize: 10,
                                   color: AppTheme.textMuted,
@@ -893,7 +893,7 @@ class _CashScreenState extends State<CashScreen> {
                                 ),
                                 const SizedBox(height: 8),
                                 const Text(
-                                  'لا توجد حركات في هذه الفترة',
+                                  'No transactions in this period',
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.bold,
@@ -902,7 +902,7 @@ class _CashScreenState extends State<CashScreen> {
                                 ),
                                 const SizedBox(height: 4),
                                 const Text(
-                                  'المبيعات والمدفوعات ستظهر هنا',
+                                  'Sales and payments will appear here',
                                   style: TextStyle(
                                     fontSize: 10,
                                     color: AppTheme.textMuted,
@@ -1020,7 +1020,7 @@ class _CashScreenState extends State<CashScreen> {
                           padding: const EdgeInsets.all(8),
                           child: Center(
                             child: Text(
-                              'عرض 100 من ${_ledger.length} — استخدم الفلترة',
+                              'Showing 100 of ${_ledger.length} — use the filter',
                               style: const TextStyle(
                                 fontSize: 10,
                                 color: AppTheme.textMuted,
