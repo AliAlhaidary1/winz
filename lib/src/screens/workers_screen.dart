@@ -89,7 +89,17 @@ class _WorkersScreenState extends State<WorkersScreen> {
     );
     if (ok != true) return;
     if (userCtrl.text.trim().isEmpty || passCtrl.text.isEmpty) return;
-    final comm = double.tryParse(commCtrl.text) ?? 5.0;
+    final comm = double.tryParse(commCtrl.text.trim());
+    if (comm == null || comm < 0 || comm > 100) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Commission must be a number between 0 and 100'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      return;
+    }
     final db = context.read<AppDatabase>();
     final id = 'acc_${DateTime.now().millisecondsSinceEpoch}';
     try {

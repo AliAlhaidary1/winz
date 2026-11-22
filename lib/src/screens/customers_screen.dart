@@ -498,10 +498,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
       await _load();
     } catch (e) {
       _snack(e.toString(), background: Colors.red);
-    } finally {
-      numbersCtrl.dispose();
-      amountCtrl.dispose();
     }
+    // Do not dispose here: showDialog's route is still animating out, and the
+    // controllers may still be read during the exit transition.
   }
 
   Future<void> _deletePlay(String playId) async {

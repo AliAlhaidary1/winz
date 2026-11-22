@@ -179,13 +179,24 @@ class DrawPeriodService {
   }
 
   void _validateTimeFormat(String t) {
-    if (!RegExp(
-      r'^\d{1,2}:\d{2}(\s*[AP]M)?$',
+    final value = t.trim();
+    final match = RegExp(
+      r'^(\d{1,2}):(\d{2})(\s*([AP]M))?$',
       caseSensitive: false,
-    ).hasMatch(t.trim())) {
+    ).firstMatch(value);
+    if (match == null) {
       throw Exception(
         'Invalid time format: $t (expected HH:MM or HH:MM AM/PM)',
       );
+    }
+    final hour = int.parse(match.group(1)!);
+    final minute = int.parse(match.group(2)!);
+    final meridiem = match.group(4)?.toUpperCase();
+    final hourOk = meridiem == null
+        ? hour >= 0 && hour <= 23
+        : hour >= 1 && hour <= 12;
+    if (!hourOk || minute < 0 || minute > 59) {
+      throw Exception('Invalid time: $t (hour/minute out of range)');
     }
   }
 
