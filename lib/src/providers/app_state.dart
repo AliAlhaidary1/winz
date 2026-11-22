@@ -258,7 +258,13 @@ class AppState extends ChangeNotifier {
       raw = result;
     } else {
       final m = _asMap(result);
-      if (m['cart'] is List) raw = m['cart'] as List<dynamic>;
+      if (m['cart'] is List) {
+        raw = m['cart'] as List<dynamic>;
+      } else if (m['state'] is Map && _asMap(m['state'])['cart'] is List) {
+        // StateService returns its snapshot under `state`; _call has already
+        // applied it locally, so never append a fallback on top of it.
+        raw = _asMap(m['state'])['cart'] as List<dynamic>;
+      }
     }
     if (raw != null) {
       _cart = raw.map(_cartItemFromDynamic).toList();
@@ -320,14 +326,17 @@ class AppState extends ChangeNotifier {
     });
 
     Map<String, dynamic>? account;
-    if (result is Map) {
-      account = _asMap(result);
-    } else if (result == true) {
-      // The server confirmed the login without sending the user back.
+    final envelope = _asMap(result);
+    final state = envelope['state'];
+    if (state is Map) {
+      final u = _asMap(state)['user'];
+      if (u is Map && u.isNotEmpty) account = Map<String, dynamic>.from(u);
+    }
+    if (account == null && result == true) {
       final fetched = await db.findAccount(username.trim(), password);
       if (fetched != null && fetched['status'] == 'active') account = fetched;
     }
-    if (account == null) return false;
+    if (account == null || account['id'] == null) return false;
 
     _currentUser = account;
     _loginAt = DateTime.now();
