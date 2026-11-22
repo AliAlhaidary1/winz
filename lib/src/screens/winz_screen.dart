@@ -22,6 +22,7 @@ class WinzScreen extends StatefulWidget {
 class _WinzScreenState extends State<WinzScreen> {
   List<Map<String, dynamic>> _draws = [];
   String? _drawId;
+  bool _prefillApplied = false;
   String _winzType = 'Straight';
   final _amountCtrl = TextEditingController(text: '0.50');
   String _digits = '';
@@ -139,8 +140,16 @@ class _WinzScreenState extends State<WinzScreen> {
   @override
   void initState() {
     super.initState();
-    _applyRoutePrefill();
     _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_prefillApplied) {
+      _prefillApplied = true;
+      _applyRoutePrefill();
+    }
   }
 
   /// Apply the optional Win 4 prefill payload passed by callers via

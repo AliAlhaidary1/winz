@@ -34,16 +34,27 @@ class _NumbersScreenState extends State<NumbersScreen> {
   final betTypes = ['Straight', 'Box', 'ST/BOX', 'Combo'];
   List<Map<String, dynamic>> _periods = [];
   Timer? _sellableTick;
+  bool _prefillApplied = false;
 
   @override
   void initState() {
     super.initState();
-    _applyRoutePrefill();
     _load();
     _sellableTick = Timer.periodic(const Duration(seconds: 15), (_) {
       if (!mounted) return;
       setState(_applySellableDrawMode);
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // ModalRoute.of() needs the inherited widget from build(), so this must
+    // run in didChangeDependencies, not initState.
+    if (!_prefillApplied) {
+      _prefillApplied = true;
+      _applyRoutePrefill();
+    }
   }
 
   /// Apply the optional prefill payload passed by callers via
