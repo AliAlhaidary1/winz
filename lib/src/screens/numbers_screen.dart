@@ -768,7 +768,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
   Future<void> _doSale() async {
     final app = context.read<AppState>();
     if (app.isCartEmpty) {
-      showSaleToast(context, 'Cart empty â€” add numbers first', error: true);
+      showSaleToast(context, 'Cart empty - add numbers first', error: true);
       return;
     }
     try {
@@ -776,7 +776,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
       if (!mounted) return;
       showSaleToast(
         context,
-        'SALE success â€” Ticket ${ticket['id']} â€¢ ${ticket['linesCount']} plays â€¢ ${fmtMoney(ticket['total'])}',
+        'SALE success - Ticket ${ticket['id']} | ${ticket['linesCount']} plays | ${fmtMoney(ticket['total'])}',
         color: AppTheme.green,
       );
       await _load();
