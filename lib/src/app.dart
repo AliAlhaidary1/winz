@@ -8,6 +8,7 @@ import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/lottery_screen.dart';
 import 'screens/numbers_screen.dart';
+import 'screens/winz_screen.dart';
 import 'screens/play_screen.dart';
 import 'screens/admin_draw_screen.dart';
 import 'screens/sales_screen.dart';
@@ -51,6 +52,7 @@ class YeLotteryApp extends StatelessWidget {
           '/home': (_) => const HomeScreen(),
           '/lottery': (_) => const LotteryScreen(),
           '/numbers': (_) => const NumbersScreen(),
+          '/winz': (_) => const WinzScreen(),
           '/sales': (_) => const SalesScreen(),
           '/tickets': (_) => const TicketsScreen(),
           '/winning': (_) => const WinningTicketsScreen(),

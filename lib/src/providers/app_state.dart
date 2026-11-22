@@ -451,6 +451,34 @@ class AppState extends ChangeNotifier {
     await _call('state', 'getCustomerPlays', {'customerId': customerId}),
   );
 
+  /// Add one saved play for a customer (numbers + type + amount).
+  Future<void> addCustomerPlay(
+    String customerId, {
+    required String gameId,
+    required String gameName,
+    required String numbers,
+    required String betType,
+    required double amount,
+    String? drawType,
+    bool isQuickPick = false,
+  }) async {
+    await db.insertCustomerPlay({
+      'id': const Uuid().v4(),
+      'customerId': customerId,
+      'gameId': gameId,
+      'gameName': gameName,
+      'numbers': numbers,
+      'betType': betType,
+      'amount': amount,
+      'drawType': drawType,
+      'isQuickPick': isQuickPick ? 1 : 0,
+      'createdAt': DateTime.now().millisecondsSinceEpoch,
+    });
+  }
+
+  Future<void> deleteCustomerPlay(String playId) =>
+      db.deleteCustomerPlay(playId);
+
   /// Save every cart line as this customer's usual play.
   Future<int> saveCartAsCustomerPlays(
     String customerId, {

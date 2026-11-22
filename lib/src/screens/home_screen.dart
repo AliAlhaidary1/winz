@@ -19,6 +19,7 @@ class _HomeScreenState extends State<HomeScreen> {
   double _cash = 0;
   double _balance = 0;
   List<Map<String, dynamic>> _pendingNotifs = [];
+  List<Map<String, dynamic>> _customers = [];
 
   @override
   void initState() {
@@ -31,6 +32,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final db = context.read<AppDatabase>();
     final c = await app.computeCashBalance();
     final b = await app.computeGeneralBalance();
+    List<Map<String, dynamic>> customers = [];
+    try {
+      customers = (await app.getCustomers())
+          .where((cu) => !_isDefaultCustomer(cu))
+          .toList();
+    } catch (_) {}
     try {
       // Only the data shown on this page: cash, balance and pending results.
       final cfg = await db.getAppConfig();
@@ -70,6 +77,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _cash = c;
           _balance = b;
           _pendingNotifs = pending;
+          _customers = customers;
         });
       }
     } catch (_) {
@@ -77,9 +85,15 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _cash = c;
           _balance = b;
+          _customers = customers;
         });
       }
     }
+  }
+
+  bool _isDefaultCustomer(Map<String, dynamic> c) {
+    final v = c['isDefault'];
+    return c['id'] == AppState.defaultCustomerId || v == 1 || v == true;
   }
 
   Future<bool> _confirmExit() async {
@@ -184,7 +198,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   _summaryStrip(),
                   const SizedBox(height: 24),
                   _primaryAction(),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
+                  _customersStrip(),
+                  const SizedBox(height: 20),
                   _quickAccess(),
                   const SizedBox(height: 28),
                   const Center(
@@ -387,6 +403,293 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Customers strip (compact)
+  // ---------------------------------------------------------------------------
+
+  Widget _customersStrip() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Customers / العملاء',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.textDark,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: _addCustomer,
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.green,
+                visualDensity: VisualDensity.compact,
+                minimumSize: Size.zero,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                '+ Add',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 36,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const ClampingScrollPhysics(),
+            itemCount: 1 + _customers.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            itemBuilder: (ctx, i) {
+              if (i == 0) {
+                return _customerChip(
+                  label: 'Cash / افتراضي',
+                  isDefault: true,
+                  onTap: () =>
+                      _onCustomerTap(AppState.defaultCustomerId, 'Cash'),
+                );
+              }
+              final c = _customers[i - 1];
+              final id = '${c['id'] ?? ''}';
+              final name = '${c['name'] ?? ''}';
+              return _customerChip(
+                label: name,
+                isDefault: false,
+                onTap: () => _onCustomerTap(id, name),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _customerChip({
+    required String label,
+    required bool isDefault,
+    required VoidCallback onTap,
+  }) {
+    final color = isDefault ? AppTheme.green : AppTheme.textDark;
+    return SizedBox(
+      height: 34,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(17),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: isDefault ? AppTheme.greenSoft : Colors.white,
+            borderRadius: BorderRadius.circular(17),
+            border: Border.all(
+              color: isDefault
+                  ? AppTheme.green.withValues(alpha: 0.35)
+                  : AppTheme.cardBorder,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isDefault ? Icons.person_outline : Icons.person,
+                size: 14,
+                color: color,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _snack(String message, {Color? background}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: background ?? AppTheme.green,
+      ),
+    );
+  }
+
+  String _numbersString(dynamic v) {
+    if (v is List) return v.join(',');
+    return '${v ?? ''}';
+  }
+
+  Future<void> _addCustomer() async {
+    final app = context.read<AppState>();
+    final nameCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Add customer / إضافة عميل'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Name / الاسم',
+                hintText: 'e.g. Ahmad / أحمد',
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: phoneCtrl,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Phone / الهاتف',
+                hintText: 'Optional / اختياري',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Cancel / إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Add / إضافة'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final name = nameCtrl.text.trim();
+    if (name.isEmpty) {
+      _snack(
+        'Customer name is required / الاسم مطلوب',
+        background: AppTheme.red,
+      );
+      return;
+    }
+    try {
+      await app.addCustomer(name: name, phone: phoneCtrl.text.trim());
+      await _load();
+      _snack('Customer added / تمت الإضافة');
+    } catch (e) {
+      _snack('$e', background: AppTheme.red);
+    }
+  }
+
+  Future<void> _onCustomerTap(String id, String name) async {
+    final app = context.read<AppState>();
+    List<Map<String, dynamic>> plays;
+    try {
+      plays = await app.getCustomerPlays(id);
+    } catch (e) {
+      _snack('$e', background: AppTheme.red);
+      return;
+    }
+    if (!mounted) return;
+    if (plays.isEmpty) {
+      _snack('No saved plays — add from Customers');
+      return;
+    }
+
+    Map<String, dynamic> play;
+    if (plays.length == 1) {
+      play = plays.first;
+    } else {
+      final chosen = await showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (c) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text('Saved plays / المحفوظة\n$name'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: plays.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (ctx, i) {
+                final p = plays[i];
+                return ListTile(
+                  dense: true,
+                  title: Text(
+                    '${p['gameName'] ?? ''}  •  ${_numbersString(p['numbers'])}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  subtitle: Text(
+                    '${p['betType'] ?? ''}  •  ${fmtMoney(p['amount'])}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppTheme.textMuted,
+                    ),
+                  ),
+                  onTap: () => Navigator.pop(c, p),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c),
+              child: const Text('Cancel / إلغاء'),
+            ),
+          ],
+        ),
+      );
+      if (chosen == null || !mounted) return;
+      play = chosen;
+    }
+    await _openPlay(id, name, play);
+  }
+
+  Future<void> _openPlay(String id, String name, Map<String, dynamic> p) async {
+    final app = context.read<AppState>();
+    try {
+      await app.selectCustomer(id);
+    } catch (e) {
+      _snack('$e', background: AppTheme.red);
+      return;
+    }
+    if (!mounted) return;
+    final gameId = '${p['gameId'] ?? ''}';
+    final route = gameId == 'g_winz' ? '/winz' : '/numbers';
+    Navigator.pushNamed(
+      context,
+      route,
+      arguments: {
+        'customerId': id,
+        'customerName': name,
+        'numbers': _numbersString(p['numbers']),
+        'betType': '${p['betType'] ?? ''}',
+        'amount': p['amount'],
+        'gameId': gameId,
+        'drawType': '${p['drawType'] ?? ''}',
+      },
     );
   }
 
