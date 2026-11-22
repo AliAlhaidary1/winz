@@ -83,7 +83,7 @@ class _WinzScreenState extends State<WinzScreen> {
           isExpanded: true,
           icon: const Icon(
             Icons.arrow_drop_down,
-            size: 24,
+            size: 20,
             color: AppTheme.orange,
           ),
           style: const TextStyle(
@@ -112,12 +112,17 @@ class _WinzScreenState extends State<WinzScreen> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        _drawLabel(d),
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w900,
-                          color: AppTheme.orange,
+                      // Shrink the label when the cart badge leaves little
+                      // room for the title inside the AppBar.
+                      Flexible(
+                        child: Text(
+                          _drawLabel(d),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                            color: AppTheme.orange,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -1344,21 +1349,27 @@ class _WinzScreenState extends State<WinzScreen> {
                 : Padding(
                     padding: const EdgeInsets.only(right: 6),
                     child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          '${app.cartCount} • ${fmtMoney(app.cartTotal)}',
-                          style: const TextStyle(
-                            color: AppTheme.orange,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 11,
+                      // Cap the badge so a large cart total cannot squeeze
+                      // the AppBar title dropdown into an overflow.
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 100),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '${app.cartCount} • ${fmtMoney(app.cartTotal)}',
+                            style: const TextStyle(
+                              color: AppTheme.orange,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 11,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ),

@@ -183,6 +183,8 @@ class _PlayScreenState extends State<PlayScreen> {
         child: DropdownButton<String>(
           value: _drawId,
           isDense: true,
+          // Shrink with the available AppBar space when the cart badge shows.
+          isExpanded: true,
           icon: const Icon(Icons.arrow_drop_down, size: 18, color: green),
           style: const TextStyle(
             fontSize: 12,
@@ -193,12 +195,15 @@ class _PlayScreenState extends State<PlayScreen> {
               .map(
                 (d) => DropdownMenuItem(
                   value: d['id'] as String,
-                  child: Text(
-                    _drawLabel(d),
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: green,
+                  child: Flexible(
+                    child: Text(
+                      _drawLabel(d),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: green,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ),
@@ -1009,21 +1014,27 @@ class _PlayScreenState extends State<PlayScreen> {
                 : Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          '${app.cartCount} • ${fmtMoney(app.cartTotal)}',
-                          style: const TextStyle(
-                            color: green,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 11,
+                      // Cap the badge so a large cart total cannot squeeze
+                      // the AppBar title dropdown into an overflow.
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 100),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '${app.cartCount} • ${fmtMoney(app.cartTotal)}',
+                            style: const TextStyle(
+                              color: green,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 11,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ),
