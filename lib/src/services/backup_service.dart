@@ -9,6 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../config/api_config.dart';
 import '../data/database.dart';
+import '../utils/format.dart';
 
 /// JSON backup format identifier written into every exported file.
 const String _backupFormat = 'yelottery-json-backup';
@@ -506,7 +507,7 @@ class BackupService {
     if (interval == 'never') return null;
     final duration = cfg['duration'] as Duration;
     if (duration == Duration.zero) return null;
-    final lastAt = cfg['lastAt'] as int?;
+    final lastAt = cfg['lastAt'] == null ? null : asInt(cfg['lastAt']);
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     if (lastAt == null) {
       return await performBackup(reason: 'auto', requestPermission: false);

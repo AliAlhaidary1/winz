@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
+import '../utils/format.dart';
 
 /// Data-layer client backed by the Laravel API.
 ///
@@ -101,22 +102,29 @@ class AppDatabase {
     String method, [
     Map<String, dynamic>? args,
   ]) async {
-    return (await _call(method, args) as num).toDouble();
+    final value = await _call(method, args);
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0.0;
   }
 
   Future<int> _callInt(String method, [Map<String, dynamic>? args]) async {
-    return (await _call(method, args) as num).toInt();
+    final value = await _call(method, args);
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
   Future<String> _callString(
     String method, [
     Map<String, dynamic>? args,
   ]) async {
-    return (await _call(method, args)) as String;
+    final value = await _call(method, args);
+    return value?.toString() ?? '';
   }
 
   Future<bool> _callBool(String method, [Map<String, dynamic>? args]) async {
-    return (await _call(method, args)) as bool;
+    final value = await _call(method, args);
+    if (value is bool) return value;
+    return value?.toString().toLowerCase() == 'true';
   }
 
   Future<void> _callVoid(String method, [Map<String, dynamic>? args]) =>
@@ -277,7 +285,7 @@ class AppDatabase {
   Future<double> getClientCommissionRate() async {
     final result = await _call('getClientCommissionRate');
     if (result == null) return defaultClientCommissionRate;
-    final rate = (result as num).toDouble();
+    final rate = asDouble(result);
     return rate < 0 ? defaultClientCommissionRate : rate;
   }
 

@@ -57,7 +57,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
       return;
     }
     final filtered = _allTickets.where((e) {
-      final dt = DateTime.fromMillisecondsSinceEpoch(e['createdAt'] as int);
+      final dt = DateTime.fromMillisecondsSinceEpoch(asInt(e['createdAt']));
       final d = DateTime(dt.year, dt.month, dt.day);
       if (_from != null &&
           d.isBefore(DateTime(_from!.year, _from!.month, _from!.day)))
@@ -190,7 +190,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
       final app = context.read<AppState>();
       final res = await app.replayTicketToCartWithChoice(ticketId, choice);
       if (!mounted) return;
-      final count = res['added'] as int;
+      final count = asInt(res['added']);
       final skipped = (res['skipped'] as List).cast<String>();
       final trimmed = (res['trimmed'] as List).cast<String>();
       final label = choice == 'BOTH'

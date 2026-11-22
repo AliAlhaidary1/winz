@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../config/api_config.dart';
 import '../data/database.dart';
+import '../utils/format.dart';
 
 /// A single line in the sale cart.
 ///
@@ -161,9 +162,7 @@ class AppState extends ChangeNotifier {
       _currentUser = u is Map ? Map<String, dynamic>.from(u) : null;
     }
     if (s['loginAt'] is num) {
-      _loginAt = DateTime.fromMillisecondsSinceEpoch(
-        (s['loginAt'] as num).toInt(),
-      );
+      _loginAt = DateTime.fromMillisecondsSinceEpoch(asInt(s['loginAt']));
     }
     if (s['customer'] is Map) {
       _currentCustomer = Map<String, dynamic>.from(s['customer'] as Map);
@@ -172,7 +171,7 @@ class AppState extends ChangeNotifier {
       _cart = (s['cart'] as List).map(_cartItemFromDynamic).toList();
     }
     if (s['openingCash'] is num) {
-      _openingCash = (s['openingCash'] as num).toDouble();
+      _openingCash = asDouble(s['openingCash']);
     }
   }
 

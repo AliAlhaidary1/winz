@@ -245,7 +245,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
         choice,
       );
       if (!mounted) return;
-      final count = res['added'] as int;
+      final count = asInt(res['added']);
       final skipped = (res['skipped'] as List).cast<String>();
       final trimmed = (res['trimmed'] as List).cast<String>();
       final label = choice == 'BOTH'
@@ -697,7 +697,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                                                     'cancelled',
                                               ))
                                                 Text(
-                                                  'بعد الإلغاء — الأصلي كان ${fmtMoney(_lines.fold<double>(0, (s, e) => s + (e['amount'] as num).toDouble()))}',
+                                                  'بعد الإلغاء — الأصلي كان ${fmtMoney(_lines.fold<double>(0, (s, e) => s + asDouble(e['amount'])))}',
                                                   style: const TextStyle(
                                                     fontSize: 9,
                                                     color: Colors.black54,

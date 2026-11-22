@@ -56,7 +56,7 @@ class _CashScreenState extends State<CashScreen> {
       return;
     }
     final filtered = _ledgerAll.where((e) {
-      final dt = DateTime.fromMillisecondsSinceEpoch(e['createdAt'] as int);
+      final dt = DateTime.fromMillisecondsSinceEpoch(asInt(e['createdAt']));
       final d = DateTime(dt.year, dt.month, dt.day);
       if (_from != null &&
           d.isBefore(DateTime(_from!.year, _from!.month, _from!.day)))
@@ -217,7 +217,7 @@ class _CashScreenState extends State<CashScreen> {
         .where(
           (e) => e['direction'] == dir && (type == null || e['type'] == type),
         )
-        .fold(0.0, (s, e) => s + (e['amount'] as num).toDouble());
+        .fold(0.0, (s, e) => s + asDouble(e['amount']));
   }
 
   Color _typeColor(String type, String dir) {
@@ -344,7 +344,7 @@ class _CashScreenState extends State<CashScreen> {
                                   Padding(
                                     padding: const EdgeInsets.only(top: 2),
                                     child: Text(
-                                      'افتتاح: ${fmtMoney((_session!['openingAmount'] as num).toDouble())} • ${fmtDate(_session!['openedAt'] as int)}',
+                                      'افتتاح: ${fmtMoney(asDouble(_session!['openingAmount']))} • ${fmtDate(asInt(_session!['openedAt']))}',
                                       style: const TextStyle(
                                         color: Colors.white70,
                                         fontSize: 9,
@@ -874,7 +874,7 @@ class _CashScreenState extends State<CashScreen> {
                         ..._ledger.take(100).map((e) {
                           final dir = e['direction'] as String;
                           final type = e['type'] as String;
-                          final amt = (e['amount'] as num).toDouble();
+                          final amt = asDouble(e['amount']);
                           final col = _typeColor(type, dir);
                           return Padding(
                             padding: const EdgeInsets.symmetric(
@@ -942,7 +942,7 @@ class _CashScreenState extends State<CashScreen> {
                                   ],
                                 ),
                                 subtitle: Text(
-                                  '${e['description'] ?? type} • ${_fmtDateShort(e['createdAt'] as int)}${e['ticketId'] != null ? ' • #${e['ticketId']}' : ''}',
+                                  '${e['description'] ?? type} • ${_fmtDateShort(asInt(e['createdAt']))}${e['ticketId'] != null ? ' • #${e['ticketId']}' : ''}',
                                   style: const TextStyle(
                                     fontSize: 10,
                                     color: AppTheme.textMuted,

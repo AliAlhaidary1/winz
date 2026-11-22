@@ -1,4 +1,5 @@
 import '../data/database.dart';
+import '../utils/format.dart';
 import '../utils/timezone.dart';
 
 /// Draw period status lifecycle per spec section 4
@@ -362,7 +363,7 @@ class DrawPeriodService {
     // Current = first OPEN period ordered by drawTime
     periods.sort(
       (a, b) =>
-          (a['salesCloseTime'] as int).compareTo(b['salesCloseTime'] as int),
+          asInt(a['salesCloseTime']).compareTo(asInt(b['salesCloseTime'])),
     );
     for (final p in periods) {
       if (p['status'] == DrawStatus.open) return p;
@@ -370,7 +371,7 @@ class DrawPeriodService {
     // Fallback: next upcoming scheduled
     for (final p in periods) {
       if (p['status'] == DrawStatus.scheduled &&
-          (p['salesCloseTime'] as int) > now)
+          asInt(p['salesCloseTime']) > now)
         return p;
     }
     return null;
@@ -380,7 +381,7 @@ class DrawPeriodService {
     await refreshPeriodStatuses();
     final periods = await db.getAllPeriods();
     periods.sort(
-      (a, b) => (a['drawTime'] as int).compareTo(b['drawTime'] as int),
+      (a, b) => asInt(a['drawTime']).compareTo(asInt(b['drawTime'])),
     );
     bool foundCurrent = false;
     for (final p in periods) {
@@ -393,7 +394,7 @@ class DrawPeriodService {
     // If no open, next scheduled after now
     final now = DateTime.now().millisecondsSinceEpoch;
     for (final p in periods) {
-      if ((p['drawTime'] as int) > now &&
+      if (asInt(p['drawTime']) > now &&
           (p['status'] == DrawStatus.scheduled ||
               p['status'] == DrawStatus.open))
         return p;
@@ -429,7 +430,7 @@ class DrawPeriodService {
         );
       }
       final now = DateTime.now().millisecondsSinceEpoch;
-      if (now >= (p['salesCloseTime'] as int)) {
+      if (now >= asInt(p['salesCloseTime'])) {
         throw Exception('Sales closed for $pid — cutoff reached');
       }
     }
@@ -584,7 +585,7 @@ class DrawPeriodService {
                 name.toLowerCase().contains('midday') ||
             name.toLowerCase().contains('morning')) {
           // check date match via drawTime day
-          final dt = DateTime.fromMillisecondsSinceEpoch(d['drawTime'] as int);
+          final dt = DateTime.fromMillisecondsSinceEpoch(asInt(d['drawTime']));
           final dateStr =
               '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
           if (periodId.startsWith(dateStr)) {
@@ -595,7 +596,7 @@ class DrawPeriodService {
         }
         if (periodId.contains('EVENING') &&
             name.toLowerCase().contains('evening')) {
-          final dt = DateTime.fromMillisecondsSinceEpoch(d['drawTime'] as int);
+          final dt = DateTime.fromMillisecondsSinceEpoch(asInt(d['drawTime']));
           final dateStr =
               '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
           if (periodId.startsWith(dateStr)) {

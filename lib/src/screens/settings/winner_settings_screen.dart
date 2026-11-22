@@ -56,9 +56,9 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
           final diff = d.difference(sel).inDays;
           return diff >= -1 && diff <= 7;
         }).toList()..sort(
-          (a, b) => (a['salesCloseTime'] as int).compareTo(
-            b['salesCloseTime'] as int,
-          ),
+          (a, b) =>
+              (asInt(a['salesCloseTime']))
+                  .compareTo(asInt(b['salesCloseTime'])),
         );
     if (!mounted) return;
     setState(() {
@@ -92,17 +92,17 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
   bool _canEnter(Map<String, dynamic> p) {
     if (!_winningRestricted) return true;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final sc = p['salesCloseTime'] as int;
-    final dr = p['drawTime'] as int;
+    final sc = asInt(p['salesCloseTime']);
+    final dr = asInt(p['drawTime']);
     const window = 2 * 3600 * 1000;
     return now >= sc && now <= dr + window;
   }
 
   String _windowLabel(Map<String, dynamic> p) {
-    final sc = _fmt12FromMs(p['salesCloseTime'] as int);
-    final dr = _fmt12FromMs(p['drawTime'] as int);
+    final sc = _fmt12FromMs(asInt(p['salesCloseTime']));
+    final dr = _fmt12FromMs(asInt(p['drawTime']));
     // +2h
-    final dr2Str = _fmt12FromMs((p['drawTime'] as int) + 2 * 3600 * 1000);
+    final dr2Str = _fmt12FromMs((asInt(p['drawTime'])) + 2 * 3600 * 1000);
     return '$sc — $dr (window till $dr2Str)';
   }
 
@@ -428,8 +428,8 @@ class _WinnerSettingsScreenState extends State<WinnerSettingsScreen> {
                       ..._periods.map((p) {
                         final id = p['id'] as String;
                         final type = p['drawType'] as String;
-                        final sc12 = _fmt12FromMs(p['salesCloseTime'] as int);
-                        final dr12 = _fmt12FromMs(p['drawTime'] as int);
+                        final sc12 = _fmt12FromMs(asInt(p['salesCloseTime']));
+                        final dr12 = _fmt12FromMs(asInt(p['drawTime']));
                         final status = p['status'] as String;
                         final can = _canEnter(p);
                         final r3 = p['result3'] as String?;

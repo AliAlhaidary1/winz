@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/app_state.dart';
+import '../utils/format.dart';
 import '../theme/app_theme.dart';
 
 /// Manage registered customers and their saved "usual" plays.
@@ -263,7 +264,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       final result = await context.read<AppState>().playCustomerUsual(
         c['id'] as String,
       );
-      final added = (result['added'] as num?)?.toInt() ?? 0;
+      final added = asInt(result['added']);
       final skipped = (result['skipped'] as List?) ?? const [];
       final buffer = StringBuffer('Added $added play(s) / تمت الإضافة');
       if (skipped.isNotEmpty) {

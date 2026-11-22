@@ -87,7 +87,7 @@ class _ReportScreenState extends State<ReportScreen> {
       return list.where((e) {
         final millis = e['createdAt'] ?? e['openedAt'] ?? 0;
         if (millis == 0) return true;
-        final dt = DateTime.fromMillisecondsSinceEpoch(millis as int);
+        final dt = DateTime.fromMillisecondsSinceEpoch(asInt(millis));
         final d = DateTime(dt.year, dt.month, dt.day);
         if (_from != null &&
             d.isBefore(DateTime(_from!.year, _from!.month, _from!.day)))
@@ -108,7 +108,7 @@ class _ReportScreenState extends State<ReportScreen> {
     // Balance derived from the actual ledger rows in the same date range.
     double ledgerBalance = 0, prizePaid = 0;
     for (final mv in m) {
-      final amt = (mv['amount'] as num).toDouble();
+      final amt = asDouble(mv['amount']);
       if (mv['direction'] == 'credit' || mv['direction'] == 'in')
         ledgerBalance += amt;
       else
@@ -145,7 +145,7 @@ class _ReportScreenState extends State<ReportScreen> {
         l['drawName'] as String?,
         fallback: (ticketById[tid] ?? {})['drawName'] as String?,
       );
-      final amt = (l['amount'] as num).toDouble();
+      final amt = asDouble(l['amount']);
       if (type == 'MIDDAY')
         sMid += amt;
       else
@@ -154,9 +154,9 @@ class _ReportScreenState extends State<ReportScreen> {
     for (final tk in t) {
       final hasLine = allLines.any((l) => l['ticketId'] == tk['id']);
       if (!hasLine) {
-        final amt =
-            (tk['total'] as num?)?.toDouble() ??
-            (tk['amount'] as num).toDouble();
+        final amt = tk['total'] != null
+            ? asDouble(tk['total'])
+            : asDouble(tk['amount']);
         if (periodType(null, tk['drawName'] as String?) == 'MIDDAY')
           sMid += amt;
         else
@@ -171,7 +171,7 @@ class _ReportScreenState extends State<ReportScreen> {
     for (final tk in t.where(
       (e) => e['status'] == 'winning' || e['status'] == 'paid',
     )) {
-      final prize = (tk['prizeAmount'] as num?)?.toDouble() ?? 0;
+      final prize = asDouble(tk['prizeAmount']);
       if (prize <= 0) continue;
       if (periodType(null, tk['drawName'] as String?) == 'MIDDAY')
         pMid += prize;
@@ -783,16 +783,10 @@ class _ReportScreenState extends State<ReportScreen> {
                         builder: (_) {
                           final cashIn = _cash
                               .where((e) => e['direction'] == 'in')
-                              .fold(
-                                0.0,
-                                (s, e) => s + (e['amount'] as num).toDouble(),
-                              );
+                              .fold(0.0, (s, e) => s + asDouble(e['amount']));
                           final cashOut = _cash
                               .where((e) => e['direction'] == 'out')
-                              .fold(
-                                0.0,
-                                (s, e) => s + (e['amount'] as num).toDouble(),
-                              );
+                              .fold(0.0, (s, e) => s + asDouble(e['amount']));
                           final cashNet = cashIn - cashOut;
                           return _reportCard(
                             title: 'Cash Drawer',
@@ -820,7 +814,7 @@ class _ReportScreenState extends State<ReportScreen> {
                                 Padding(
                                   padding: const EdgeInsets.only(top: 4),
                                   child: Text(
-                                    'Includes opening cash: ${fmtMoney(_cash.where((e) => e['type'] == 'opening').fold(0.0, (s, e) => s + (e['amount'] as num).toDouble()))}',
+                                    'Includes opening cash: ${fmtMoney(_cash.where((e) => e['type'] == 'opening').fold(0.0, (s, e) => s + asDouble(e['amount'])))}',
                                     style: const TextStyle(
                                       fontSize: 9,
                                       color: Colors.black54,

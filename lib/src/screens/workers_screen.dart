@@ -119,7 +119,7 @@ class _WorkersScreenState extends State<WorkersScreen> {
 
   Future<void> _editCommission(Map<String, dynamic> w) async {
     final ctrl = TextEditingController(
-      text: (w['commission'] as num?)?.toString() ?? '5.0',
+      text: w['commission']?.toString() ?? '5.0',
     );
     final ok = await showDialog<bool>(
       context: context,

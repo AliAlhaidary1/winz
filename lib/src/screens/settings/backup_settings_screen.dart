@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../data/database.dart';
 import '../../services/backup_service.dart';
+import '../../utils/format.dart';
 import '../../utils/responsive.dart';
 
 class BackupSettingsScreen extends StatefulWidget {
@@ -55,7 +56,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
     setState(() {
       _enabled = cfg['enabled'] as bool;
       _interval = cfg['interval'] as String;
-      _lastAt = cfg['lastAt'] as int?;
+      _lastAt = cfg['lastAt'] == null ? null : asInt(cfg['lastAt']);
       _lastPath = cfg['lastPath'] as String?;
       _nextAt = cfg['nextAt'] as DateTime?;
       _dirPath = dir;
@@ -465,7 +466,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                     style: const TextStyle(fontSize: 11),
                                   ),
                                   Text(
-                                    'حجم: ${(cur['size'] as int) / 1024 > 0 ? ((cur['size'] as int) / 1024).toStringAsFixed(1) : '0'} KB',
+                                    'حجم: ${asInt(cur['size']) / 1024 > 0 ? (asInt(cur['size']) / 1024).toStringAsFixed(1) : '0'} KB',
                                     style: TextStyle(
                                       fontSize: 10,
                                       color: Colors.grey.shade600,
@@ -497,7 +498,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                     style: const TextStyle(fontSize: 11),
                                   ),
                                   Text(
-                                    'حجم: ${(bak['size'] as int) / 1024 > 0 ? ((bak['size'] as int) / 1024).toStringAsFixed(1) : '0'} KB',
+                                    'حجم: ${asInt(bak['size']) / 1024 > 0 ? (asInt(bak['size']) / 1024).toStringAsFixed(1) : '0'} KB',
                                     style: TextStyle(
                                       fontSize: 10,
                                       color: Colors.grey.shade600,

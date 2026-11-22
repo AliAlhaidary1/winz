@@ -65,7 +65,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
     final List<Map<String, dynamic>> draws =
         allDraws.where((d) {
           if (d['status'] != 'open') return false;
-          final dt = d['drawTime'] as int;
+          final dt = asInt(d['drawTime']);
           if (dt <= nowMs - 5 * 60 * 1000) return false; // منتهية
           // تحقق من الفترة المقابلة
           final name = d['name'] as String;
@@ -76,7 +76,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
               '${drawDt.year}-${drawDt.month.toString().padLeft(2, '0')}-${drawDt.day.toString().padLeft(2, '0')}-$type';
           return openIds.contains(pid);
         }).toList()..sort(
-          (a, b) => (a['drawTime'] as int).compareTo(b['drawTime'] as int),
+          (a, b) => (asInt(a['drawTime'])).compareTo(asInt(b['drawTime'])),
         );
     final List<Map<String, dynamic>> finalDraws = draws;
     final periods = await db.getAllPeriods();
@@ -126,7 +126,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
       final p = _periods.where((e) => e['id'] == pid).firstOrNull;
       if (p == null) return '';
       if (p['status'] != 'OPEN') return 'SALES CLOSED';
-      final close = p['salesCloseTime'] as int;
+      final close = asInt(p['salesCloseTime']);
       final rem = close - DateTime.now().millisecondsSinceEpoch;
       if (rem <= 0) return 'SALES CLOSED';
       final d = Duration(milliseconds: rem);
@@ -295,8 +295,8 @@ class _NumbersScreenState extends State<NumbersScreen> {
       if (st == 'CANCELLED' || st == 'POSTPONED' || st == 'SUSPENDED')
         return false;
       if (hasRes(e)) return false;
-      final open = e['salesOpenTime'] as int? ?? 0;
-      final close = e['salesCloseTime'] as int? ?? 0;
+      final open = asInt(e['salesOpenTime']);
+      final close = asInt(e['salesCloseTime']);
       return nowMs >= open && nowMs < close;
     });
   }
@@ -947,7 +947,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                                 final nav = Navigator.of(c);
                                 try {
                                   final res = await app.playCustomerUsual(id);
-                                  final added = res['added'] as int;
+                                  final added = asInt(res['added']);
                                   final skipped = (res['skipped'] as List)
                                       .cast<String>();
                                   nav.pop();
@@ -1859,7 +1859,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
     final lines = res['lines'] as List<Map<String, dynamic>>?;
     final lineDetails = res['lineDetails'] as List?;
     final isWinning = res['isWinning'] == true;
-    final prize = (res['prize'] as num?)?.toDouble() ?? 0;
+    final prize = asDouble(res['prize']);
     final pending = res['pending'] == true;
     final st = (ticket['status'] as String? ?? '').toLowerCase();
     final blockedForResale = st == 'paid' || st == 'cancelled';
@@ -2124,7 +2124,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                         choice,
                       );
                       if (!mounted) return;
-                      final count = res['added'] as int;
+                      final count = asInt(res['added']);
                       final skipped = (res['skipped'] as List).cast<String>();
                       final trimmed = (res['trimmed'] as List).cast<String>();
                       final label = choice == 'BOTH'
@@ -2387,7 +2387,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
       period = 'Evening';
     else if (name.contains('Night'))
       period = 'Night';
-    final dt = DateTime.fromMillisecondsSinceEpoch(d['drawTime'] as int);
+    final dt = DateTime.fromMillisecondsSinceEpoch(asInt(d['drawTime']));
     final time =
         '${dt.hour > 12 ? dt.hour - 12 : dt.hour}:${dt.minute.toString().padLeft(2, '0')} ${dt.hour >= 12 ? 'PM' : 'AM'}';
     return '$period • $time';

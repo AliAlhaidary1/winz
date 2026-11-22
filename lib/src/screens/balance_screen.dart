@@ -50,7 +50,7 @@ class _BalanceScreenState extends State<BalanceScreen> {
       return;
     }
     final filtered = _movesAll.where((e) {
-      final dt = DateTime.fromMillisecondsSinceEpoch(e['createdAt'] as int);
+      final dt = DateTime.fromMillisecondsSinceEpoch(asInt(e['createdAt']));
       final d = DateTime(dt.year, dt.month, dt.day);
       if (_from != null &&
           d.isBefore(DateTime(_from!.year, _from!.month, _from!.day)))
@@ -466,7 +466,7 @@ class _BalanceScreenState extends State<BalanceScreen> {
                         final isCredit =
                             e['direction'] == 'credit' ||
                             e['direction'] == 'in';
-                        final amt = (e['amount'] as num).abs().toDouble();
+                        final amt = asDouble(e['amount']).abs();
                         final signColor = isCredit ? Colors.green : Colors.red;
                         return Card(
                           child: ListTile(

@@ -153,7 +153,7 @@ class _WinzScreenState extends State<WinzScreen> {
     final List<Map<String, dynamic>> draws =
         all.where((d) {
           if (d['status'] != 'open') return false;
-          final dt = d['drawTime'] as int;
+          final dt = asInt(d['drawTime']);
           if (dt <= nowMs - 5 * 60 * 1000) return false;
           final name = d['name'] as String;
           final isMidday = name.contains('Midday') || name.contains('Morning');
@@ -163,7 +163,7 @@ class _WinzScreenState extends State<WinzScreen> {
               '${drawDt.year}-${drawDt.month.toString().padLeft(2, '0')}-${drawDt.day.toString().padLeft(2, '0')}-$type';
           return openIds.contains(pid);
         }).toList()..sort(
-          (a, b) => (a['drawTime'] as int).compareTo(b['drawTime'] as int),
+          (a, b) => (asInt(a['drawTime'])).compareTo(asInt(b['drawTime'])),
         );
     if (!mounted) return;
     setState(() => _draws = draws);
@@ -615,7 +615,7 @@ class _WinzScreenState extends State<WinzScreen> {
                                 final nav = Navigator.of(c);
                                 try {
                                   final res = await app.playCustomerUsual(id);
-                                  final added = res['added'] as int;
+                                  final added = asInt(res['added']);
                                   final skipped = (res['skipped'] as List)
                                       .cast<String>();
                                   nav.pop();
@@ -909,7 +909,7 @@ class _WinzScreenState extends State<WinzScreen> {
                         choice,
                       );
                       if (!mounted) return;
-                      final count = res['added'] as int;
+                      final count = asInt(res['added']);
                       final skipped = (res['skipped'] as List).cast<String>();
                       final trimmed = (res['trimmed'] as List).cast<String>();
                       final label = choice == 'BOTH'
@@ -1783,7 +1783,7 @@ class _WinzScreenState extends State<WinzScreen> {
       p = 'Evening';
     else if (name.contains('Night'))
       p = 'Night';
-    final dt = DateTime.fromMillisecondsSinceEpoch(d['drawTime'] as int);
+    final dt = DateTime.fromMillisecondsSinceEpoch(asInt(d['drawTime']));
     final t =
         '${dt.hour > 12 ? dt.hour - 12 : dt.hour}:${dt.minute.toString().padLeft(2, '0')} ${dt.hour >= 12 ? 'PM' : 'AM'}';
     return '$p • $t';

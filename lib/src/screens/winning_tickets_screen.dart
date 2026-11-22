@@ -36,7 +36,7 @@ class _WinningTicketsScreenState extends State<WinningTicketsScreen> {
             .where((t) => t['status'] == 'winning' || t['status'] == 'paid')
             .toList()
           ..sort(
-            (a, b) => (b['createdAt'] as int).compareTo(a['createdAt'] as int),
+            (a, b) => (asInt(b['createdAt'])).compareTo(asInt(a['createdAt'])),
           );
     if (mounted)
       setState(() {
@@ -81,7 +81,7 @@ class _WinningTicketsScreenState extends State<WinningTicketsScreen> {
         choice,
       );
       if (!mounted) return;
-      final count = res['added'] as int;
+      final count = asInt(res['added']);
       final skipped = (res['skipped'] as List).cast<String>();
       final trimmed = (res['trimmed'] as List).cast<String>();
       final label = choice == 'BOTH'
@@ -225,7 +225,7 @@ class _WinningTicketsScreenState extends State<WinningTicketsScreen> {
       );
       return;
     }
-    final prize = (fresh['prize'] as num).toDouble();
+    final prize = asDouble(fresh['prize']);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(

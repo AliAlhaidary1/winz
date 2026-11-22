@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/app_state.dart';
 import '../data/database.dart';
+import '../utils/format.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
 import '../widgets/app_drawer.dart';
@@ -52,7 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
         for (final d in draws) {
           final win = d['winningNumbers'] as String?;
           if (win != null && win.trim().isNotEmpty) continue;
-          final dt = d['drawTime'] as int;
+          final dt = asInt(d['drawTime']);
           final name = d['name'] as String;
           final isMidday = name.contains('Midday') || name.contains('Morning');
           final type = isMidday ? 'MIDDAY' : 'EVENING';
@@ -62,8 +63,8 @@ class _HomeScreenState extends State<HomeScreen> {
           final pid = '$dateStr-$type';
           final p = periods.where((e) => e['id'] == pid).firstOrNull;
           if (p == null) continue;
-          final sc = p['salesCloseTime'] as int;
-          final dr = p['drawTime'] as int;
+          final sc = asInt(p['salesCloseTime']);
+          final dr = asInt(p['drawTime']);
           if (nowMs >= sc && nowMs <= dr + 2 * 3600 * 1000) {
             pending.add(d);
           }
@@ -88,8 +89,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final todayTickets = allTickets
           .where(
             (t) =>
-                (t['createdAt'] as int) >= todayStart &&
-                (t['createdAt'] as int) <= todayEnd,
+                (asInt(t['createdAt'])) >= todayStart &&
+                (asInt(t['createdAt'])) <= todayEnd,
           )
           .toList();
       final playsToday = todayTickets.length;
@@ -100,7 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final workerRate = await db.getClientCommissionRate();
       final salesToday = todayTickets.fold<double>(
         0,
-        (s, e) => s + (e['total'] as num).toDouble(),
+        (s, e) => s + asDouble(e['total']),
       );
       final workerCommission = salesToday * workerRate / 100;
       if (mounted)

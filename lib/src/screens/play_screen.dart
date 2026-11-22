@@ -54,7 +54,7 @@ class _PlayScreenState extends State<PlayScreen> {
     final draws =
         all.where((d) {
           if (d['status'] != 'open') return false;
-          final dt = d['drawTime'] as int;
+          final dt = asInt(d['drawTime']);
           if (dt <= nowMs - 5 * 60 * 1000) return false;
           final name = d['name'] as String;
           final isMidday = name.contains('Midday') || name.contains('Morning');
@@ -64,7 +64,7 @@ class _PlayScreenState extends State<PlayScreen> {
               '${drawDt.year}-${drawDt.month.toString().padLeft(2, '0')}-${drawDt.day.toString().padLeft(2, '0')}-$type';
           return openIds.contains(pid);
         }).toList()..sort(
-          (a, b) => (a['drawTime'] as int).compareTo(b['drawTime'] as int),
+          (a, b) => (asInt(a['drawTime'])).compareTo(asInt(b['drawTime'])),
         );
     if (!mounted) return;
     setState(() {
@@ -581,7 +581,7 @@ class _PlayScreenState extends State<PlayScreen> {
                                 final nav = Navigator.of(c);
                                 try {
                                   final res = await app.playCustomerUsual(id);
-                                  final added = res['added'] as int;
+                                  final added = asInt(res['added']);
                                   final skipped = (res['skipped'] as List)
                                       .cast<String>();
                                   nav.pop();

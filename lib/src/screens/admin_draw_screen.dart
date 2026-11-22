@@ -31,7 +31,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
         // Unrestricted: show all pending draws regardless of time
         return true;
       }
-      final dt = d['drawTime'] as int;
+      final dt = asInt(d['drawTime']);
       final name = d['name'] as String;
       final isMidday = name.contains('Midday') || name.contains('Morning');
       final type = isMidday ? 'MIDDAY' : 'EVENING';
@@ -41,12 +41,12 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
       final pid = '$dateStr-$type';
       final p = _periodsCache.where((e) => e['id'] == pid).firstOrNull;
       if (p == null) return false;
-      final salesClose = p['salesCloseTime'] as int;
-      final drawTime = p['drawTime'] as int;
+      final salesClose = asInt(p['salesCloseTime']);
+      final drawTime = asInt(p['drawTime']);
       const windowMs = 2 * 3600 * 1000;
       return nowMs >= salesClose && nowMs <= drawTime + windowMs;
     }).toList()..sort(
-      (a, b) => (a['drawTime'] as int).compareTo(b['drawTime'] as int),
+      (a, b) => (asInt(a['drawTime'])).compareTo(asInt(b['drawTime'])),
     );
   }
 
@@ -65,16 +65,16 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
   bool _canEnterPeriod(Map<String, dynamic> p) {
     if (!_winningRestricted) return true;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final sc = p['salesCloseTime'] as int;
-    final dr = p['drawTime'] as int;
+    final sc = asInt(p['salesCloseTime']);
+    final dr = asInt(p['drawTime']);
     const window = 2 * 3600 * 1000;
     return now >= sc && now <= dr + window;
   }
 
   String _windowLabelPeriod(Map<String, dynamic> p) {
-    final sc = _fmt12FromMs(p['salesCloseTime'] as int);
-    final dr = _fmt12FromMs(p['drawTime'] as int);
-    final dr2Str = _fmt12FromMs((p['drawTime'] as int) + 2 * 3600 * 1000);
+    final sc = _fmt12FromMs(asInt(p['salesCloseTime']));
+    final dr = _fmt12FromMs(asInt(p['drawTime']));
+    final dr2Str = _fmt12FromMs((asInt(p['drawTime'])) + 2 * 3600 * 1000);
     return '$sc — $dr (window till $dr2Str)';
   }
 
@@ -105,7 +105,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
       return true;
     }).toList()..sort(
       (a, b) =>
-          (a['salesCloseTime'] as int).compareTo(b['salesCloseTime'] as int),
+          (asInt(a['salesCloseTime'])).compareTo(asInt(b['salesCloseTime'])),
     );
   }
 
@@ -180,8 +180,8 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                     .where((p) => p['drawDate'] == todayStr)
                                     .toList()
                                   ..sort(
-                                    (a, b) => (a['salesCloseTime'] as int)
-                                        .compareTo(b['salesCloseTime'] as int),
+                                    (a, b) => (asInt(a['salesCloseTime']))
+                                        .compareTo(asInt(b['salesCloseTime'])),
                                   );
                             return Container(
                               padding: const EdgeInsets.all(10),
@@ -209,10 +209,10 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                     ),
                                   ...todayPeriods.map((p) {
                                     final sc = _fmt12FromMs(
-                                      p['salesCloseTime'] as int,
+                                      asInt(p['salesCloseTime']),
                                     );
                                     final dr = _fmt12FromMs(
-                                      p['drawTime'] as int,
+                                      asInt(p['drawTime']),
                                     );
                                     final type = p['drawType'] as String;
                                     final r3 = (p['result3'] as String?) ?? '';
@@ -384,8 +384,8 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
               ...available.map((p) {
                 final id = p['id'] as String;
                 final type = p['drawType'] as String;
-                final sc12 = _fmt12FromMs(p['salesCloseTime'] as int);
-                final dr12 = _fmt12FromMs(p['drawTime'] as int);
+                final sc12 = _fmt12FromMs(asInt(p['salesCloseTime']));
+                final dr12 = _fmt12FromMs(asInt(p['drawTime']));
                 final status = p['status'] as String;
                 final can = _canEnterPeriod(p);
                 final r3 = p['result3'] as String?;
@@ -1009,7 +1009,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
     }
     // Ensure sorted by drawTime ascending for pending tab (soonest first)
     draws.sort(
-      (a, b) => (a['drawTime'] as int).compareTo(b['drawTime'] as int),
+      (a, b) => (asInt(a['drawTime'])).compareTo(asInt(b['drawTime'])),
     );
     if (!mounted) return;
     setState(() {
@@ -1179,7 +1179,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
           final d = _draws.where((e) => e['id'] == _selectedDrawId).firstOrNull;
           if (d != null) {
             final dt = MarketTimezone.wallTimeFromEpoch(
-              d['drawTime'] as int,
+              asInt(d['drawTime']),
               _tz,
             );
             final name = d['name'] as String;
@@ -1196,12 +1196,12 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
               await db.updatePeriodStatus(pid, 'COMPLETED');
               // Ensure sales are closed - update salesClose to now if still future
               final nowMs = DateTime.now().millisecondsSinceEpoch;
-              if ((p['salesCloseTime'] as int) > nowMs) {
+              if ((asInt(p['salesCloseTime'])) > nowMs) {
                 await db.updatePeriodTimes(
                   pid,
-                  p['salesOpenTime'] as int,
+                  asInt(p['salesOpenTime']),
                   nowMs,
-                  p['drawTime'] as int,
+                  asInt(p['drawTime']),
                 );
               }
             }
@@ -1228,7 +1228,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
   Future<void> _editWinnerForDraw(Map<String, dynamic> draw) async {
     // Check window lock for this draw's period
     try {
-      final dt = MarketTimezone.wallTimeFromEpoch(draw['drawTime'] as int, _tz);
+      final dt = MarketTimezone.wallTimeFromEpoch(asInt(draw['drawTime']), _tz);
       final name = draw['name'] as String;
       final isMidday = name.contains('Midday') || name.contains('Morning');
       final type = isMidday ? 'MIDDAY' : 'EVENING';
@@ -1238,8 +1238,8 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
       final p = await context.read<AppDatabase>().getPeriodById(pid);
       if (p != null && _winningRestricted) {
         final now = DateTime.now().millisecondsSinceEpoch;
-        final sc = p['salesCloseTime'] as int;
-        final dr = p['drawTime'] as int;
+        final sc = asInt(p['salesCloseTime']);
+        final dr = asInt(p['drawTime']);
         const window = 2 * 3600 * 1000;
         final can = now >= sc && now <= dr + window;
         if (!can) {
@@ -1410,7 +1410,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
           m = _historyDate!.month,
           d = _historyDate!.day;
       list = list.where((e) {
-        final dt = MarketTimezone.wallTimeFromEpoch(e['drawTime'] as int, _tz);
+        final dt = MarketTimezone.wallTimeFromEpoch(asInt(e['drawTime']), _tz);
         return dt.year == y && dt.month == m && dt.day == d;
       }).toList();
     }
@@ -1425,7 +1425,7 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
           )
           .toList();
     }
-    list.sort((a, b) => (b['drawTime'] as int).compareTo(a['drawTime'] as int));
+    list.sort((a, b) => (asInt(b['drawTime'])).compareTo(asInt(a['drawTime'])));
     return list;
   }
 
@@ -1644,12 +1644,12 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                               final hasWinner =
                                   win != null && win.trim().isNotEmpty;
                               final dt = MarketTimezone.wallTimeFromEpoch(
-                                d['drawTime'] as int,
+                                asInt(d['drawTime']),
                                 _tz,
                               );
                               final drawTime12 =
                                   MarketTimezone.format12FromEpoch(
-                                    d['drawTime'] as int,
+                                    asInt(d['drawTime']),
                                     _tz,
                                   );
                               final statusColor = hasWinner
@@ -1672,8 +1672,8 @@ class _AdminDrawScreenState extends State<AdminDrawScreen>
                                 if (ph != null && _winningRestricted) {
                                   final now =
                                       DateTime.now().millisecondsSinceEpoch;
-                                  final sc = ph['salesCloseTime'] as int;
-                                  final dr = ph['drawTime'] as int;
+                                  final sc = asInt(ph['salesCloseTime']);
+                                  final dr = asInt(ph['drawTime']);
                                   canEditHistory =
                                       now >= sc && now <= dr + 2 * 3600 * 1000;
                                   // if no winner yet and window closed, also cannot add
