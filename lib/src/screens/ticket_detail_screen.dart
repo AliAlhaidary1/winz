@@ -10,6 +10,7 @@ import '../data/database.dart';
 import '../providers/app_state.dart';
 import '../utils/format.dart';
 import '../widgets/draw_period_choice.dart';
+import '../widgets/ticket_numbers_text.dart';
 
 class TicketDetailScreen extends StatefulWidget {
   final Map<String, dynamic> ticket;
@@ -248,8 +249,8 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
       final count = asInt(res['added']);
       final skipped = (res['skipped'] as List).cast<String>();
       final trimmed = (res['trimmed'] as List).cast<String>();
-      final label = choice == 'BOTH'
-          ? 'Both draws (double)'
+      final label = choice == 'AUTO'
+          ? 'The same'
           : choice == 'MIDDAY'
           ? 'Morning only'
           : 'Evening only';
@@ -782,19 +783,17 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                                         ),
                                         child: Column(
                                           children: [
-                                            Text(
-                                              (t['numbers'] as String)
-                                                  .replaceAll(',', '  '),
+                                            TicketNumbersText(
+                                              numbers: '${t['numbers'] ?? ''}',
+                                              fontSize:
+                                                  Responsive.isMobile(context)
+                                                  ? 20
+                                                  : 26,
+                                              letterSpacing:
+                                                  Responsive.isMobile(context)
+                                                  ? 1.5
+                                                  : 4,
                                               style: TextStyle(
-                                                fontSize:
-                                                    Responsive.isMobile(context)
-                                                    ? 20
-                                                    : 26,
-                                                fontWeight: FontWeight.bold,
-                                                letterSpacing:
-                                                    Responsive.isMobile(context)
-                                                    ? 1.5
-                                                    : 4,
                                                 decoration: isSingleVoid
                                                     ? TextDecoration.lineThrough
                                                     : null,
@@ -802,9 +801,6 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                                                     ? Colors.red
                                                     : Colors.black,
                                               ),
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                              textAlign: TextAlign.center,
                                             ),
                                             if (isSingleVoid)
                                               Container(

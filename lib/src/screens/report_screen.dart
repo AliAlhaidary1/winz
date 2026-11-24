@@ -308,6 +308,8 @@ class _ReportScreenState extends State<ReportScreen> {
               fontWeight: pw.FontWeight.bold,
               color: PdfColors.black,
             ),
+            maxLines: 1,
+            softWrap: false,
           ),
         ),
         pw.SizedBox(height: 3),
@@ -493,6 +495,8 @@ class _ReportScreenState extends State<ReportScreen> {
                       ? pw.FontWeight.bold
                       : pw.FontWeight.normal,
                 ),
+                maxLines: 1,
+                softWrap: false,
               ),
             ),
           ),

@@ -84,8 +84,8 @@ class _WinningTicketsScreenState extends State<WinningTicketsScreen> {
       final count = asInt(res['added']);
       final skipped = (res['skipped'] as List).cast<String>();
       final trimmed = (res['trimmed'] as List).cast<String>();
-      final label = choice == 'BOTH'
-          ? 'Both (×2)'
+      final label = choice == 'AUTO'
+          ? 'The same'
           : choice == 'MIDDAY'
           ? 'Midday'
           : 'Evening';
@@ -751,7 +751,7 @@ class _WinningTicketsScreenState extends State<WinningTicketsScreen> {
                                 ),
                                 const SizedBox(height: 4),
                                 const Text(
-                                  'You can copy by ticket number (ID), serial, or barcode — you will choose: Midday / Evening / Both',
+                                  'Copy by ticket number (ID), serial, or barcode — choose: Morning only / Evening only / The same',
                                   style: TextStyle(
                                     fontSize: 9,
                                     color: Colors.black45,

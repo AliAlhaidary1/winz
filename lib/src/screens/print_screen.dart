@@ -11,6 +11,7 @@ import '../data/database.dart';
 import '../services/thermal_printer_service.dart';
 import '../utils/format.dart';
 import '../utils/ticket_pdf.dart';
+import '../widgets/ticket_numbers_text.dart';
 
 class PrintScreen extends StatefulWidget {
   final Map<String, dynamic>? ticket;
@@ -103,17 +104,11 @@ class _PrintScreenState extends State<PrintScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
-                    (l['numbers'] as String).replaceAll(',', ' '),
-                    style: TextStyle(
-                      fontSize: Responsive.isMobile(context) ? 20 : 28,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: Responsive.isMobile(context) ? 1 : 3,
-                      fontFamily: 'Courier',
-                      color: Colors.black,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  child: TicketNumbersText(
+                    numbers: '${l['numbers'] ?? ''}',
+                    fontSize: Responsive.isMobile(context) ? 20 : 28,
+                    letterSpacing: Responsive.isMobile(context) ? 1 : 3,
+                    style: const TextStyle(color: Colors.black),
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -551,38 +546,26 @@ class _PrintScreenState extends State<PrintScreen> {
                                                     child: Row(
                                                       children: [
                                                         Expanded(
-                                                          child: Text(
-                                                            (lines[i]['numbers']
-                                                                    as String)
-                                                                .replaceAll(
-                                                                  ',',
-                                                                  ' ',
+                                                          child: TicketNumbersText(
+                                                            numbers:
+                                                                '${lines[i]['numbers'] ?? ''}',
+                                                            fontSize:
+                                                                Responsive.isMobile(
+                                                                  context,
+                                                                )
+                                                                ? 18
+                                                                : 26,
+                                                            letterSpacing:
+                                                                Responsive.isMobile(
+                                                                  context,
+                                                                )
+                                                                ? 1
+                                                                : 3,
+                                                            style:
+                                                                const TextStyle(
+                                                                  color: Colors
+                                                                      .black,
                                                                 ),
-                                                            style: TextStyle(
-                                                              fontSize:
-                                                                  Responsive.isMobile(
-                                                                    context,
-                                                                  )
-                                                                  ? 18
-                                                                  : 26,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w900,
-                                                              letterSpacing:
-                                                                  Responsive.isMobile(
-                                                                    context,
-                                                                  )
-                                                                  ? 1
-                                                                  : 3,
-                                                              fontFamily:
-                                                                  'Courier',
-                                                              color:
-                                                                  Colors.black,
-                                                            ),
-                                                            maxLines: 1,
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
                                                           ),
                                                         ),
                                                         const SizedBox(
@@ -763,38 +746,26 @@ class _PrintScreenState extends State<PrintScreen> {
                                                     child: Row(
                                                       children: [
                                                         Expanded(
-                                                          child: Text(
-                                                            (otherLines[i]['numbers']
-                                                                    as String)
-                                                                .replaceAll(
-                                                                  ',',
-                                                                  ' ',
+                                                          child: TicketNumbersText(
+                                                            numbers:
+                                                                '${otherLines[i]['numbers'] ?? ''}',
+                                                            fontSize:
+                                                                Responsive.isMobile(
+                                                                  context,
+                                                                )
+                                                                ? 18
+                                                                : 26,
+                                                            letterSpacing:
+                                                                Responsive.isMobile(
+                                                                  context,
+                                                                )
+                                                                ? 1
+                                                                : 3,
+                                                            style:
+                                                                const TextStyle(
+                                                                  color: Colors
+                                                                      .black,
                                                                 ),
-                                                            style: TextStyle(
-                                                              fontSize:
-                                                                  Responsive.isMobile(
-                                                                    context,
-                                                                  )
-                                                                  ? 18
-                                                                  : 26,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w900,
-                                                              letterSpacing:
-                                                                  Responsive.isMobile(
-                                                                    context,
-                                                                  )
-                                                                  ? 1
-                                                                  : 3,
-                                                              fontFamily:
-                                                                  'Courier',
-                                                              color:
-                                                                  Colors.black,
-                                                            ),
-                                                            maxLines: 1,
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
                                                           ),
                                                         ),
                                                         const SizedBox(
@@ -946,29 +917,20 @@ class _PrintScreenState extends State<PrintScreen> {
                                                 ),
                                                 const SizedBox(height: 6),
                                               ],
-                                              Text(
-                                                (t['numbers'] as String)
-                                                    .replaceAll(',', '  '),
-                                                style: TextStyle(
-                                                  fontSize:
-                                                      Responsive.isMobile(
-                                                        context,
-                                                      )
-                                                      ? 24
-                                                      : 34,
-                                                  fontWeight: FontWeight.w900,
-                                                  letterSpacing:
-                                                      Responsive.isMobile(
-                                                        context,
-                                                      )
-                                                      ? 2
-                                                      : 5,
-                                                  fontFamily: 'Courier',
+                                              TicketNumbersText(
+                                                numbers:
+                                                    '${t['numbers'] ?? ''}',
+                                                fontSize:
+                                                    Responsive.isMobile(context)
+                                                    ? 24
+                                                    : 34,
+                                                letterSpacing:
+                                                    Responsive.isMobile(context)
+                                                    ? 2
+                                                    : 5,
+                                                style: const TextStyle(
                                                   color: Colors.black,
                                                 ),
-                                                textAlign: TextAlign.center,
-                                                maxLines: 2,
-                                                overflow: TextOverflow.ellipsis,
                                               ),
                                               const SizedBox(height: 6),
                                               Text(

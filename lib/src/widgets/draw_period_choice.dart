@@ -4,6 +4,13 @@ import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
 
+/// Ask which draw period to use when copying (replaying) a previous ticket.
+///
+/// Choices:
+///  * `MIDDAY` — force every play to the next open Midday draw.
+///  * `EVENING` — force every play to the next open Evening draw.
+///  * `AUTO` — "The same": keep each play's original period, so a ticket that
+///    mixes Morning / Evening / Both is copied exactly as it was played.
 Future<String?> showDrawPeriodChoice(
   BuildContext context, {
   bool arabic = false,
@@ -11,12 +18,11 @@ Future<String?> showDrawPeriodChoice(
   final app = context.read<AppState>();
   final morningOpen = await app.isDrawTypeSellableNow('MIDDAY');
   final eveningOpen = await app.isDrawTypeSellableNow('EVENING');
-  final bothOpen = morningOpen && eveningOpen;
   if (!context.mounted) return null;
   if (!morningOpen && !eveningOpen) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('No open period to play now'),
+      const SnackBar(
+        content: Text('No open period to play now'),
         backgroundColor: Colors.red,
       ),
     );
@@ -27,7 +33,7 @@ Future<String?> showDrawPeriodChoice(
     builder: (c) => AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       title: const Text(
-        'When do you want to play?',
+        'Copy — choose period',
         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
       ),
       content: Column(
@@ -35,7 +41,7 @@ Future<String?> showDrawPeriodChoice(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Text(
-            'A closed period cannot be selected. If Morning has ended you can play Evening only.',
+            'The same keeps every number in its original period — nothing is changed.',
             style: TextStyle(fontSize: 11),
           ),
           const SizedBox(height: 12),
@@ -46,7 +52,7 @@ Future<String?> showDrawPeriodChoice(
               color: morningOpen ? const Color(0xFF0B8A3E) : Colors.grey,
             ),
             label: Text(
-              'Morning — 14:30',
+              'Morning only',
               style: TextStyle(
                 fontSize: 12,
                 color: morningOpen ? const Color(0xFF0B8A3E) : Colors.grey,
@@ -62,7 +68,7 @@ Future<String?> showDrawPeriodChoice(
               color: eveningOpen ? AppTheme.blue : Colors.grey,
             ),
             label: Text(
-              'Evening — 22:30',
+              'Evening only',
               style: TextStyle(
                 fontSize: 12,
                 color: eveningOpen ? AppTheme.blue : Colors.grey,
@@ -72,16 +78,13 @@ Future<String?> showDrawPeriodChoice(
           ),
           const SizedBox(height: 6),
           ElevatedButton.icon(
-            icon: const Icon(Icons.copy_all, size: 16),
-            label: const Text(
-              'Both periods — two copies',
-              style: TextStyle(fontSize: 12),
-            ),
+            icon: const Icon(Icons.content_copy, size: 16),
+            label: const Text('The same', style: TextStyle(fontSize: 12)),
             style: ElevatedButton.styleFrom(
-              backgroundColor: bothOpen ? const Color(0xFF0B8A3E) : Colors.grey,
+              backgroundColor: const Color(0xFF0B8A3E),
               foregroundColor: Colors.white,
             ),
-            onPressed: bothOpen ? () => Navigator.pop(c, 'BOTH') : null,
+            onPressed: () => Navigator.pop(c, 'AUTO'),
           ),
         ],
       ),

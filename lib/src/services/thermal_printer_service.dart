@@ -87,20 +87,31 @@ String _ascii(String input) {
       .replaceAll('”', '"');
 }
 
-String _padLine(String left, String right, int width) {
+/// Builds one fixed-width receipt line.
+///
+/// The played numbers ([left]) always stay intact and at the beginning of the
+/// line; the descriptive [right] part (bet + amount) is trimmed from its left
+/// side if necessary so the amount is never lost. The result is *never* longer
+/// than [width], and the caller passes a width that already reserves a safety
+/// margin so the printer firmware never wraps the final glyph onto its own
+/// line.
+String padReceiptLine(String left, String right, int width) {
   final l = _ascii(left);
   final r = _ascii(right);
-  // Never let a long amount get clipped by the paper edge: the right-hand
-  // value is the money/prize, so it wins and the label is what gets trimmed.
-  if (r.length >= width) return r.substring(r.length - width);
-  final space = width - l.length - r.length;
-  if (space < 1) {
-    final keep = width - r.length - 1;
-    if (keep < 1) return r;
-    return '${l.substring(0, keep)} $r';
+  if (width <= 0) return '';
+  if (l.length >= width) return l.substring(0, width);
+  final available = width - l.length - 1; // at least one separating space
+  if (available <= 0) return l;
+  if (r.length > available) {
+    // Keep the tail (the amount) and drop the leading bet label if needed.
+    return '$l ${r.substring(r.length - available)}';
   }
-  return l + ' ' * space + r;
+  return l + ' ' * (width - l.length - r.length) + r;
 }
+
+/// Backwards-compatible internal alias.
+String _padLine(String left, String right, int width) =>
+    padReceiptLine(left, right, width);
 
 Future<void> _ensureBluetoothPermission() async {
   if (kIsWeb) return;
@@ -202,7 +213,14 @@ Future<Generator> _generator(String printerType) async {
   return Generator(paper, profile);
 }
 
-int _charsPerLine(String printerType) => is80mmPrinter(printerType) ? 48 : 32;
+/// Characters that can be printed safely on one physical line.
+///
+/// The theoretical firmware limits are 48 (80mm) and 32 (58mm), but many
+/// printers have a slightly narrower printable area. Filling the line exactly
+/// made the last glyph — often the final digit of a played number — wrap onto
+/// a line of its own. Two cells are reserved as a permanent safety margin.
+int safeCharsPerLine(String printerType) =>
+    is80mmPrinter(printerType) ? 46 : 30;
 
 Future<List<int>> buildTicketEscPos({
   required Map<String, dynamic> ticket,
@@ -214,7 +232,7 @@ Future<List<int>> buildTicketEscPos({
   final type = normalizePrinterType(printerType);
   final mm80 = is80mmPrinter(type);
   final g = await _generator(type);
-  final width = _charsPerLine(type);
+  final width = safeCharsPerLine(type);
   final customerRaw = ticket['customerName'];
   final customerName = (customerRaw is String && customerRaw.trim().isNotEmpty)
       ? customerRaw.trim()
@@ -236,29 +254,33 @@ Future<List<int>> buildTicketEscPos({
     ),
   );
   bytes.addAll(g.hr(ch: '='));
+  // No text line is allowed to exceed the safe printable width.
+  String fit(String s) => s.length <= width ? s : s.substring(0, width);
   // Invoice number and date directly under SALES REPORT
   final idEarly = '${ticket['barcode'] ?? ticket['id']}';
   bytes.addAll(
     g.text(
-      'Ticket: ${_ascii(idEarly)}',
+      fit('Ticket: ${_ascii(idEarly)}'),
       styles: PosStyles(bold: true, height: bodySize, width: PosTextSize.size1),
     ),
   );
   bytes.addAll(
     g.text(
-      'Date: ${fmtDate(ticket['createdAt'] is int ? ticket['createdAt'] as int : DateTime.now().millisecondsSinceEpoch)}',
+      fit(
+        'Date: ${fmtDate(ticket['createdAt'] is int ? ticket['createdAt'] as int : DateTime.now().millisecondsSinceEpoch)}',
+      ),
       styles: PosStyles(bold: true, height: bodySize, width: PosTextSize.size1),
     ),
   );
   bytes.addAll(
     g.text(
-      'Op: ${_ascii('${ticket['operatorName'] ?? ''}')}',
+      fit('Op: ${_ascii('${ticket['operatorName'] ?? ''}')}'),
       styles: PosStyles(bold: true, height: bodySize, width: PosTextSize.size1),
     ),
   );
   bytes.addAll(
     g.text(
-      'Customer: ${_ascii(customerName)}',
+      fit('Customer: ${_ascii(customerName)}'),
       styles: PosStyles(bold: true, height: bodySize, width: PosTextSize.size1),
     ),
   );
@@ -379,7 +401,7 @@ Future<List<int>> buildTicketEscPos({
     final prize = fmtMoney(ticket['prizeAmount'] ?? 0);
     bytes.addAll(
       g.text(
-        status == 'paid' ? 'PAID - Prize $prize' : 'WINNER - Prize $prize',
+        fit(status == 'paid' ? 'PAID - Prize $prize' : 'WINNER - Prize $prize'),
         styles: const PosStyles(align: PosAlign.center, bold: true),
       ),
     );
@@ -397,7 +419,7 @@ Future<List<int>> buildTicketEscPos({
   );
   bytes.addAll(
     g.text(
-      _ascii(id),
+      fit(_ascii(id)),
       styles: const PosStyles(align: PosAlign.center, bold: true),
     ),
   );
@@ -405,7 +427,10 @@ Future<List<int>> buildTicketEscPos({
   final foot = footer.trim();
   if (foot.isNotEmpty) {
     bytes.addAll(
-      g.text(_ascii(foot), styles: const PosStyles(align: PosAlign.center)),
+      g.text(
+        fit(_ascii(foot)),
+        styles: const PosStyles(align: PosAlign.center),
+      ),
     );
   }
   bytes.addAll(
@@ -425,6 +450,8 @@ Future<List<int>> buildReportEscPos({
 }) async {
   final type = normalizePrinterType(printerType);
   final g = await _generator(type);
+  final width = safeCharsPerLine(type);
+  String fit(String s) => s.length <= width ? s : s.substring(0, width);
   final bytes = <int>[];
   bytes.addAll(g.reset());
   bytes.addAll(g.setGlobalCodeTable('CP1252'));
@@ -440,21 +467,27 @@ Future<List<int>> buildReportEscPos({
     ),
   );
   bytes.addAll(
-    g.text(_ascii(rangeLabel), styles: const PosStyles(align: PosAlign.center)),
+    g.text(
+      fit(_ascii(rangeLabel)),
+      styles: const PosStyles(align: PosAlign.center),
+    ),
   );
   bytes.addAll(g.hr(ch: '='));
   for (final section in sections) {
     bytes.addAll(
-      g.text(_ascii(section.title), styles: const PosStyles(bold: true)),
+      g.text(fit(_ascii(section.title)), styles: const PosStyles(bold: true)),
     );
     for (final row in section.rows) {
-      bytes.addAll(g.text(_ascii(row)));
+      bytes.addAll(g.text(fit(_ascii(row))));
     }
     bytes.addAll(g.feed(1));
   }
   bytes.addAll(g.hr());
   bytes.addAll(
-    g.text(_ascii(generated), styles: const PosStyles(align: PosAlign.center)),
+    g.text(
+      fit(_ascii(generated)),
+      styles: const PosStyles(align: PosAlign.center),
+    ),
   );
   bytes.addAll(
     g.text('--- CUT HERE ---', styles: const PosStyles(align: PosAlign.center)),

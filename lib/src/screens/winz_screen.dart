@@ -613,7 +613,7 @@ class _WinzScreenState extends State<WinzScreen> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Text(
-                    'When copying you will choose Midday, Evening, or both.',
+                    'When copying choose Morning only, Evening only, or The same to keep every number in its original period.',
                     style: TextStyle(fontSize: 9, color: Colors.black54),
                   ),
                 ),
@@ -654,8 +654,8 @@ class _WinzScreenState extends State<WinzScreen> {
                       final count = asInt(res['added']);
                       final skipped = (res['skipped'] as List).cast<String>();
                       final trimmed = (res['trimmed'] as List).cast<String>();
-                      final label = choice == 'BOTH'
-                          ? 'Both (×2)'
+                      final label = choice == 'AUTO'
+                          ? 'The same'
                           : choice == 'MIDDAY'
                           ? 'Midday'
                           : 'Evening';

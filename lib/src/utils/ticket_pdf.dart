@@ -66,6 +66,17 @@ PdfPageFormat getTicketPageFormat(String? printerType) {
   );
 }
 
+/// Text that must stay on one line. Wrapping in the PDF would either be
+/// rasterised onto the receipt as a stray digit on its own line, or clip the
+/// value in the preview. `softWrap: false` + `maxLines: 1` makes the intent
+/// explicit even when the value is longer than the paper width.
+pw.Widget _noWrapText(
+  String text, {
+  required pw.TextStyle style,
+  pw.TextAlign align = pw.TextAlign.left,
+}) =>
+    pw.Text(text, style: style, textAlign: align, maxLines: 1, softWrap: false);
+
 pw.Widget _fitText(
   String text,
   pw.TextStyle style, {
@@ -79,7 +90,7 @@ pw.Widget _fitText(
   return pw.FittedBox(
     fit: pw.BoxFit.scaleDown,
     alignment: alignment,
-    child: pw.Text(text, style: style, maxLines: 1),
+    child: _noWrapText(text, style: style),
   );
 }
 
@@ -135,7 +146,7 @@ pw.Widget _playsBlock(
   return pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.stretch,
     children: [
-      pw.Text(
+      _noWrapText(
         label,
         style: pw.TextStyle(
           fontSize: s.section,
@@ -218,7 +229,7 @@ pw.Widget buildTicketPdfWidget(
       return pw.Column(
         children: [
           if (header != null) ...[
-            pw.Text(
+            _noWrapText(
               header,
               style: pw.TextStyle(
                 fontSize: s.section,
@@ -239,7 +250,7 @@ pw.Widget buildTicketPdfWidget(
             ),
           ),
           pw.SizedBox(height: 2),
-          pw.Text(
+          _noWrapText(
             '${ticketDisplayBet(t['betType'] ?? '')} • ${fmtMoney(t['amount'])}',
             style: pw.TextStyle(
               fontSize: s.meta,
@@ -274,7 +285,7 @@ pw.Widget buildTicketPdfWidget(
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              pw.Text(
+              _noWrapText(
                 'TOTAL',
                 style: pw.TextStyle(
                   fontSize: s.game,
@@ -282,7 +293,7 @@ pw.Widget buildTicketPdfWidget(
                   color: PdfColors.black,
                 ),
               ),
-              pw.Text(
+              _noWrapText(
                 total,
                 style: pw.TextStyle(
                   fontSize: s.total,
@@ -303,7 +314,7 @@ pw.Widget buildTicketPdfWidget(
         if (hasMid && hasEve) ...[
           pw.SizedBox(height: 2),
           pw.Center(
-            child: pw.Text(
+            child: _noWrapText(
               '- - - - - - - - - -',
               style: pw.TextStyle(fontSize: s.tiny, color: PdfColors.black),
             ),
@@ -315,7 +326,7 @@ pw.Widget buildTicketPdfWidget(
           if (hasMid || hasEve) ...[
             pw.SizedBox(height: 2),
             pw.Center(
-              child: pw.Text(
+              child: _noWrapText(
                 '- - - - - - - - - -',
                 style: pw.TextStyle(fontSize: s.tiny, color: PdfColors.black),
               ),
@@ -335,7 +346,7 @@ pw.Widget buildTicketPdfWidget(
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
-            pw.Text(
+            _noWrapText(
               'TOTAL',
               style: pw.TextStyle(
                 fontSize: s.game,
@@ -343,7 +354,7 @@ pw.Widget buildTicketPdfWidget(
                 color: PdfColors.black,
               ),
             ),
-            pw.Text(
+            _noWrapText(
               total,
               style: pw.TextStyle(
                 fontSize: s.total,
@@ -368,7 +379,7 @@ pw.Widget buildTicketPdfWidget(
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text(
+                _noWrapText(
                   'Ticket ID',
                   style: pw.TextStyle(
                     fontSize: s.tiny,
@@ -431,7 +442,7 @@ pw.Widget buildTicketPdfWidget(
       return pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.stretch,
         children: [
-          pw.Text(
+          _noWrapText(
             'Ticket ID',
             style: pw.TextStyle(
               fontSize: s.tiny,
@@ -449,7 +460,7 @@ pw.Widget buildTicketPdfWidget(
             align: pw.TextAlign.left,
           ),
           pw.SizedBox(height: 2),
-          pw.Text(
+          _noWrapText(
             'Date: ${fmtDate(t['createdAt'])}',
             style: pw.TextStyle(
               fontSize: s.tiny,
@@ -457,7 +468,7 @@ pw.Widget buildTicketPdfWidget(
               color: PdfColors.black,
             ),
           ),
-          pw.Text(
+          _noWrapText(
             'Op: ${t['operatorName']}',
             style: pw.TextStyle(
               fontSize: s.tiny,
@@ -520,19 +531,19 @@ pw.Widget buildTicketPdfWidget(
       ),
       pw.Divider(thickness: 0.5, color: PdfColors.black),
       pw.Center(
-        child: pw.Text(
+        child: _noWrapText(
           footer.trim().isEmpty ? '' : footer.trim(),
           style: pw.TextStyle(
             fontSize: s.tiny,
             fontWeight: pw.FontWeight.bold,
             color: PdfColors.black,
           ),
-          textAlign: pw.TextAlign.center,
+          align: pw.TextAlign.center,
         ),
       ),
       pw.SizedBox(height: 2),
       pw.Center(
-        child: pw.Text(
+        child: _noWrapText(
           '--- CUT HERE ---',
           style: pw.TextStyle(fontSize: s.tiny, color: PdfColors.black),
         ),

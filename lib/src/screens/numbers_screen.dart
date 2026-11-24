@@ -1907,7 +1907,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Text(
-                    'When copying you will choose Midday (14:30), Evening (22:30), or both.',
+                    'When copying choose Morning only, Evening only, or The same to keep every number in its original period.',
                     style: TextStyle(fontSize: 9, color: Colors.black54),
                   ),
                 ),
@@ -1948,8 +1948,8 @@ class _NumbersScreenState extends State<NumbersScreen> {
                       final count = asInt(res['added']);
                       final skipped = (res['skipped'] as List).cast<String>();
                       final trimmed = (res['trimmed'] as List).cast<String>();
-                      final label = choice == 'BOTH'
-                          ? 'Both (×2)'
+                      final label = choice == 'AUTO'
+                          ? 'The same'
                           : choice == 'MIDDAY'
                           ? 'Midday only'
                           : 'Evening only';
