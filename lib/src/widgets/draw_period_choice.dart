@@ -16,18 +16,16 @@ Future<String?> showDrawPeriodChoice(
   bool arabic = false,
 }) async {
   final app = context.read<AppState>();
-  final morningOpen = await app.isDrawTypeSellableNow('MIDDAY');
-  final eveningOpen = await app.isDrawTypeSellableNow('EVENING');
+  // Always show the choice dialog. A failed/closed check must never hide it.
+  bool morningOpen = false;
+  bool eveningOpen = false;
+  try {
+    morningOpen = await app.isDrawTypeSellableNow('MIDDAY');
+  } catch (_) {}
+  try {
+    eveningOpen = await app.isDrawTypeSellableNow('EVENING');
+  } catch (_) {}
   if (!context.mounted) return null;
-  if (!morningOpen && !eveningOpen) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('No open period to play now'),
-        backgroundColor: Colors.red,
-      ),
-    );
-    return null;
-  }
   return showDialog<String>(
     context: context,
     builder: (c) => AlertDialog(
@@ -40,9 +38,11 @@ Future<String?> showDrawPeriodChoice(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
-            'The same keeps every number in its original period — nothing is changed.',
-            style: TextStyle(fontSize: 11),
+          Text(
+            morningOpen && eveningOpen
+                ? 'The same keeps every number in its original period.'
+                : 'A closed draw has its button disabled. "The same" needs both draws open.',
+            style: const TextStyle(fontSize: 11),
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
@@ -84,7 +84,9 @@ Future<String?> showDrawPeriodChoice(
               backgroundColor: const Color(0xFF0B8A3E),
               foregroundColor: Colors.white,
             ),
-            onPressed: () => Navigator.pop(c, 'AUTO'),
+            onPressed: morningOpen && eveningOpen
+                ? () => Navigator.pop(c, 'AUTO')
+                : null,
           ),
         ],
       ),
