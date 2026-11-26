@@ -786,7 +786,10 @@ class BackupService {
     final response = await http
         .post(
           uri,
-          headers: {'Content-Type': 'application/json'},
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': ApiConfig.apiToken,
+          },
           body: jsonEncode({'backup': backup}),
         )
         .timeout(const Duration(seconds: 120));

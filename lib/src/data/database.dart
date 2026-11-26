@@ -43,7 +43,10 @@ class AppDatabase {
     try {
       response = await _client.post(
         Uri.parse('$_baseUrl/call'),
-        headers: const {'Content-Type': 'application/json'},
+        headers: const {
+          'Content-Type': 'application/json',
+          'X-API-Key': ApiConfig.apiToken,
+        },
         body: jsonEncode(<String, dynamic>{
           'scope': 'db',
           'method': method,

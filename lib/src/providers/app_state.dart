@@ -101,7 +101,10 @@ class AppState extends ChangeNotifier {
     try {
       response = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/call'),
-        headers: const {'Content-Type': 'application/json'},
+        headers: const {
+          'Content-Type': 'application/json',
+          'X-API-Key': ApiConfig.apiToken,
+        },
         body: jsonEncode(<String, dynamic>{
           'scope': scope,
           'method': method,
