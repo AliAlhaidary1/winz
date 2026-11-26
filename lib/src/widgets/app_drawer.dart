@@ -11,7 +11,16 @@ class AppDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AppState>().currentUser;
-    final isAdmin = user?['role'] == 'admin';
+    final role = (user?['role'] ?? 'cashier').toString();
+    const levels = <String, int>{
+      'cashier': 1,
+      'supervisor': 2,
+      'manager': 3,
+      'owner': 4,
+    };
+    final level = levels[role] ?? 1;
+    final canSupervise = level >= 2; // payouts, cash, reports, customers
+    final canManage = level >= 3; // results, settings, workers
     return Drawer(
       child: ListView(
         padding: EdgeInsets.zero,
@@ -90,6 +99,7 @@ class AppDrawer extends StatelessWidget {
               Navigator.pushNamed(context, '/numbers');
             },
           ),
+          if (canSupervise)
           ListTile(
             leading: Container(
               padding: const EdgeInsets.all(6),
@@ -106,6 +116,7 @@ class AppDrawer extends StatelessWidget {
               Navigator.pushNamed(context, '/winning');
             },
           ),
+          if (canSupervise)
           ListTile(
             leading: Container(
               padding: const EdgeInsets.all(6),
@@ -129,6 +140,7 @@ class AppDrawer extends StatelessWidget {
               Navigator.pushNamed(context, '/tickets');
             },
           ),
+          if (canManage)
           ListTile(
             leading: Container(
               padding: const EdgeInsets.all(6),
@@ -181,6 +193,7 @@ class AppDrawer extends StatelessWidget {
               Navigator.pushNamed(context, '/numbers');
             },
           ),
+          if (canSupervise)
           ListTile(
             leading: const Icon(Icons.point_of_sale, color: Color(0xFF009688)),
             title: const Text('Sales'),
@@ -189,6 +202,7 @@ class AppDrawer extends StatelessWidget {
               Navigator.pushNamed(context, '/sales');
             },
           ),
+          if (canSupervise)
           ListTile(
             leading: const Icon(
               Icons.confirmation_number,
@@ -200,6 +214,7 @@ class AppDrawer extends StatelessWidget {
               Navigator.pushNamed(context, '/tickets');
             },
           ),
+          if (canSupervise)
           ListTile(
             leading: const Icon(Icons.verified, color: Color(0xFF2E7D32)),
             title: const Text('Winner'),
@@ -208,6 +223,7 @@ class AppDrawer extends StatelessWidget {
               Navigator.pushNamed(context, '/winning');
             },
           ),
+          if (canSupervise)
           ListTile(
             leading: const Icon(
               Icons.account_balance,
@@ -219,6 +235,7 @@ class AppDrawer extends StatelessWidget {
               Navigator.pushNamed(context, '/cash');
             },
           ),
+          if (canSupervise)
           ListTile(
             leading: const Icon(
               Icons.account_balance_wallet,
@@ -238,6 +255,7 @@ class AppDrawer extends StatelessWidget {
               Navigator.pushNamed(context, '/print');
             },
           ),
+          if (canSupervise)
           ListTile(
             leading: const Icon(Icons.assessment, color: Color(0xFFE91E63)),
             title: const Text('Report'),
@@ -262,6 +280,7 @@ class AppDrawer extends StatelessWidget {
               Navigator.pushNamed(context, '/help');
             },
           ),
+          if (canManage)
           ListTile(
             leading: const Icon(Icons.settings, color: Color(0xFF37474F)),
             title: const Text('Config'),
@@ -270,6 +289,7 @@ class AppDrawer extends StatelessWidget {
               Navigator.pushNamed(context, '/config');
             },
           ),
+          if (canManage)
           ListTile(
             leading: const Icon(
               Icons.admin_panel_settings,
@@ -282,6 +302,7 @@ class AppDrawer extends StatelessWidget {
             },
           ),
           const Divider(),
+          if (canSupervise)
           ListTile(
             leading: const Icon(Icons.people_alt, color: Color(0xFF0B8A3E)),
             title: const Text('Customers'),
@@ -290,7 +311,7 @@ class AppDrawer extends StatelessWidget {
               Navigator.pushNamed(context, '/customers');
             },
           ),
-          if (isAdmin)
+          if (canManage)
             ListTile(
               leading: const Icon(Icons.people, color: Colors.blue),
               title: const Text('Workers'),

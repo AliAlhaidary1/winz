@@ -9,6 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../config/api_config.dart';
 import '../data/database.dart';
+import 'session_store.dart';
 import '../utils/format.dart';
 
 /// JSON backup format identifier written into every exported file.
@@ -786,9 +787,10 @@ class BackupService {
     final response = await http
         .post(
           uri,
-          headers: {
+          headers: <String, String>{
             'Content-Type': 'application/json',
             'X-API-Key': ApiConfig.apiToken,
+            ...SessionStore.headers,
           },
           body: jsonEncode({'backup': backup}),
         )

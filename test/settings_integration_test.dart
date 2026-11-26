@@ -18,6 +18,7 @@ import 'package:http/http.dart' as http;
 const String apiBaseUrl = 'http://127.0.0.1:8100/api';
 
 final http.Client _client = http.Client();
+String? _sessionToken;
 
 // ---------------------------------------------------------------- HTTP helpers
 
@@ -29,7 +30,11 @@ Future<Map<String, dynamic>> _request(
   try {
     response = await _client.post(
       Uri.parse('$apiBaseUrl$path'),
-      headers: const <String, String>{'Content-Type': 'application/json'},
+      headers: <String, String>{
+        'Content-Type': 'application/json',
+        'X-API-Key': 'WinzSecure2026!',
+        if (_sessionToken != null) 'X-Session-Token': _sessionToken!,
+      },
       body: jsonEncode(payload),
     );
   } catch (e) {
@@ -190,13 +195,14 @@ void main() {
     ];
 
     setUpAll(() async {
-      originalConfig = await _config();
       final login = await _callMap('state', 'login', <String, dynamic>{
         'username': 'admin',
         'password': 'admin123',
       });
       adminUser =
           Map<String, dynamic>.from(_stateOf(login)['user'] as Map<String, dynamic>);
+      _sessionToken = login['token']?.toString();
+      originalConfig = await _config();
     });
 
     tearDownAll(() async {
@@ -228,8 +234,8 @@ void main() {
       expect(_valueOf(result), isTrue,
           reason: 'admin/admin123 should authenticate successfully');
       final user = state['user'] as Map<String, dynamic>;
-      expect(user['role'], 'admin',
-          reason: 'logged-in admin user must have role admin');
+      expect(user['role'], 'owner',
+          reason: 'logged-in admin user must have owner role');
       expect(state['isAdmin'], isTrue,
           reason: 'logged-in admin user must expose isAdmin == true');
       adminUser = Map<String, dynamic>.from(user);

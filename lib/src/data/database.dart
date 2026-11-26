@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
+import '../services/session_store.dart';
 import '../utils/format.dart';
 
 /// Data-layer client backed by the Laravel API.
@@ -43,9 +44,10 @@ class AppDatabase {
     try {
       response = await _client.post(
         Uri.parse('$_baseUrl/call'),
-        headers: const {
+        headers: <String, String>{
           'Content-Type': 'application/json',
           'X-API-Key': ApiConfig.apiToken,
+          ...SessionStore.headers,
         },
         body: jsonEncode(<String, dynamic>{
           'scope': 'db',

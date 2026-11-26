@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../config/api_config.dart';
 import '../data/database.dart';
+import '../services/session_store.dart';
 import '../utils/format.dart';
 
 /// A single line in the sale cart.
@@ -101,9 +102,10 @@ class AppState extends ChangeNotifier {
     try {
       response = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/call'),
-        headers: const {
+        headers: <String, String>{
           'Content-Type': 'application/json',
           'X-API-Key': ApiConfig.apiToken,
+          ...SessionStore.headers,
         },
         body: jsonEncode(<String, dynamic>{
           'scope': scope,
@@ -306,7 +308,16 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  bool get isAdmin => _currentUser?['role'] == 'admin';
+  bool get isAdmin {
+    final role = (_currentUser?['role'] ?? 'cashier').toString();
+    const levels = <String, int>{
+      'cashier': 1,
+      'supervisor': 2,
+      'manager': 3,
+      'owner': 4,
+    };
+    return (levels[role] ?? 1) >= 3;
+  }
 
   List<CartItem> _cart = [];
   List<CartItem> get cart => List.unmodifiable(_cart);
@@ -340,6 +351,11 @@ class AppState extends ChangeNotifier {
     }
     if (account == null || account['id'] == null) return false;
 
+    final token = _asMap(result)['token']?.toString();
+    if (token != null && token.isNotEmpty) {
+      await SessionStore.save(token);
+    }
+
     _currentUser = account;
     _loginAt = DateTime.now();
     notifyListeners();
@@ -369,6 +385,7 @@ class AppState extends ChangeNotifier {
   }
 
   void logout() {
+    unawaited(SessionStore.save(null));
     _currentUser = null;
     _loginAt = null;
     _cart = [];
