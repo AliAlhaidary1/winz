@@ -738,7 +738,7 @@ void main() {
         final a = calls.single['args']!['a'] as Map<String, dynamic>;
         expect(a['username'], 'worker2');
         expect(a['commission'], 7.5);
-        expect(a['role'], 'worker');
+        expect(a['role'], 'cashier');
       });
 
       testWidgets('delete worker is a soft deactivate, never a hard delete at ${width}px',

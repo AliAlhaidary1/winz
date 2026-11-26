@@ -25,7 +25,7 @@ class _WorkersScreenState extends State<WorkersScreen> {
     final all = await db.getAccounts();
     if (!mounted) return;
     setState(() {
-      _workers = all.where((e) => e['role'] == 'worker').toList();
+      _workers = all.where((e) => e['role'] != 'owner').toList();
       _loading = false;
     });
   }
@@ -34,12 +34,18 @@ class _WorkersScreenState extends State<WorkersScreen> {
     final userCtrl = TextEditingController();
     final passCtrl = TextEditingController();
     final commCtrl = TextEditingController(text: '5.0');
+    final myRole =
+        (context.read<AppState>().currentUser?['role'] ?? 'manager').toString();
+    final assignableRoles = <String>['cashier', 'supervisor'];
+    if (myRole == 'owner') assignableRoles.add('manager');
+    var selectedRole = 'cashier';
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Add Worker'),
-        content: SingleChildScrollView(
-          child: Column(
+        content: StatefulBuilder(
+          builder: (c, setDialogState) => SingleChildScrollView(
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
@@ -72,8 +78,31 @@ class _WorkersScreenState extends State<WorkersScreen> {
                   isDense: true,
                 ),
               ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: selectedRole,
+                decoration: const InputDecoration(
+                  labelText: 'Role',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: [
+                  for (final role in assignableRoles)
+                    DropdownMenuItem(
+                      value: role,
+                      child: Text(
+                        role[0].toUpperCase() + role.substring(1),
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                ],
+                onChanged: (v) {
+                  if (v != null) setDialogState(() => selectedRole = v);
+                },
+              ),
             ],
           ),
+        ),
         ),
         actions: [
           TextButton(
@@ -107,7 +136,7 @@ class _WorkersScreenState extends State<WorkersScreen> {
         'id': id,
         'username': userCtrl.text.trim(),
         'password': passCtrl.text,
-        'role': 'worker',
+        'role': selectedRole,
         'status': 'active',
         'createdAt': DateTime.now().millisecondsSinceEpoch,
         'commission': comm,
@@ -258,7 +287,7 @@ class _WorkersScreenState extends State<WorkersScreen> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     subtitle: Text(
-                      'Commission ${w["commission"] ?? 0}% - ${w["status"]}',
+                      '${w["role"] ?? "cashier"} • ${w["commission"] ?? 0}% • ${w["status"]}',
                       style: const TextStyle(fontSize: 11),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
