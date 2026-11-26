@@ -11,7 +11,7 @@
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
     <application
-        android:label="Winz"
+        android:label="Winz POS Pro"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:extractNativeLibs="true"

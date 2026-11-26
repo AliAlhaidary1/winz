@@ -38,7 +38,7 @@ class YeLotteryApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AppState(db)),
       ],
       child: MaterialApp(
-        title: 'Winz',
+        title: 'Winz POS Pro',
         debugShowCheckedModeBanner: false,
         locale: const Locale('en'),
         supportedLocales: const [Locale('en')],
