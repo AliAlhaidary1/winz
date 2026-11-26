@@ -201,6 +201,16 @@ class _ConfigScreenState extends State<ConfigScreen> {
                         ),
                       ),
                     ),
+                    _hubCard(
+                      context,
+                      icon: Icons.manage_accounts,
+                      color: Colors.indigo,
+                      title: 'My Account',
+                      subtitle: 'Change username & password',
+                      count: 'Security',
+                      onTap: () =>
+                          Navigator.pushNamed(context, '/change_credentials'),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 16),

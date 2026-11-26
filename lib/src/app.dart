@@ -21,6 +21,7 @@ import 'screens/print_screen.dart';
 import 'screens/report_screen.dart';
 import 'screens/share_screen.dart';
 import 'screens/help_screen.dart';
+import 'screens/change_credentials_screen.dart';
 import 'screens/config_screen.dart';
 import 'screens/workers_screen.dart';
 import 'screens/customers_screen.dart';
@@ -63,6 +64,7 @@ class YeLotteryApp extends StatelessWidget {
           '/share': (_) => const ShareScreen(),
           '/help': (_) => const HelpScreen(),
           '/config': (_) => const ConfigScreen(),
+          '/change_credentials': (_) => const ChangeCredentialsScreen(),
           '/workers': (_) => const WorkersScreen(),
           '/customers': (_) => const CustomersScreen(),
         },

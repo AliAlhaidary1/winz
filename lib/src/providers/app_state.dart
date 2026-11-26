@@ -346,6 +346,28 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
+  /// Change the signed-in user's username/password on the server.
+  Future<bool> changeCredentials({
+    required String currentPassword,
+    required String newUsername,
+    required String newPassword,
+  }) async {
+    final result = await _call('state', 'changeCredentials', {
+      'currentPassword': currentPassword,
+      'newUsername': newUsername.trim(),
+      'newPassword': newPassword,
+    });
+    final state = _asMap(result)['state'];
+    if (state is Map) {
+      final u = _asMap(state)['user'];
+      if (u is Map && u.isNotEmpty) {
+        _currentUser = Map<String, dynamic>.from(u);
+      }
+    }
+    notifyListeners();
+    return true;
+  }
+
   void logout() {
     _currentUser = null;
     _loginAt = null;
