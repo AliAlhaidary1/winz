@@ -1,7 +1,7 @@
 ﻿name: winz
 description: "Winz - Lottery Retailer / Agent POS System"
 publish_to: 'none'
-version: 1.0.1+2
+version: 1.0.2+3
 
 environment:
   sdk: ^3.13.1
@@ -33,4 +33,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
 

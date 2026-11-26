@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../data/database.dart';
 import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
 
@@ -24,6 +25,20 @@ Future<String?> showDrawPeriodChoice(
   } catch (_) {}
   try {
     eveningOpen = await app.isDrawTypeSellableNow('EVENING');
+  } catch (_) {}
+
+  // Cross-check with the actual open periods. The state helper can report
+  // false on a stale/failed session; the period list is authoritative.
+  try {
+    final periods = await context.read<AppDatabase>().getOpenPeriods();
+    for (final p in periods) {
+      final type = (p['drawType'] ?? p['id'] ?? '').toString().toUpperCase();
+      if (type.contains('MIDDAY') || type.contains('MORNING')) {
+        morningOpen = true;
+      } else if (type.contains('EVENING')) {
+        eveningOpen = true;
+      }
+    }
   } catch (_) {}
   if (!context.mounted) return null;
   return showDialog<String>(
